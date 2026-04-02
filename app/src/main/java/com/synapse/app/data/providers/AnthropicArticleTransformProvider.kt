@@ -26,7 +26,7 @@ class AnthropicArticleTransformProvider @Inject constructor(
                 return Result.failure(Exception("Anthropic API key is missing. Please add it to the Vault."))
             }
 
-            val systemPrompt = when (type) {
+            val systemPrompt = input.systemPromptOverride ?: when (type) {
                 TransformType.SUMMARY -> "You are a professional assistant. Provide a concise bulleted summary of the following text."
                 TransformType.THREAD -> "You are a professional assistant. Convert the following text into an engaging, high-quality social media thread (e.g. for Twitter/X). Use 🧵 and numbering."
                 TransformType.PRO_POST -> "You are a professional assistant. Write a high-quality, professional LinkedIn post based on the following text."

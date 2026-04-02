@@ -1,93 +1,71 @@
 package com.synapse.app.feature.brief
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.synapse.app.domain.models.ArticleInput
-import com.synapse.app.domain.models.HistoryItem
-import com.synapse.app.domain.models.TransformResult
-import com.synapse.app.domain.models.TransformType
-import com.synapse.app.domain.models.WorkflowType
-import com.synapse.app.domain.providers.ArticleTransformProvider
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.synapse.app.data.local.SettingsRepository
+import com.synapse.app.domain.models.*
 import com.synapse.app.domain.repositories.HistoryRepository
+import com.synapse.app.platform.automation.SynthesizerWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
-
-sealed interface BriefUiState {
-    data object Input : BriefUiState
-    data object Loading : BriefUiState
-    data class Error(val message: String) : BriefUiState
-    data class Success(val result: TransformResult) : BriefUiState
-}
 
 @HiltViewModel
 class BriefViewModel @Inject constructor(
-    private val transformProvider: ArticleTransformProvider,
-    private val historyRepository: HistoryRepository
+    private val settingsRepository: SettingsRepository,
+    private val historyRepository: HistoryRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<BriefUiState>(BriefUiState.Input)
-    val uiState: StateFlow<BriefUiState> = _uiState.asStateFlow()
+    val config = settingsRepository.briefConfig
+        .stateIn(viewModelScope, SharingStarted.Eager, BriefConfig())
+    
+    val recentRuns = historyRepository.getHistoryByType(WorkflowType.MORNING_BRIEF)
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    private val _inputText = MutableStateFlow("")
-    val inputText: StateFlow<String> = _inputText.asStateFlow()
+    private val _isSaving = MutableStateFlow(false)
+    val isSaving = _isSaving.asStateFlow()
 
-    private val _saveStatus = MutableStateFlow<String?>(null)
-    val saveStatus: StateFlow<String?> = _saveStatus.asStateFlow()
+    private val workManager = WorkManager.getInstance(context)
 
-    fun updateInputText(text: String) {
-        _inputText.value = text
-        if (_uiState.value is BriefUiState.Error) {
-            _uiState.value = BriefUiState.Input
+    fun updateConfig(newConfig: BriefConfig) {
+        viewModelScope.launch {
+            _isSaving.value = true
+            settingsRepository.setBriefConfig(newConfig)
+            scheduleWorker(newConfig)
+            _isSaving.value = false
         }
     }
 
-    fun transform() {
-        val text = _inputText.value.trim()
-        if (text.isEmpty()) return
-
-        _uiState.value = BriefUiState.Loading
-
-        viewModelScope.launch {
-            val result = transformProvider.transform(
-                input = ArticleInput(text = text),
-                type = TransformType.MORNING_SUMMARY
-            )
-
-            result.fold(
-                onSuccess = { _uiState.value = BriefUiState.Success(it) },
-                onFailure = { _uiState.value = BriefUiState.Error(it.message ?: "Unknown error") }
-            )
-        }
+    fun runNow() {
+        val request = OneTimeWorkRequestBuilder<SynthesizerWorker>().build()
+        workManager.enqueueUniqueWork("SynthesizerWorker_OneTime", ExistingWorkPolicy.REPLACE, request)
     }
-
-    fun reset() {
-        _uiState.value = BriefUiState.Input
-    }
-
-    fun resetSaveStatus() {
-        _saveStatus.value = null
-    }
-
-    fun saveResult() {
-        val state = _uiState.value as? BriefUiState.Success ?: return
-        val preview = _inputText.value.take(50).replace("\n", " ") + "..."
-
-        viewModelScope.launch {
-            historyRepository.saveHistoryItem(
-                HistoryItem(
-                    workflowType = WorkflowType.MORNING_BRIEF,
-                    inputPreview = preview,
-                    transformType = state.result.transformType,
-                    outputText = state.result.outputText,
-                    providerType = state.result.providerType,
-                    createdAtMillis = System.currentTimeMillis()
-                )
-            )
-            _saveStatus.value = "Saved successfully."
+    
+    private fun scheduleWorker(config: BriefConfig) {
+        if (config.scheduleType == ScheduleType.EVERY_N_HOURS && config.intervalHours != null) {
+            val request = PeriodicWorkRequestBuilder<SynthesizerWorker>(
+                config.intervalHours.toLong(), TimeUnit.HOURS
+            ).build()
+            workManager.enqueueUniquePeriodicWork("SynthesizerWorker_Periodic", ExistingPeriodicWorkPolicy.UPDATE, request)
+        } else {
+            // Simplified Daily scheduler utilizing a raw 24 hours Periodic interval 
+            val request = PeriodicWorkRequestBuilder<SynthesizerWorker>(
+                24, TimeUnit.HOURS
+            ).build()
+            workManager.enqueueUniquePeriodicWork("SynthesizerWorker_Periodic", ExistingPeriodicWorkPolicy.UPDATE, request)
         }
     }
 }
