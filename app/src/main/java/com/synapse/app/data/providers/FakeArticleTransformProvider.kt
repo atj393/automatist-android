@@ -50,6 +50,25 @@ class FakeArticleTransformProvider @Inject constructor() : ArticleTransformProvi
                 "How does your team handle tool overload? Would love to hear your approaches.\n\n" +
                 "#Productivity #DeepWork #FutureOfWork"
             }
+            TransformType.MEETING_BRIEF -> {
+                "**Executive Meeting Brief: Q3 Operations Sync**\n\n" +
+                "- **Status:** Q3 Product launch is tracking 2 weeks behind schedule due to API integration blockers.\n" +
+                "- **Budget:** Marketing spend has been officially approved for the $50k tier.\n" +
+                "- **Action Item:** Sarah to finalize the external PR copy by Thursday.\n" +
+                "- **Action Item:** DevOps to escalate the API ticket to priority queue."
+            }
+            TransformType.STRATEGIC_QUESTIONS -> {
+                "Based on the notes provided, here are strategic questions to leverage in the follow-up:\n\n" +
+                "1. If the Q3 launch is delayed by 2 weeks, how does this directly impact our committed deliverables for early Q4?\n" +
+                "2. Does the newly approved $50k marketing budget need adjustment to align with the later launch date?\n" +
+                "3. What specific resources are required to unblock the API integration immediately?"
+            }
+            TransformType.MORNING_SUMMARY -> {
+                "🌅 **Your Morning Executive Brief**\n\n" +
+                "**Markets & Industry:** The sector is up broadly, led by favorable interest rate signals. Competitor 'Apex' launched their highly anticipated Feature X overnight.\n\n" +
+                "**Internal Metrics:** Engagement shows a 15% WoW growth, maintaining the aggressive uptrend.\n\n" +
+                "**Top Priority Today:** Focus deeply on finalizing the Series-B investor deck before the 3 PM walkthrough."
+            }
             else -> "Simulation unavailable for this transform type."
         }
 
