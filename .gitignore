@@ -1,0 +1,77 @@
+# Built application files
+*.apk
+*.aab
+*.ap_
+*.aar
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java/Kotlin class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+build/
+
+# Gradle files
+.gradle/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local configuration file (SDK path, etc)
+local.properties
+
+# Proguard
+proguard/
+
+# Log files
+*.log
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Keystore files (IMPORTANT - never commit)
+*.jks
+*.keystore
+
+# Navigation component
+.navigation/
+
+# Kotlin
+*.kotlin_module
+
+# Google Services (Firebase)
+google-services.json
+
+# Android profiling
+*.hprof
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Captures (screenshots, recordings)
+captures/
+
+# NDK
+.externalNativeBuild/
+.cxx/
+
+# Build cache
+buildCache/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Misc
+*.swp
+*~
