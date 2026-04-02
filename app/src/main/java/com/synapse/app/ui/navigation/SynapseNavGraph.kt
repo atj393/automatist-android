@@ -13,6 +13,8 @@ import com.synapse.app.feature.dashboard.DashboardScreen
 import com.synapse.app.feature.history.HistoryDetailScreen
 import com.synapse.app.feature.history.HistoryScreen
 import com.synapse.app.feature.vault.VaultScreen
+import com.synapse.app.feature.meeting.MeetingScreen
+import com.synapse.app.feature.brief.BriefScreen
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -77,11 +79,15 @@ fun SynapseNavGraph(
         }
 
         composable(Routes.MEETING_STRATEGIST) {
-            // Phase 6 placeholder
+            MeetingScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
 
         composable(Routes.MORNING_BRIEF) {
-            // Phase 7 placeholder
+            BriefScreen(
+                onBack = { navController.popBackStack() }
+            )
         }
 
         composable(Routes.VAULT) {
