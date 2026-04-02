@@ -1,5 +1,7 @@
 package com.synapse.app.domain.models
 
+import kotlinx.serialization.Serializable
+
 enum class WorkflowType {
     ARTICLE_TRANSFORMER,
     MEETING_STRATEGIST,
@@ -20,4 +22,27 @@ enum class ProviderType(val displayName: String) {
     OPENAI("OpenAI API"),
     ANTHROPIC("Anthropic API"),
     GEMINI("Google Gemini API")
+}
+
+@Serializable
+enum class BriefOutputType(val displayName: String) {
+    SUMMARY("Summary"),
+    SOCIAL_POST("Social Media Post"),
+    BULLET_INSIGHTS("Bullet Point Insights"),
+    CUSTOM("Custom Format")
+}
+
+@Serializable
+enum class SocialPlatform(val displayName: String) {
+    LINKEDIN("LinkedIn"),
+    X("X"),
+    FACEBOOK("Facebook"),
+    INSTAGRAM("Instagram"),
+    THREADS("Threads")
+}
+
+@Serializable
+enum class ScheduleType {
+    EVERY_N_HOURS,
+    DAILY_AT_HOUR
 }
