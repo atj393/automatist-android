@@ -21,7 +21,9 @@ class FakeArticleTransformProvider @Inject constructor() : ArticleTransformProvi
             return Result.failure(IllegalArgumentException("Input text cannot be empty."))
         }
 
-        val output = when (type) {
+        val output = if (input.systemPromptOverride != null) {
+            "Simulated response to custom automation configuration:\n\nFormat matching user request:\n${input.systemPromptOverride}"
+        } else when (type) {
             TransformType.SUMMARY -> {
                 "Here is a concise summary of your article:\n\n" +
                 "The primary theme centers around increasing productivity by reducing context switching. " +
