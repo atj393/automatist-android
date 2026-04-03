@@ -3,9 +3,13 @@ package com.synapse.app.di
 import android.content.Context
 import androidx.room.Room
 import com.synapse.app.data.local.HistoryDao
+import com.synapse.app.data.local.MIGRATION_1_2
 import com.synapse.app.data.local.SynapseDatabase
+import com.synapse.app.data.local.WorkflowDao
 import com.synapse.app.data.repositories.RoomHistoryRepository
+import com.synapse.app.data.repositories.RoomWorkflowRepository
 import com.synapse.app.domain.repositories.HistoryRepository
+import com.synapse.app.domain.repositories.WorkflowRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -25,7 +29,9 @@ object DatabaseModule {
             context,
             SynapseDatabase::class.java,
             "synapse.db"
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
     }
 
     @Provides
@@ -33,15 +39,27 @@ object DatabaseModule {
     fun provideHistoryDao(database: SynapseDatabase): HistoryDao {
         return database.historyDao
     }
+
+    @Provides
+    @Singleton
+    fun provideWorkflowDao(database: SynapseDatabase): WorkflowDao {
+        return database.workflowDao
+    }
 }
 
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RepositoryModule {
-    
+
     @Binds
     @Singleton
     abstract fun bindHistoryRepository(
         roomRepository: RoomHistoryRepository
     ): HistoryRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindWorkflowRepository(
+        roomRepository: RoomWorkflowRepository
+    ): WorkflowRepository
 }

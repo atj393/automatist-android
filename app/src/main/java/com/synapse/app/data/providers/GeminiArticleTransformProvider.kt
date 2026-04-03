@@ -58,7 +58,9 @@ class GeminiArticleTransformProvider @Inject constructor(
                     TransformResult(
                         outputText = output.trim(),
                         transformType = type,
-                        providerType = ProviderType.GEMINI
+                        providerType = ProviderType.GEMINI,
+                        promptTokens = response.usageMetadata?.promptTokenCount,
+                        completionTokens = response.usageMetadata?.candidatesTokenCount
                     )
                 )
             } else {

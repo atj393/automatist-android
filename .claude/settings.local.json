@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew assembleDebug)",
+      "Bash(ls \"C:/Alexis/Test/mobile-app/gradlew\"*)",
+      "Bash(where gradle:*)"
+    ]
+  }
+}

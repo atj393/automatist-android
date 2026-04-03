@@ -13,7 +13,13 @@ data class AnthropicMessage(
 )
 
 data class AnthropicResponse(
-    val content: List<AnthropicContent>? = null
+    val content: List<AnthropicContent>? = null,
+    val usage: AnthropicUsage? = null
+)
+
+data class AnthropicUsage(
+    val input_tokens: Int? = null,
+    val output_tokens: Int? = null
 )
 
 data class AnthropicContent(
