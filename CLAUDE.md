@@ -280,7 +280,9 @@ API keys stored per-provider in DataStore. Current implementation is plaintext D
 
 ### Navigation Routes
 
-`dashboard` → `article_transformer` | `meeting_strategist` | `morning_brief` | `history` → `history_detail/{itemId}` | `vault`
+`dashboard` → `workflow_templates` | `workflow_list` | `workflow_editor` | `history` → `history_detail/{itemId}` | `vault` | `saved_notes`
+
+Legacy quick-access screens (`article_transformer`, `meeting_strategist`, `morning_brief`) remain available via direct routes but are no longer shown on the dashboard.
 
 ---
 
