@@ -162,8 +162,8 @@ app/src/main/java/com/synapse/app/
 │   │   ├── HistoryDao.kt            # Room DAO
 │   │   ├── WorkflowEntities.kt      # Room entities for workflows + runs
 │   │   ├── WorkflowDao.kt           # Room DAO for workflows
-│   │   ├── Migrations.kt            # DB migration v1→v2
-│   │   ├── SynapseDatabase.kt       # Room DB (v2, 3 tables)
+│   │   ├── Migrations.kt            # DB migrations v1→v2, v2→v3
+│   │   ├── SynapseDatabase.kt       # Room DB (v3, 4 tables)
 │   │   └── SettingsRepository.kt    # DataStore for AppSettings + BriefConfig
 │   ├── network/
 │   │   └── RssParser.kt             # RSS/Atom fetcher + parser
@@ -186,11 +186,16 @@ app/src/main/java/com/synapse/app/
 │   ├── dashboard/   (DashboardScreen.kt, DashboardViewModel.kt)
 │   ├── history/     (HistoryScreen.kt, HistoryDetailScreen.kt, HistoryViewModel.kt)
 │   ├── vault/       (VaultScreen.kt, VaultViewModel.kt)
+│   ├── notes/       (NotesScreen.kt, NotesViewModel.kt)
 │   └── workflow/    (Workflow Builder feature)
 │       ├── list/        (WorkflowListScreen.kt, WorkflowListViewModel.kt)
 │       ├── editor/      (WorkflowEditorScreen.kt, WorkflowEditorViewModel.kt)
 │       ├── run/         (WorkflowRunScreen.kt, WorkflowRunViewModel.kt, WorkflowRunDetailScreen.kt)
 │       └── components/  (ActionBlockEditor.kt, ActionBlockList.kt)
+│
+├── domain/
+│   └── actions/
+│       └── WorkflowActionRegistry.kt  # Centralized action metadata, validation, summaries
 │
 ├── domain/
 │   └── engine/
@@ -332,19 +337,31 @@ User creates WorkflowTemplate via editor
 - `WorkflowAction` — id, type, label, sourceData, instruction, order
 - `WorkflowTrigger` — sealed interface: Manual, Daily, Weekly, NotificationKeyword (future)
 
-**Action types (V1):**
+**Action types:**
 - `FETCH_URL` — fetches URL content via OkHttp, strips HTML, truncates to 4000 chars
 - `PASTE_TEXT` — user-provided text content
+- `FETCH_RSS_FEED` — pulls RSS/Atom feed items via RssParser, supports keyword filter and maxItems config
+- `FETCH_API_GET` — GET request to REST API endpoint, supports custom headers, query params, and extraction hints
+- `USE_SAVED_NOTE` — references a reusable saved note (stored in `saved_notes` table) or inline text
+- `USE_PREVIOUS_OUTPUT` — uses output from another workflow's latest successful run or a specific run
+- `FETCH_RSS_MULTI` — pulls and merges items from multiple RSS/Atom feeds with deduplication, keyword filtering, and configurable item limits
+
+**Action system architecture:** `WorkflowActionRegistry` centralizes metadata, validation, and summary generation per action type. Editor composables and executor methods are dispatched per type. Adding a new action type requires changes to: (1) enum, (2) registry entry, (3) executor method, (4) editor composable.
+
+**Saved Notes Manager:** Dedicated screen for CRUD operations on reusable notes. Notes are stored in Room (`saved_notes` table) and can be referenced by workflows via `SavedNoteReference` in action `extraConfig`.
 
 **Future action types (extension points exist):**
-- FETCH_RSS, FETCH_API, USE_FILE, USE_CLIPBOARD, USE_NOTIFICATION
+- USE_FILE, USE_CLIPBOARD, USE_NOTIFICATION, FETCH_API_POST
 
 **Execution engine:** `WorkflowExecutionEngine` — singleton, emits `Flow<ExecutionState>`, shared by both ViewModel (manual runs) and WorkflowWorker (scheduled runs).
 
-**Database:** Room v2 with migration. Tables: `workflow_templates`, `workflow_runs` (FK cascade on template delete).
+**Database:** Room v3 with migrations. Tables: `workflow_templates`, `workflow_runs` (FK cascade on template delete), `saved_notes`.
+
+**Per-action config:** Stored in `WorkflowAction.extraConfig` as JSON. Each action type has its own config model: `RssFeedConfig`, `ApiGetConfig`, `SavedNoteReference`, `PreviousOutputConfig`.
 
 **Navigation routes:**
 `workflow_list` → `workflow_editor?templateId={id}` | `workflow_run/{templateId}` | `workflow_run_detail/{runId}`
+`saved_notes` — Saved Notes Manager (CRUD for reusable note content)
 
 ---
 

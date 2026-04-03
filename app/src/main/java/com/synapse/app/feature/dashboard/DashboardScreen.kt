@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -34,6 +35,7 @@ fun DashboardScreen(
     onNavigateToVault: () -> Unit,
     onNavigateToWorkflowList: () -> Unit = {},
     onNavigateToWorkflowRun: (Long) -> Unit = {},
+    onNavigateToNotes: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val recentHistory by viewModel.recentHistory.collectAsState()
@@ -44,6 +46,9 @@ fun DashboardScreen(
             TopAppBar(
                 title = { Text("Synapse", fontWeight = FontWeight.Bold) },
                 actions = {
+                    IconButton(onClick = onNavigateToNotes) {
+                        Icon(Icons.Default.StickyNote2, contentDescription = "Notes")
+                    }
                     IconButton(onClick = onNavigateToVault) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }

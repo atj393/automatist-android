@@ -24,6 +24,8 @@ fun WorkflowEditorScreen(
     viewModel: WorkflowEditorViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val availableNotes by viewModel.availableNotes.collectAsState()
+    val availableWorkflows by viewModel.availableWorkflows.collectAsState()
 
     // Navigate on save
     LaunchedEffect(state.savedTemplateId) {
@@ -94,7 +96,9 @@ fun WorkflowEditorScreen(
             )
             ActionBlockList(
                 actions = state.actions,
-                onActionsChanged = viewModel::updateActions
+                onActionsChanged = viewModel::updateActions,
+                availableNotes = availableNotes,
+                availableWorkflows = availableWorkflows
             )
 
             // ── Section 4: Processing Instructions ──

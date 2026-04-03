@@ -19,6 +19,7 @@ import com.synapse.app.feature.workflow.list.WorkflowListScreen
 import com.synapse.app.feature.workflow.editor.WorkflowEditorScreen
 import com.synapse.app.feature.workflow.run.WorkflowRunScreen
 import com.synapse.app.feature.workflow.run.WorkflowRunDetailScreen
+import com.synapse.app.feature.notes.NotesScreen
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -34,6 +35,7 @@ object Routes {
     const val WORKFLOW_EDITOR = "workflow_editor"
     const val WORKFLOW_RUN = "workflow_run"
     const val WORKFLOW_RUN_DETAIL = "workflow_run_detail"
+    const val SAVED_NOTES = "saved_notes"
 }
 
 @Composable
@@ -58,7 +60,8 @@ fun SynapseNavGraph(
                 onNavigateToHistoryDetail = { id -> navController.navigate("${Routes.HISTORY_DETAIL}/$id") },
                 onNavigateToVault = { navController.navigate(Routes.VAULT) },
                 onNavigateToWorkflowList = { navController.navigate(Routes.WORKFLOW_LIST) },
-                onNavigateToWorkflowRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") }
+                onNavigateToWorkflowRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
+                onNavigateToNotes = { navController.navigate(Routes.SAVED_NOTES) }
             )
         }
         
@@ -148,6 +151,14 @@ fun SynapseNavGraph(
             val runId = backStackEntry.arguments?.getLong("runId") ?: return@composable
             WorkflowRunDetailScreen(
                 runId = runId,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // ── Saved Notes ──
+
+        composable(Routes.SAVED_NOTES) {
+            NotesScreen(
                 onBack = { navController.popBackStack() }
             )
         }
