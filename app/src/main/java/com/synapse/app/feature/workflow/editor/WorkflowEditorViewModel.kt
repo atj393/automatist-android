@@ -34,19 +34,12 @@ data class EditorUiState(
     val isSaving: Boolean = false,
     val savedTemplateId: Long? = null,
     val validationErrors: List<String> = emptyList(),
-    // Template-system fields
+    // Template origin — informational only, not restrictive
     val sourceTemplateId: String = "",
     val sourceTemplateName: String = "",
     val category: String = "",
-    val customization: TemplateCustomization = TemplateCustomization()
-) {
-    fun isSectionEditable(section: EditableSection): Boolean =
-        customization.editableSections.contains(section)
-
-    val isActionLocked: (String) -> Boolean = { actionId ->
-        actionId in customization.lockedActionIds
-    }
-}
+    val defaultProfileId: String = ""
+)
 
 @HiltViewModel
 class WorkflowEditorViewModel @Inject constructor(
@@ -90,14 +83,14 @@ class WorkflowEditorViewModel @Inject constructor(
                             sourceTemplateId = template.sourceTemplateId,
                             sourceTemplateName = sourceName,
                             category = template.category,
-                            customization = template.customization
+                            defaultProfileId = template.defaultProfileId
                         )
                     } else {
                         _state.value = EditorUiState(isLoading = false)
                     }
                 }
 
-                // Creating a new workflow from a built-in template
+                // Creating a new workflow from a built-in template (starter blueprint)
                 sourceTemplateId != null -> {
                     val builtIn = BuiltInTemplates.findById(sourceTemplateId)
                     if (builtIn != null) {
@@ -114,63 +107,40 @@ class WorkflowEditorViewModel @Inject constructor(
                             notifyOnCompletion = bp.notifyOnCompletion,
                             sourceTemplateId = builtIn.id,
                             sourceTemplateName = builtIn.name,
-                            category = builtIn.category,
-                            customization = bp.customization
+                            category = builtIn.category
+                            // No customization restrictions — user workflow is fully editable
                         )
                     } else {
                         _state.value = EditorUiState(isLoading = false)
                     }
                 }
 
-                // Should not happen — no blank creation path
+                // Creating a blank workflow from scratch
                 else -> {
-                    _state.value = EditorUiState(isLoading = false)
+                    _state.value = EditorUiState(
+                        isLoading = false,
+                        isEditing = false,
+                        name = "",
+                        description = "",
+                        trigger = WorkflowTrigger.Manual,
+                        actions = emptyList(),
+                        globalInstruction = "",
+                        outputConfig = WorkflowOutputConfig(),
+                        notifyOnCompletion = false
+                    )
                 }
             }
         }
     }
 
-    fun updateName(name: String) {
-        if (_state.value.isSectionEditable(EditableSection.BASICS)) {
-            _state.update { it.copy(name = name) }
-        }
-    }
-
-    fun updateDescription(desc: String) {
-        if (_state.value.isSectionEditable(EditableSection.BASICS)) {
-            _state.update { it.copy(description = desc) }
-        }
-    }
-
-    fun updateTrigger(trigger: WorkflowTrigger) {
-        if (_state.value.isSectionEditable(EditableSection.TRIGGER)) {
-            _state.update { it.copy(trigger = trigger) }
-        }
-    }
-
-    fun updateActions(actions: List<WorkflowAction>) {
-        if (_state.value.isSectionEditable(EditableSection.ACTIONS)) {
-            _state.update { it.copy(actions = actions) }
-        }
-    }
-
-    fun updateGlobalInstruction(text: String) {
-        if (_state.value.isSectionEditable(EditableSection.INSTRUCTIONS)) {
-            _state.update { it.copy(globalInstruction = text) }
-        }
-    }
-
-    fun updateNotifyOnCompletion(enabled: Boolean) {
-        if (_state.value.isSectionEditable(EditableSection.NOTIFICATIONS)) {
-            _state.update { it.copy(notifyOnCompletion = enabled) }
-        }
-    }
-
-    fun updateOutputConfig(config: WorkflowOutputConfig) {
-        if (_state.value.isSectionEditable(EditableSection.OUTPUT)) {
-            _state.update { it.copy(outputConfig = config) }
-        }
-    }
+    // All update functions are unrestricted — user workflows are always fully editable
+    fun updateName(name: String) = _state.update { it.copy(name = name) }
+    fun updateDescription(desc: String) = _state.update { it.copy(description = desc) }
+    fun updateTrigger(trigger: WorkflowTrigger) = _state.update { it.copy(trigger = trigger) }
+    fun updateActions(actions: List<WorkflowAction>) = _state.update { it.copy(actions = actions) }
+    fun updateGlobalInstruction(text: String) = _state.update { it.copy(globalInstruction = text) }
+    fun updateNotifyOnCompletion(enabled: Boolean) = _state.update { it.copy(notifyOnCompletion = enabled) }
+    fun updateOutputConfig(config: WorkflowOutputConfig) = _state.update { it.copy(outputConfig = config) }
 
     fun save() {
         val current = _state.value
@@ -200,7 +170,7 @@ class WorkflowEditorViewModel @Inject constructor(
                 updatedAtMillis = now,
                 sourceTemplateId = current.sourceTemplateId,
                 category = current.category,
-                customization = current.customization
+                defaultProfileId = current.defaultProfileId
             )
 
             val savedId = if (templateId != null) {
@@ -248,7 +218,6 @@ class WorkflowEditorViewModel @Inject constructor(
         if (state.name.isBlank()) errors.add("Workflow name is required.")
         if (state.actions.isEmpty()) errors.add("Add at least one action.")
 
-        // Delegate per-action validation to the centralized registry
         state.actions.forEachIndexed { i, action ->
             errors.addAll(WorkflowActionRegistry.validate(action, i))
         }
