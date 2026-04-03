@@ -160,7 +160,10 @@ app/src/main/java/com/synapse/app/
 │   ├── local/
 │   │   ├── HistoryEntity.kt         # Room entity + mapping extensions
 │   │   ├── HistoryDao.kt            # Room DAO
-│   │   ├── SynapseDatabase.kt       # Room DB (v1, single table)
+│   │   ├── WorkflowEntities.kt      # Room entities for workflows + runs
+│   │   ├── WorkflowDao.kt           # Room DAO for workflows
+│   │   ├── Migrations.kt            # DB migration v1→v2
+│   │   ├── SynapseDatabase.kt       # Room DB (v2, 3 tables)
 │   │   └── SettingsRepository.kt    # DataStore for AppSettings + BriefConfig
 │   ├── network/
 │   │   └── RssParser.kt             # RSS/Atom fetcher + parser
@@ -182,11 +185,22 @@ app/src/main/java/com/synapse/app/
 │   ├── brief/       (BriefScreen.kt, BriefViewModel.kt)
 │   ├── dashboard/   (DashboardScreen.kt, DashboardViewModel.kt)
 │   ├── history/     (HistoryScreen.kt, HistoryDetailScreen.kt, HistoryViewModel.kt)
-│   └── vault/       (VaultScreen.kt, VaultViewModel.kt)
+│   ├── vault/       (VaultScreen.kt, VaultViewModel.kt)
+│   └── workflow/    (Workflow Builder feature)
+│       ├── list/        (WorkflowListScreen.kt, WorkflowListViewModel.kt)
+│       ├── editor/      (WorkflowEditorScreen.kt, WorkflowEditorViewModel.kt)
+│       ├── run/         (WorkflowRunScreen.kt, WorkflowRunViewModel.kt, WorkflowRunDetailScreen.kt)
+│       └── components/  (ActionBlockEditor.kt, ActionBlockList.kt)
+│
+├── domain/
+│   └── engine/
+│       ├── ExecutionState.kt        # Sealed interface for execution progress
+│       └── WorkflowExecutionEngine.kt # Shared execution pipeline
 │
 ├── platform/
 │   ├── automation/
-│   │   └── SynthesizerWorker.kt     # WorkManager job for Morning Brief
+│   │   ├── SynthesizerWorker.kt     # WorkManager job for Morning Brief
+│   │   └── WorkflowWorker.kt       # WorkManager job for custom workflows
 │   └── security/
 │       ├── SecureStorage.kt         # Interface
 │       └── KeystoreSecureStorage.kt # DataStore impl (TODO: upgrade to Keystore)
@@ -284,6 +298,53 @@ External app → ACTION_SEND text/plain → ShareEntryActivity
   → launches MainActivity with shared text
   → auto-navigates to article_transformer with text pre-filled
 ```
+
+### Workflow Builder (custom run)
+```
+User creates WorkflowTemplate via editor
+  → saves to Room (workflow_templates table)
+  → manual run: WorkflowRunViewModel → WorkflowExecutionEngine → Flow<ExecutionState>
+  → scheduled run: WorkManager → WorkflowWorker → WorkflowExecutionEngine
+  → engine executes actions (fetch URL / paste text) in order
+  → combines results, builds system prompt from config
+  → calls TransformProviderRouter with CUSTOM_WORKFLOW + systemPromptOverride
+  → saves WorkflowRun to Room (workflow_runs table)
+  → fires notification if enabled
+  → user reviews output → copy / share
+```
+
+---
+
+## Workflow Builder
+
+### 4. Workflow Builder (user-created)
+
+- **Input:** Multi-source actions (fetch URL, paste text) with per-action instructions
+- **Trigger types:** Manual | Daily schedule | Weekly schedule
+- **Processing:** Global instruction + per-action instructions → AI provider
+- **Output types:** `BRIEFING` | `SOCIAL_POST` | `BOTH` | `CUSTOM`
+- **Actions:** Manual run, scheduled run, copy, share
+- **Execution screen:** Stage-by-stage progress, token usage, duration, error handling
+
+**Models:**
+- `WorkflowTemplate` — stored in Room with JSON columns for trigger/actions/output config
+- `WorkflowRun` — stored in Room, tracks status, output, token usage, duration
+- `WorkflowAction` — id, type, label, sourceData, instruction, order
+- `WorkflowTrigger` — sealed interface: Manual, Daily, Weekly, NotificationKeyword (future)
+
+**Action types (V1):**
+- `FETCH_URL` — fetches URL content via OkHttp, strips HTML, truncates to 4000 chars
+- `PASTE_TEXT` — user-provided text content
+
+**Future action types (extension points exist):**
+- FETCH_RSS, FETCH_API, USE_FILE, USE_CLIPBOARD, USE_NOTIFICATION
+
+**Execution engine:** `WorkflowExecutionEngine` — singleton, emits `Flow<ExecutionState>`, shared by both ViewModel (manual runs) and WorkflowWorker (scheduled runs).
+
+**Database:** Room v2 with migration. Tables: `workflow_templates`, `workflow_runs` (FK cascade on template delete).
+
+**Navigation routes:**
+`workflow_list` → `workflow_editor?templateId={id}` | `workflow_run/{templateId}` | `workflow_run_detail/{runId}`
 
 ---
 

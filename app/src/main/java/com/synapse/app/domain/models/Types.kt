@@ -5,7 +5,8 @@ import kotlinx.serialization.Serializable
 enum class WorkflowType {
     ARTICLE_TRANSFORMER,
     MEETING_STRATEGIST,
-    MORNING_BRIEF
+    MORNING_BRIEF,
+    CUSTOM_WORKFLOW
 }
 
 enum class TransformType(val displayName: String) {
@@ -14,7 +15,8 @@ enum class TransformType(val displayName: String) {
     PRO_POST("Professional Post Draft"),
     MEETING_BRIEF("Short Brief"),
     STRATEGIC_QUESTIONS("5 Strategic Questions"),
-    MORNING_SUMMARY("Morning Summary")
+    MORNING_SUMMARY("Morning Summary"),
+    CUSTOM_WORKFLOW("Custom Workflow")
 }
 
 enum class ProviderType(val displayName: String) {

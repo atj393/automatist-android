@@ -15,6 +15,10 @@ import com.synapse.app.feature.history.HistoryScreen
 import com.synapse.app.feature.vault.VaultScreen
 import com.synapse.app.feature.meeting.MeetingScreen
 import com.synapse.app.feature.brief.BriefScreen
+import com.synapse.app.feature.workflow.list.WorkflowListScreen
+import com.synapse.app.feature.workflow.editor.WorkflowEditorScreen
+import com.synapse.app.feature.workflow.run.WorkflowRunScreen
+import com.synapse.app.feature.workflow.run.WorkflowRunDetailScreen
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -26,6 +30,10 @@ object Routes {
     const val HISTORY = "history"
     const val HISTORY_DETAIL = "history_detail"
     const val VAULT = "vault"
+    const val WORKFLOW_LIST = "workflow_list"
+    const val WORKFLOW_EDITOR = "workflow_editor"
+    const val WORKFLOW_RUN = "workflow_run"
+    const val WORKFLOW_RUN_DETAIL = "workflow_run_detail"
 }
 
 @Composable
@@ -48,7 +56,9 @@ fun SynapseNavGraph(
                 onNavigateToBrief = { navController.navigate(Routes.MORNING_BRIEF) },
                 onNavigateToHistory = { navController.navigate(Routes.HISTORY) },
                 onNavigateToHistoryDetail = { id -> navController.navigate("${Routes.HISTORY_DETAIL}/$id") },
-                onNavigateToVault = { navController.navigate(Routes.VAULT) }
+                onNavigateToVault = { navController.navigate(Routes.VAULT) },
+                onNavigateToWorkflowList = { navController.navigate(Routes.WORKFLOW_LIST) },
+                onNavigateToWorkflowRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") }
             )
         }
         
@@ -92,6 +102,52 @@ fun SynapseNavGraph(
 
         composable(Routes.VAULT) {
             VaultScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // ── Workflow Builder routes ──
+
+        composable(Routes.WORKFLOW_LIST) {
+            WorkflowListScreen(
+                onBack = { navController.popBackStack() },
+                onCreateNew = { navController.navigate(Routes.WORKFLOW_EDITOR) },
+                onEdit = { id -> navController.navigate("${Routes.WORKFLOW_EDITOR}?templateId=$id") },
+                onRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
+                onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") }
+            )
+        }
+
+        composable(
+            "${Routes.WORKFLOW_EDITOR}?templateId={templateId}",
+            arguments = listOf(navArgument("templateId") { type = NavType.LongType; defaultValue = 0L })
+        ) {
+            WorkflowEditorScreen(
+                onBack = { navController.popBackStack() },
+                onSaved = { id ->
+                    navController.popBackStack()
+                    navController.navigate(Routes.WORKFLOW_LIST)
+                },
+                onTestRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") }
+            )
+        }
+
+        composable(
+            "${Routes.WORKFLOW_RUN}/{templateId}",
+            arguments = listOf(navArgument("templateId") { type = NavType.LongType })
+        ) {
+            WorkflowRunScreen(
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            "${Routes.WORKFLOW_RUN_DETAIL}/{runId}",
+            arguments = listOf(navArgument("runId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val runId = backStackEntry.arguments?.getLong("runId") ?: return@composable
+            WorkflowRunDetailScreen(
+                runId = runId,
                 onBack = { navController.popBackStack() }
             )
         }
