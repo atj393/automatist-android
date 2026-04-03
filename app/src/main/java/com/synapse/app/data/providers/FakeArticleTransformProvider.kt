@@ -78,7 +78,9 @@ class FakeArticleTransformProvider @Inject constructor() : ArticleTransformProvi
             TransformResult(
                 outputText = output,
                 transformType = type,
-                providerType = ProviderType.FAKE
+                providerType = ProviderType.FAKE,
+                promptTokens = input.text.length / 4,
+                completionTokens = output.length / 4
             )
         )
     }

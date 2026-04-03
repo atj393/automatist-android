@@ -19,7 +19,14 @@ data class GeminiPart(
 )
 
 data class GeminiResponse(
-    val candidates: List<GeminiCandidate>? = null
+    val candidates: List<GeminiCandidate>? = null,
+    val usageMetadata: GeminiUsageMetadata? = null
+)
+
+data class GeminiUsageMetadata(
+    val promptTokenCount: Int? = null,
+    val candidatesTokenCount: Int? = null,
+    val totalTokenCount: Int? = null
 )
 
 data class GeminiCandidate(

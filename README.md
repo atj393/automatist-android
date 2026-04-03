@@ -26,11 +26,22 @@ Configure RSS feeds and get AI-generated digests on a schedule:
 - Target specific social platforms (LinkedIn, X, Facebook, Instagram, Threads) with platform-appropriate tone
 - Background processing via WorkManager with optional notifications
 
+### Workflow Builder (Custom Workflows)
+Create reusable custom workflow templates with multiple data sources:
+- **Multi-step builder** — guided sections for basics, trigger, actions, instructions, and output
+- **Action blocks** — add multiple Fetch URL or Paste Text sources, each with per-source instructions
+- **Flexible triggers** — manual, daily schedule, or weekly schedule
+- **Output options** — briefing, social post, both, or custom format
+- **Live execution screen** — stage-by-stage progress, action status, token usage, and duration
+- **Run history** — all runs persisted with full output, token stats, and error details
+- **Background scheduling** — via WorkManager for reliable scheduled execution
+
 ### Additional Features
 - **History** — all outputs saved locally with full search and detail view
 - **Vault** — manage AI provider selection and API keys
 - **Share Intent** — receive text from any app via Android share sheet
 - **Multi-Provider** — switch between OpenAI, Anthropic, Gemini, or a local demo mode
+- **Token Usage Tracking** — real token counts from OpenAI, Anthropic, and Gemini APIs
 
 ---
 

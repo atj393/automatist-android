@@ -52,7 +52,9 @@ class OpenAIArticleTransformProvider @Inject constructor(
                     TransformResult(
                         outputText = output.trim(),
                         transformType = type,
-                        providerType = ProviderType.OPENAI
+                        providerType = ProviderType.OPENAI,
+                        promptTokens = response.usage?.prompt_tokens,
+                        completionTokens = response.usage?.completion_tokens
                     )
                 )
             } else {

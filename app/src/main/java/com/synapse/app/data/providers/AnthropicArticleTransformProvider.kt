@@ -52,7 +52,9 @@ class AnthropicArticleTransformProvider @Inject constructor(
                     TransformResult(
                         outputText = output.trim(),
                         transformType = type,
-                        providerType = ProviderType.ANTHROPIC
+                        providerType = ProviderType.ANTHROPIC,
+                        promptTokens = response.usage?.input_tokens,
+                        completionTokens = response.usage?.output_tokens
                     )
                 )
             } else {

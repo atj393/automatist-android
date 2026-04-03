@@ -12,7 +12,14 @@ data class ChatMessage(
 )
 
 data class ChatResponse(
-    val choices: List<ChatChoice>? = null
+    val choices: List<ChatChoice>? = null,
+    val usage: OpenAIUsage? = null
+)
+
+data class OpenAIUsage(
+    val prompt_tokens: Int? = null,
+    val completion_tokens: Int? = null,
+    val total_tokens: Int? = null
 )
 
 data class ChatChoice(

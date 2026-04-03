@@ -22,7 +22,9 @@ data class BriefConfig(
 data class TransformResult(
     val outputText: String,
     val transformType: TransformType,
-    val providerType: ProviderType
+    val providerType: ProviderType,
+    val promptTokens: Int? = null,
+    val completionTokens: Int? = null
 )
 
 data class HistoryItem(
