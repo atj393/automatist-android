@@ -85,12 +85,21 @@ class WorkflowExecutionEngine @Inject constructor(
 
         // Build prompt
         val systemPrompt = buildSystemPrompt(template)
-        emit(ExecutionState.GeneratingOutput("AI Provider"))
 
-        // Call AI provider
+        // Resolve profile for final output generation:
+        // 1. Output-level override (outputProfileId)
+        // 2. Workflow-level default (defaultProfileId)
+        // 3. App default (null = router handles it)
+        val outputProfileId = template.outputConfig.outputProfileId.ifBlank {
+            template.defaultProfileId.ifBlank { null }
+        }
+        emit(ExecutionState.GeneratingOutput(outputProfileId ?: "default"))
+
+        // Call AI provider with resolved profile
         val input = ArticleInput(
             text = combinedInput,
-            systemPromptOverride = systemPrompt
+            systemPromptOverride = systemPrompt,
+            profileId = outputProfileId
         )
 
         val transformResult = transformProvider.transform(input, TransformType.CUSTOM_WORKFLOW)

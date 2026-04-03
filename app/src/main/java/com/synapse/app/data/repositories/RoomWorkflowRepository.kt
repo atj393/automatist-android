@@ -3,6 +3,7 @@ package com.synapse.app.data.repositories
 import com.synapse.app.data.local.WorkflowDao
 import com.synapse.app.data.local.toDomain
 import com.synapse.app.data.local.toEntity
+import com.synapse.app.domain.models.ProviderProfile
 import com.synapse.app.domain.models.SavedNote
 import com.synapse.app.domain.models.WorkflowRun
 import com.synapse.app.domain.models.WorkflowTemplate
@@ -51,6 +52,29 @@ class RoomWorkflowRepository @Inject constructor(
 
     override suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun? =
         dao.getLatestSuccessfulRun(templateId)?.toDomain()
+
+    // ── Provider Profiles ──
+
+    override fun getAllProfiles(): Flow<List<ProviderProfile>> =
+        dao.getAllProfiles().map { list -> list.map { it.toDomain() } }
+
+    override suspend fun getProfileById(id: String): ProviderProfile? =
+        dao.getProfileById(id)?.toDomain()
+
+    override suspend fun getDefaultProfile(): ProviderProfile? =
+        dao.getDefaultProfile()?.toDomain()
+
+    override suspend fun saveProfile(profile: ProviderProfile) =
+        dao.insertProfile(profile.toEntity())
+
+    override suspend fun deleteProfile(id: String) =
+        dao.deleteProfile(id)
+
+    override suspend fun setDefaultProfile(id: String) {
+        dao.clearDefaultProfiles()
+        val profile = dao.getProfileById(id) ?: return
+        dao.updateProfile(profile.copy(isDefault = true))
+    }
 
     // ── Saved Notes ──
 

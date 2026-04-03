@@ -50,7 +50,11 @@ class GeminiArticleTransformProvider @Inject constructor(
                 )
             )
 
-            val response = api.generateContent(apiKey = apiKey, request = request)
+            val response = api.generateContent(
+                model = input.modelOverride ?: "gemini-1.5-flash",
+                apiKey = apiKey,
+                request = request
+            )
             val output = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
             
             if (output != null) {

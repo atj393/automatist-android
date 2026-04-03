@@ -3,6 +3,34 @@ package com.synapse.app.data.local
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS provider_profiles (
+                id TEXT NOT NULL PRIMARY KEY,
+                name TEXT NOT NULL,
+                providerType TEXT NOT NULL,
+                modelId TEXT NOT NULL,
+                isDefault INTEGER NOT NULL,
+                isEnabled INTEGER NOT NULL,
+                createdAtMillis INTEGER NOT NULL,
+                updatedAtMillis INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("ALTER TABLE workflow_templates ADD COLUMN defaultProfileId TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE workflow_templates ADD COLUMN sourceTemplateId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE workflow_templates ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE workflow_templates ADD COLUMN customizationJson TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL(
