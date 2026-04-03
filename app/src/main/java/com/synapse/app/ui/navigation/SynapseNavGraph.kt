@@ -64,7 +64,8 @@ fun SynapseNavGraph(
                 onNavigateToWorkflowList = { navController.navigate(Routes.WORKFLOW_LIST) },
                 onNavigateToWorkflowRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
                 onNavigateToNotes = { navController.navigate(Routes.SAVED_NOTES) },
-                onNavigateToTemplates = { navController.navigate(Routes.WORKFLOW_TEMPLATES) }
+                onNavigateToTemplates = { navController.navigate(Routes.WORKFLOW_TEMPLATES) },
+                onCreateBlankWorkflow = { navController.navigate(Routes.WORKFLOW_EDITOR) }
             )
         }
 
@@ -100,10 +101,10 @@ fun SynapseNavGraph(
             WorkflowTemplatesScreen(
                 onBack = { navController.popBackStack() },
                 onUseTemplate = { builtInId ->
-                    // Navigate to editor with source template ID to create instance
                     navController.navigate("${Routes.WORKFLOW_EDITOR}?sourceTemplateId=$builtInId")
                 },
-                onNavigateToMyWorkflows = { navController.navigate(Routes.WORKFLOW_LIST) }
+                onNavigateToMyWorkflows = { navController.navigate(Routes.WORKFLOW_LIST) },
+                onCreateBlank = { navController.navigate(Routes.WORKFLOW_EDITOR) }
             )
         }
 
@@ -113,6 +114,7 @@ fun SynapseNavGraph(
             WorkflowListScreen(
                 onBack = { navController.popBackStack() },
                 onBrowseTemplates = { navController.navigate(Routes.WORKFLOW_TEMPLATES) },
+                onCreateBlank = { navController.navigate(Routes.WORKFLOW_EDITOR) },
                 onEdit = { id -> navController.navigate("${Routes.WORKFLOW_EDITOR}?templateId=$id") },
                 onRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
                 onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") }

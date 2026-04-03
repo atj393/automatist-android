@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -20,7 +21,8 @@ import com.synapse.app.domain.templates.BuiltInTemplates
 fun WorkflowTemplatesScreen(
     onBack: () -> Unit,
     onUseTemplate: (String) -> Unit, // passes built-in template ID
-    onNavigateToMyWorkflows: () -> Unit
+    onNavigateToMyWorkflows: () -> Unit,
+    onCreateBlank: () -> Unit = {}
 ) {
     val templates = remember { BuiltInTemplates.ALL }
     val categories = remember { BuiltInTemplates.CATEGORIES }
@@ -47,9 +49,28 @@ fun WorkflowTemplatesScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 12.dp)
         ) {
+            // Start Empty card
+            item {
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onCreateBlank)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("Start Empty", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Text("Build a workflow from scratch", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
             item {
                 Text(
-                    "Choose a template to create your workflow",
+                    "Or choose a starter template",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)

@@ -337,23 +337,19 @@ User creates WorkflowTemplate via editor
 
 ### Product Model: Template-First
 
-**All user workflows are created from curated Workflow Templates.** There is no blank creation path.
+Users can create workflows from curated templates OR from scratch. Templates are starter blueprints, not locked flows.
 
 - **Workflow Templates** — built-in blueprints defined in code (`BuiltInTemplates.kt`), not stored in Room
-- **My Workflows** — user-owned instances created from templates, stored in Room
+- **My Workflows** — user-owned instances, fully editable, stored in Room
 - **Workflow Runs** — execution history, separate table with FK to user workflow
 
-**Flow:** Browse Templates → Use Template → Customize allowed fields → Save → Run
+**Creation flows:**
+- **From Template:** Browse Templates → Use Template → fully editable copy created → Save → Run
+- **From Scratch:** Start Empty → blank editor → Save → Run
 
-### Template Customization
+**Template origin tracking:** `sourceTemplateId` tracks which template a workflow was created from (informational only, not restrictive). All user workflows are fully editable regardless of origin.
 
-Each template defines `TemplateCustomization`:
-- `editableSections: Set<EditableSection>` — which sections the user can modify (BASICS, TRIGGER, ACTIONS, INSTRUCTIONS, OUTPUT, NOTIFICATIONS)
-- `lockedActionIds: Set<String>` — action IDs that cannot be removed
-- `canAddActions: Boolean` — whether new actions can be added
-- `canRemoveActions: Boolean` — whether existing actions can be removed
-
-The editor UI respects these rules: locked sections are read-only, locked actions show config but no remove button.
+**Seeded sample:** "Article Briefing" workflow auto-created for new users as a useful starter.
 
 ### Built-In Templates (6)
 

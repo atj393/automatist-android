@@ -22,6 +22,7 @@ import com.synapse.app.domain.templates.BuiltInTemplates
 fun WorkflowListScreen(
     onBack: () -> Unit,
     onBrowseTemplates: () -> Unit,
+    onCreateBlank: () -> Unit,
     onEdit: (Long) -> Unit,
     onRun: (Long) -> Unit,
     onViewRunDetail: (Long) -> Unit,
@@ -41,11 +42,16 @@ fun WorkflowListScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onBrowseTemplates,
-                icon = { Icon(Icons.Default.Dashboard, "Templates") },
-                text = { Text("Browse Templates") }
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.End) {
+                SmallFloatingActionButton(onClick = onCreateBlank) {
+                    Icon(Icons.Default.Add, "Start Empty")
+                }
+                ExtendedFloatingActionButton(
+                    onClick = onBrowseTemplates,
+                    icon = { Icon(Icons.Default.Dashboard, "Templates") },
+                    text = { Text("From Template") }
+                )
+            }
         }
     ) { padding ->
         if (workflows.isEmpty()) {
@@ -67,7 +73,7 @@ fun WorkflowListScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Start by choosing a workflow template",
+                        "Create a workflow from scratch or choose a template",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
@@ -76,6 +82,12 @@ fun WorkflowListScreen(
                         Icon(Icons.Default.Dashboard, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("Browse Templates")
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onCreateBlank) {
+                        Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Start Empty")
                     }
                 }
             }
