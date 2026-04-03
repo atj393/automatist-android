@@ -3,6 +3,7 @@ package com.synapse.app.data.repositories
 import com.synapse.app.data.local.WorkflowDao
 import com.synapse.app.data.local.toDomain
 import com.synapse.app.data.local.toEntity
+import com.synapse.app.domain.models.SavedNote
 import com.synapse.app.domain.models.WorkflowRun
 import com.synapse.app.domain.models.WorkflowTemplate
 import com.synapse.app.domain.repositories.WorkflowRepository
@@ -47,4 +48,24 @@ class RoomWorkflowRepository @Inject constructor(
 
     override suspend fun updateRun(run: WorkflowRun) =
         dao.updateRun(run.toEntity())
+
+    override suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun? =
+        dao.getLatestSuccessfulRun(templateId)?.toDomain()
+
+    // ── Saved Notes ──
+
+    override fun getAllNotes(): Flow<List<SavedNote>> =
+        dao.getAllNotes().map { list -> list.map { it.toDomain() } }
+
+    override suspend fun getNoteById(id: Long): SavedNote? =
+        dao.getNoteById(id)?.toDomain()
+
+    override suspend fun saveNote(note: SavedNote): Long =
+        dao.insertNote(note.toEntity())
+
+    override suspend fun updateNote(note: SavedNote) =
+        dao.updateNote(note.toEntity())
+
+    override suspend fun deleteNote(id: Long) =
+        dao.deleteNote(id)
 }

@@ -61,6 +61,35 @@ data class WorkflowRunEntity(
     val completedAtMillis: Long?
 )
 
+// ── Saved Note Entity ──
+
+@Entity(tableName = "saved_notes")
+data class SavedNoteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val content: String,
+    val createdAtMillis: Long,
+    val updatedAtMillis: Long
+)
+
+// ── Mappers: SavedNote ──
+
+fun SavedNoteEntity.toDomain() = SavedNote(
+    id = id,
+    title = title,
+    content = content,
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis
+)
+
+fun SavedNote.toEntity() = SavedNoteEntity(
+    id = id,
+    title = title,
+    content = content,
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis
+)
+
 // ── Mappers: Template ──
 
 fun WorkflowTemplateEntity.toDomain() = WorkflowTemplate(
