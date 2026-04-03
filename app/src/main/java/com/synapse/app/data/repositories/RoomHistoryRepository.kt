@@ -4,6 +4,7 @@ import com.synapse.app.data.local.HistoryDao
 import com.synapse.app.data.local.toDomain
 import com.synapse.app.data.local.toEntity
 import com.synapse.app.domain.models.HistoryItem
+import com.synapse.app.domain.models.WorkflowType
 import com.synapse.app.domain.repositories.HistoryRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -15,6 +16,12 @@ class RoomHistoryRepository @Inject constructor(
     
     override fun getHistory(): Flow<List<HistoryItem>> {
         return dao.getAllHistory().map { entities ->
+            entities.map { it.toDomain() }
+        }
+    }
+
+    override fun getHistoryByType(type: WorkflowType): Flow<List<HistoryItem>> {
+        return dao.getHistoryByType(type).map { entities ->
             entities.map { it.toDomain() }
         }
     }

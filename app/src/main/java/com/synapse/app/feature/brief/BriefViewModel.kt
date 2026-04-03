@@ -30,7 +30,7 @@ class BriefViewModel @Inject constructor(
 ) : ViewModel() {
 
     val config = settingsRepository.briefConfig
-        .stateIn(viewModelScope, SharingStarted.Eager, BriefConfig())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, BriefConfig())
     
     val recentRuns = historyRepository.getHistoryByType(WorkflowType.MORNING_BRIEF)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
