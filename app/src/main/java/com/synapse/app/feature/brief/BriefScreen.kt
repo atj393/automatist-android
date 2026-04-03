@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.work.WorkInfo
 import com.synapse.app.domain.models.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,6 +33,13 @@ fun BriefScreen(
     val config by viewModel.config.collectAsState()
     val recentRuns by viewModel.recentRuns.collectAsState()
     var selectedTabIndex by remember { mutableStateOf(0) }
+
+    val context = LocalContext.current
+    val workState by viewModel.workState.collectAsState()
+
+    if (workState != null) {
+        ProgressDialog(workState = workState, onDismiss = viewModel::clearWorkState)
+    }
 
     Scaffold(
         topBar = {
@@ -77,8 +85,9 @@ fun BriefScreen(
     }
 }
 
-    @Composable
+@Composable
 private fun ConfigLayout(config: BriefConfig, onSaveConfig: (BriefConfig) -> Unit) {
+    val context = LocalContext.current
     var rawFeeds by remember(config.rssFeeds) { mutableStateOf(config.rssFeeds.joinToString("\n")) }
     var outputType by remember(config.briefOutputType) { mutableStateOf(config.briefOutputType) }
     var scheduleType by remember(config.scheduleType) { mutableStateOf(config.scheduleType) }
@@ -164,6 +173,7 @@ private fun ConfigLayout(config: BriefConfig, onSaveConfig: (BriefConfig) -> Uni
                     isNotificationsEnabled = notify
                 )
                 onSaveConfig(updatedConfig)
+                Toast.makeText(context, "Automation Job Saved", Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -192,4 +202,35 @@ private fun RecentRunsLayout(runs: List<HistoryItem>) {
             }
         }
     }
+}
+
+@Composable
+private fun ProgressDialog(workState: WorkInfo?, onDismiss: () -> Unit) {
+    if (workState == null) return
+    
+    val status = workState.progress.getString("status") ?: "Starting..."
+    val error = workState.progress.getString("error")
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Automation Progress") },
+        text = { 
+            if (error != null || workState.state == WorkInfo.State.FAILED) {
+                Text("Error: ${error ?: "Unknown error"}", color = MaterialTheme.colorScheme.error)
+            } else if (workState.state == WorkInfo.State.SUCCEEDED) {
+                Text("Job completed successfully!")
+            } else {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(16.dp))
+                    Text(status)
+                }
+            }
+        },
+        confirmButton = {
+            if (error != null || workState.state == WorkInfo.State.SUCCEEDED || workState.state == WorkInfo.State.FAILED) {
+                Button(onClick = onDismiss) { Text("Close") }
+            }
+        }
+    )
 }

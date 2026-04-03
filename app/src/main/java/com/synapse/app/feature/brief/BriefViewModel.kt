@@ -19,6 +19,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -34,6 +38,13 @@ class BriefViewModel @Inject constructor(
     
     val recentRuns = historyRepository.getHistoryByType(WorkflowType.MORNING_BRIEF)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private val _currentWorkId = MutableStateFlow<UUID?>(null)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val workState = _currentWorkId.flatMapLatest { id ->
+        if (id == null) flowOf(null)
+        else workManager.getWorkInfoByIdFlow(id)
+    }.stateIn(viewModelScope, SharingStarted.Lazily, null)
 
     private val _isSaving = MutableStateFlow(false)
     val isSaving = _isSaving.asStateFlow()
@@ -51,7 +62,12 @@ class BriefViewModel @Inject constructor(
 
     fun runNow() {
         val request = OneTimeWorkRequestBuilder<SynthesizerWorker>().build()
+        _currentWorkId.value = request.id
         workManager.enqueueUniqueWork("SynthesizerWorker_OneTime", ExistingWorkPolicy.REPLACE, request)
+    }
+
+    fun clearWorkState() {
+        _currentWorkId.value = null
     }
     
     private fun scheduleWorker(config: BriefConfig) {

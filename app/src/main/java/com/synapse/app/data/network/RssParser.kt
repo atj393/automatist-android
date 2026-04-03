@@ -23,7 +23,10 @@ class RssParser @Inject constructor(
         
         for (url in urls) {
             try {
-                val request = Request.Builder().url(url).build()
+                val formattedUrl = if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) {
+                    "https://$url"
+                } else url
+                val request = Request.Builder().url(formattedUrl).build()
                 val response = client.newCall(request).execute()
                 val inputStream = response.body?.byteStream() ?: continue
                 
