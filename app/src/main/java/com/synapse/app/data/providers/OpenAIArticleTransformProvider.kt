@@ -37,7 +37,7 @@ class OpenAIArticleTransformProvider @Inject constructor(
             }
 
             val request = ChatRequest(
-                model = "gpt-3.5-turbo",
+                model = input.modelOverride ?: "gpt-3.5-turbo",
                 messages = listOf(
                     ChatMessage(role = "system", content = systemPrompt),
                     ChatMessage(role = "user", content = input.text)

@@ -1,5 +1,6 @@
 package com.synapse.app.domain.repositories
 
+import com.synapse.app.domain.models.ProviderProfile
 import com.synapse.app.domain.models.SavedNote
 import com.synapse.app.domain.models.WorkflowRun
 import com.synapse.app.domain.models.WorkflowTemplate
@@ -21,6 +22,14 @@ interface WorkflowRepository {
     suspend fun insertRun(run: WorkflowRun): Long
     suspend fun updateRun(run: WorkflowRun)
     suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun?
+
+    // Provider Profiles
+    fun getAllProfiles(): Flow<List<ProviderProfile>>
+    suspend fun getProfileById(id: String): ProviderProfile?
+    suspend fun getDefaultProfile(): ProviderProfile?
+    suspend fun saveProfile(profile: ProviderProfile)
+    suspend fun deleteProfile(id: String)
+    suspend fun setDefaultProfile(id: String)
 
     // Saved Notes
     fun getAllNotes(): Flow<List<SavedNote>>

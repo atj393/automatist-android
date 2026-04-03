@@ -8,9 +8,10 @@ import androidx.room.RoomDatabase
         HistoryEntity::class,
         WorkflowTemplateEntity::class,
         WorkflowRunEntity::class,
-        SavedNoteEntity::class
+        SavedNoteEntity::class,
+        ProviderProfileEntity::class
     ],
-    version = 3,
+    version = 5,
     exportSchema = false
 )
 abstract class SynapseDatabase : RoomDatabase() {

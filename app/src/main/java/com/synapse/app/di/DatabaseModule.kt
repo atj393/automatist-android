@@ -5,6 +5,8 @@ import androidx.room.Room
 import com.synapse.app.data.local.HistoryDao
 import com.synapse.app.data.local.MIGRATION_1_2
 import com.synapse.app.data.local.MIGRATION_2_3
+import com.synapse.app.data.local.MIGRATION_3_4
+import com.synapse.app.data.local.MIGRATION_4_5
 import com.synapse.app.data.local.SynapseDatabase
 import com.synapse.app.data.local.WorkflowDao
 import com.synapse.app.data.repositories.RoomHistoryRepository
@@ -31,7 +33,7 @@ object DatabaseModule {
             SynapseDatabase::class.java,
             "synapse.db"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
     }
 

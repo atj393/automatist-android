@@ -18,15 +18,20 @@ data class WorkflowTemplateEntity(
     val name: String,
     val description: String,
     val isEnabled: Boolean,
-    val triggerJson: String,       // JSON: WorkflowTrigger
-    val actionsJson: String,       // JSON: List<WorkflowAction>
+    val triggerJson: String,           // JSON: WorkflowTrigger
+    val actionsJson: String,           // JSON: List<WorkflowAction>
     val globalInstruction: String,
-    val outputConfigJson: String,  // JSON: WorkflowOutputConfig
+    val outputConfigJson: String,      // JSON: WorkflowOutputConfig
     val notifyOnCompletion: Boolean,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
     val lastRunAtMillis: Long?,
-    val lastRunStatus: String?     // WorkflowRunStatus.name or null
+    val lastRunStatus: String?,        // WorkflowRunStatus.name or null
+    // Template-system columns (v4)
+    val sourceTemplateId: String = "",
+    val category: String = "",
+    val customizationJson: String = "", // JSON: TemplateCustomization
+    val defaultProfileId: String = ""   // provider profile ID for workflow-level routing (v5)
 )
 
 // ── Run Entity ──
@@ -59,6 +64,42 @@ data class WorkflowRunEntity(
     val errorMessage: String?,
     val startedAtMillis: Long,
     val completedAtMillis: Long?
+)
+
+// ── Provider Profile Entity ──
+
+@Entity(tableName = "provider_profiles")
+data class ProviderProfileEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val providerType: String,   // ProviderType.name
+    val modelId: String,
+    val isDefault: Boolean,
+    val isEnabled: Boolean,
+    val createdAtMillis: Long,
+    val updatedAtMillis: Long
+)
+
+fun ProviderProfileEntity.toDomain() = ProviderProfile(
+    id = id,
+    name = name,
+    providerType = ProviderType.valueOf(providerType),
+    modelId = modelId,
+    isDefault = isDefault,
+    isEnabled = isEnabled,
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis
+)
+
+fun ProviderProfile.toEntity() = ProviderProfileEntity(
+    id = id,
+    name = name,
+    providerType = providerType.name,
+    modelId = modelId,
+    isDefault = isDefault,
+    isEnabled = isEnabled,
+    createdAtMillis = createdAtMillis,
+    updatedAtMillis = updatedAtMillis
 )
 
 // ── Saved Note Entity ──
@@ -105,7 +146,14 @@ fun WorkflowTemplateEntity.toDomain() = WorkflowTemplate(
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis,
     lastRunAtMillis = lastRunAtMillis,
-    lastRunStatus = lastRunStatus?.let { WorkflowRunStatus.valueOf(it) }
+    lastRunStatus = lastRunStatus?.let { WorkflowRunStatus.valueOf(it) },
+    sourceTemplateId = sourceTemplateId,
+    category = category,
+    customization = if (customizationJson.isNotBlank()) {
+        try { json.decodeFromString<TemplateCustomization>(customizationJson) }
+        catch (_: Exception) { TemplateCustomization() }
+    } else TemplateCustomization(),
+    defaultProfileId = defaultProfileId
 )
 
 fun WorkflowTemplate.toEntity() = WorkflowTemplateEntity(
@@ -121,7 +169,11 @@ fun WorkflowTemplate.toEntity() = WorkflowTemplateEntity(
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis,
     lastRunAtMillis = lastRunAtMillis,
-    lastRunStatus = lastRunStatus?.name
+    lastRunStatus = lastRunStatus?.name,
+    sourceTemplateId = sourceTemplateId,
+    category = category,
+    customizationJson = json.encodeToString(customization),
+    defaultProfileId = defaultProfileId
 )
 
 // ── Mappers: Run ──
