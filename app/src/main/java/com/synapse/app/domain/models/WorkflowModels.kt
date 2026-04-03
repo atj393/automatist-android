@@ -52,24 +52,95 @@ sealed interface WorkflowTrigger {
     ) : WorkflowTrigger
 }
 
-// ── Action ──
+// ── Action Types ──
 
 @Serializable
 enum class WorkflowActionType(val displayName: String) {
     FETCH_URL("Fetch URL"),
-    PASTE_TEXT("Paste Text")
-    // Future: FETCH_RSS, FETCH_API, USE_FILE, USE_CLIPBOARD, USE_NOTIFICATION
+    PASTE_TEXT("Paste Text"),
+    FETCH_RSS_FEED("Fetch RSS Feed"),
+    FETCH_API_GET("Fetch API (GET)"),
+    USE_SAVED_NOTE("Saved Note"),
+    USE_PREVIOUS_OUTPUT("Previous Workflow Output"),
+    FETCH_RSS_MULTI("Multi-Feed RSS")
+    // Future: USE_FILE, USE_CLIPBOARD, USE_NOTIFICATION
 }
+
+// ── Action Model ──
 
 @Serializable
 data class WorkflowAction(
     val id: String, // UUID string
     val type: WorkflowActionType,
     val label: String = "",
-    val sourceData: String = "", // URL or pasted text
+    val sourceData: String = "", // URL, text, or primary identifier
     val instruction: String = "", // per-action instruction
     val order: Int = 0,
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    val extraConfig: String = "" // JSON string for type-specific config
+)
+
+// ── Per-Action Config Models ──
+
+@Serializable
+data class RssFeedConfig(
+    val maxItems: Int = 5,
+    val includeTitle: Boolean = true,
+    val includeSummary: Boolean = true,
+    val includeLink: Boolean = false,
+    val includePublishedDate: Boolean = false,
+    val keywordFilter: String = ""
+)
+
+@Serializable
+data class ApiGetConfig(
+    val queryParams: Map<String, String> = emptyMap(),
+    val headers: Map<String, String> = emptyMap(),
+    val extractionHint: String = ""
+)
+
+@Serializable
+data class SavedNoteReference(
+    val noteId: Long = 0,
+    val noteTitle: String = ""
+)
+
+@Serializable
+enum class OutputSelectionMode {
+    LATEST_SUCCESSFUL,
+    SPECIFIC_RUN
+}
+
+@Serializable
+data class PreviousOutputConfig(
+    val sourceWorkflowId: Long = 0,
+    val sourceWorkflowName: String = "",
+    val selectionMode: OutputSelectionMode = OutputSelectionMode.LATEST_SUCCESSFUL,
+    val specificRunId: Long? = null,
+    val includeMetadata: Boolean = false
+)
+
+@Serializable
+data class MultiFeedRssConfig(
+    val feedUrls: List<String> = emptyList(),
+    val maxItems: Int = 10,
+    val includeTitle: Boolean = true,
+    val includeSummary: Boolean = true,
+    val includeLink: Boolean = false,
+    val includePublishedDate: Boolean = false,
+    val keywordFilter: String = "",
+    val deduplicateByTitle: Boolean = true,
+    val sortNewestFirst: Boolean = true
+)
+
+// ── Saved Note ──
+
+data class SavedNote(
+    val id: Long = 0,
+    val title: String,
+    val content: String,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val updatedAtMillis: Long = System.currentTimeMillis()
 )
 
 // ── Output Config ──

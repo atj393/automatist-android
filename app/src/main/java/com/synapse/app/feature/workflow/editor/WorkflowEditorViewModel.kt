@@ -5,13 +5,16 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.*
+import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.models.*
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.platform.automation.WorkflowWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -19,7 +22,7 @@ import javax.inject.Inject
 
 data class EditorUiState(
     val isLoading: Boolean = true,
-    val isEditing: Boolean = false, // true when editing an existing template
+    val isEditing: Boolean = false,
     val name: String = "",
     val description: String = "",
     val trigger: WorkflowTrigger = WorkflowTrigger.Manual,
@@ -28,7 +31,7 @@ data class EditorUiState(
     val outputConfig: WorkflowOutputConfig = WorkflowOutputConfig(),
     val notifyOnCompletion: Boolean = false,
     val isSaving: Boolean = false,
-    val savedTemplateId: Long? = null, // set after save
+    val savedTemplateId: Long? = null,
     val validationErrors: List<String> = emptyList()
 )
 
@@ -43,6 +46,13 @@ class WorkflowEditorViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(EditorUiState())
     val state = _state.asStateFlow()
+
+    // Expose saved notes and workflows for action editors
+    val availableNotes = repository.getAllNotes()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val availableWorkflows = repository.getAllTemplates()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
         viewModelScope.launch {
@@ -75,7 +85,6 @@ class WorkflowEditorViewModel @Inject constructor(
     fun updateActions(actions: List<WorkflowAction>) = _state.update { it.copy(actions = actions) }
     fun updateGlobalInstruction(text: String) = _state.update { it.copy(globalInstruction = text) }
     fun updateNotifyOnCompletion(enabled: Boolean) = _state.update { it.copy(notifyOnCompletion = enabled) }
-
     fun updateOutputConfig(config: WorkflowOutputConfig) = _state.update { it.copy(outputConfig = config) }
 
     fun save() {
@@ -113,9 +122,7 @@ class WorkflowEditorViewModel @Inject constructor(
                 repository.saveTemplate(template)
             }
 
-            // Schedule if trigger is not manual
             scheduleWorkflow(savedId, current.trigger)
-
             _state.update { it.copy(isSaving = false, savedTemplateId = savedId) }
         }
     }
@@ -125,9 +132,7 @@ class WorkflowEditorViewModel @Inject constructor(
         val uniqueName = "WorkflowWorker_$templateId"
 
         when (trigger) {
-            is WorkflowTrigger.Manual -> {
-                workManager.cancelUniqueWork(uniqueName)
-            }
+            is WorkflowTrigger.Manual -> workManager.cancelUniqueWork(uniqueName)
             is WorkflowTrigger.Daily -> {
                 val request = PeriodicWorkRequestBuilder<WorkflowWorker>(
                     24, TimeUnit.HOURS
@@ -140,7 +145,6 @@ class WorkflowEditorViewModel @Inject constructor(
                 workManager.enqueueUniquePeriodicWork(uniqueName, ExistingPeriodicWorkPolicy.UPDATE, request)
             }
             is WorkflowTrigger.Weekly -> {
-                // WorkManager doesn't support weekly directly — use 7-day period
                 val request = PeriodicWorkRequestBuilder<WorkflowWorker>(
                     7, TimeUnit.DAYS
                 ).setInputData(
@@ -151,9 +155,7 @@ class WorkflowEditorViewModel @Inject constructor(
                 ).build()
                 workManager.enqueueUniquePeriodicWork(uniqueName, ExistingPeriodicWorkPolicy.UPDATE, request)
             }
-            is WorkflowTrigger.NotificationKeyword -> {
-                // V1: Not implemented at runtime — future extension
-            }
+            is WorkflowTrigger.NotificationKeyword -> { /* Future */ }
         }
     }
 
@@ -161,23 +163,17 @@ class WorkflowEditorViewModel @Inject constructor(
         val errors = mutableListOf<String>()
         if (state.name.isBlank()) errors.add("Workflow name is required.")
         if (state.actions.isEmpty()) errors.add("Add at least one action.")
+
+        // Delegate per-action validation to the centralized registry
         state.actions.forEachIndexed { i, action ->
-            if (action.sourceData.isBlank()) {
-                val label = action.label.ifBlank { "Action #${i + 1}" }
-                errors.add("$label: source data is empty.")
-            }
-            if (action.type == WorkflowActionType.FETCH_URL && !action.sourceData.startsWith("http")) {
-                val label = action.label.ifBlank { "Action #${i + 1}" }
-                errors.add("$label: URL must start with http:// or https://")
-            }
+            errors.addAll(WorkflowActionRegistry.validate(action, i))
         }
+
         if (state.trigger is WorkflowTrigger.Daily) {
-            val daily = state.trigger
-            if (daily.hour !in 0..23) errors.add("Daily hour must be 0-23.")
+            if (state.trigger.hour !in 0..23) errors.add("Daily hour must be 0-23.")
         }
         if (state.trigger is WorkflowTrigger.Weekly) {
-            val weekly = state.trigger
-            if (weekly.daysOfWeek.isEmpty()) errors.add("Select at least one day of the week.")
+            if (state.trigger.daysOfWeek.isEmpty()) errors.add("Select at least one day of the week.")
         }
         return errors
     }

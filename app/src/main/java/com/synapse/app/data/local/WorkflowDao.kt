@@ -48,4 +48,26 @@ interface WorkflowDao {
 
     @Query("UPDATE workflow_templates SET lastRunAtMillis = :atMillis, lastRunStatus = :status, updatedAtMillis = :atMillis WHERE id = :templateId")
     suspend fun updateTemplateLastRun(templateId: Long, status: String, atMillis: Long)
+
+    // ── Saved Notes ──
+
+    @Query("SELECT * FROM saved_notes ORDER BY updatedAtMillis DESC")
+    fun getAllNotes(): Flow<List<SavedNoteEntity>>
+
+    @Query("SELECT * FROM saved_notes WHERE id = :id")
+    suspend fun getNoteById(id: Long): SavedNoteEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNote(entity: SavedNoteEntity): Long
+
+    @Update
+    suspend fun updateNote(entity: SavedNoteEntity)
+
+    @Query("DELETE FROM saved_notes WHERE id = :id")
+    suspend fun deleteNote(id: Long)
+
+    // ── Cross-workflow queries (for Previous Output action) ──
+
+    @Query("SELECT * FROM workflow_runs WHERE templateId = :templateId AND status = 'COMPLETED' ORDER BY startedAtMillis DESC LIMIT 1")
+    suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRunEntity?
 }
