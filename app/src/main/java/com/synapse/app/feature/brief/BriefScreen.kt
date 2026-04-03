@@ -37,10 +37,6 @@ fun BriefScreen(
     val context = LocalContext.current
     val workState by viewModel.workState.collectAsState()
 
-    if (workState != null) {
-        ProgressDialog(workState = workState, onDismiss = viewModel::clearWorkState)
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -51,7 +47,10 @@ fun BriefScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::runNow) {
+                    IconButton(onClick = {
+                        viewModel.runNow()
+                        selectedTabIndex = 2
+                    }) {
                         Icon(Icons.Default.PlayArrow, contentDescription = "Run Now")
                     }
                 }
@@ -74,12 +73,17 @@ fun BriefScreen(
                     onClick = { selectedTabIndex = 1 },
                     text = { Text("Recent Runs") }
                 )
+                Tab(
+                    selected = selectedTabIndex == 2,
+                    onClick = { selectedTabIndex = 2 },
+                    text = { Text("Ongoing Process") }
+                )
             }
 
-            if (selectedTabIndex == 0) {
-                ConfigLayout(config, viewModel::updateConfig)
-            } else {
-                RecentRunsLayout(recentRuns)
+            when (selectedTabIndex) {
+                0 -> ConfigLayout(config, viewModel::updateConfig)
+                1 -> RecentRunsLayout(recentRuns)
+                2 -> OngoingProcessLayout(workState)
             }
         }
     }
@@ -205,32 +209,30 @@ private fun RecentRunsLayout(runs: List<HistoryItem>) {
 }
 
 @Composable
-private fun ProgressDialog(workState: WorkInfo?, onDismiss: () -> Unit) {
-    if (workState == null) return
-    
+private fun OngoingProcessLayout(workState: WorkInfo?) {
+    if (workState == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No process currently running. Press 'Run Now' to start.")
+        }
+        return
+    }
+
     val status = workState.progress.getString("status") ?: "Starting..."
     val error = workState.progress.getString("error")
     
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Automation Progress") },
-        text = { 
-            if (error != null || workState.state == WorkInfo.State.FAILED) {
-                Text("Error: ${error ?: "Unknown error"}", color = MaterialTheme.colorScheme.error)
-            } else if (workState.state == WorkInfo.State.SUCCEEDED) {
-                Text("Job completed successfully!")
-            } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    CircularProgressIndicator()
-                    Spacer(Modifier.height(16.dp))
-                    Text(status)
-                }
-            }
-        },
-        confirmButton = {
-            if (error != null || workState.state == WorkInfo.State.SUCCEEDED || workState.state == WorkInfo.State.FAILED) {
-                Button(onClick = onDismiss) { Text("Close") }
-            }
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        if (error != null || workState.state == WorkInfo.State.FAILED) {
+            Text("Error: ${error ?: "Unknown Error"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+        } else if (workState.state == WorkInfo.State.SUCCEEDED) {
+            Text("Job completed successfully!", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+        } else {
+            CircularProgressIndicator()
+            Spacer(Modifier.height(24.dp))
+            Text(status, style = MaterialTheme.typography.titleMedium)
         }
-    )
+    }
 }
