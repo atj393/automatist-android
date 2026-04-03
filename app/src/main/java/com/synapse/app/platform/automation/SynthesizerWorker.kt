@@ -8,6 +8,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.synapse.app.MainActivity
 import com.synapse.app.data.local.SettingsRepository
 import com.synapse.app.data.network.RssParser
@@ -44,11 +45,20 @@ class SynthesizerWorker(
 
         val config = settingsRepo.briefConfig.first()
 
-        // 1. Fetch RSS feeds
-        if (config.rssFeeds.isEmpty()) return WorkResult.success() // Nothing to do
+        setProgress(workDataOf("status" to "Validating RSS Configuration..."))
 
+        // 1. Fetch RSS feeds
+        if (config.rssFeeds.isEmpty()) {
+            setProgress(workDataOf("error" to "No RSS feeds configured."))
+            return WorkResult.failure()
+        }
+
+        setProgress(workDataOf("status" to "Fetching & Parsing RSS..."))
         val rawXmlDigest = rssParser.fetchAndParse(config.rssFeeds)
-        if (rawXmlDigest.isBlank()) return WorkResult.success() // No new elements
+        if (rawXmlDigest.isBlank()) {
+            setProgress(workDataOf("error" to "RSS parsing failed or returned empty content. Verify URLs."))
+            return WorkResult.failure()
+        }
 
         // 2. Compute prompt Override based on output type and social target
         val promptOverride = buildString {
@@ -65,11 +75,13 @@ class SynthesizerWorker(
 
         // 3. Transform via existing Router
         // TransformType is required by the interface but we override the prompt itself securely.
+        setProgress(workDataOf("status" to "Generating Summary via AI..."))
         val input = ArticleInput(text = rawXmlDigest, systemPromptOverride = promptOverride)
         val transformResult = router.transform(input, TransformType.MORNING_SUMMARY)
 
         // 4. Save to History explicitly as Morning Brief.
         transformResult.onSuccess { result ->
+            setProgress(workDataOf("status" to "Saving to Database..."))
             val preview = rawXmlDigest.take(50).replace("\n", " ") + "..."
             historyRepo.saveHistoryItem(
                 HistoryItem(
@@ -89,7 +101,8 @@ class SynthesizerWorker(
             return WorkResult.success()
         }.onFailure {
             // Fail gracefully if API is down
-            return WorkResult.retry() 
+            setProgress(workDataOf("error" to "AI Transformation failed: ${it.message}"))
+            return WorkResult.failure() 
         }
 
         return WorkResult.success()
