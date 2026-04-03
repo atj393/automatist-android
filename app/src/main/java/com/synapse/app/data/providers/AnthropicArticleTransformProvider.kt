@@ -37,7 +37,7 @@ class AnthropicArticleTransformProvider @Inject constructor(
             }
 
             val request = AnthropicRequest(
-                model = "claude-3-haiku-20240307",
+                model = input.modelOverride ?: "claude-3-haiku-20240307",
                 system = systemPrompt,
                 messages = listOf(
                     AnthropicMessage(role = "user", content = input.text)

@@ -3,7 +3,7 @@ package com.synapse.app.domain.models
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-// ── Workflow Template ──
+// ── Workflow Template (shared model for both built-in blueprints and user workflows) ──
 
 data class WorkflowTemplate(
     val id: Long = 0,
@@ -18,8 +18,34 @@ data class WorkflowTemplate(
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
     val lastRunAtMillis: Long? = null,
-    val lastRunStatus: WorkflowRunStatus? = null
+    val lastRunStatus: WorkflowRunStatus? = null,
+    // ── Template-system fields ──
+    val sourceTemplateId: String = "",         // built-in template ID this was created from ("" for legacy)
+    val category: String = "",                 // UI grouping: "News & Content", "Communication", etc.
+    val customization: TemplateCustomization = TemplateCustomization(),
+    // ── Profile routing ──
+    val defaultProfileId: String = "" // workflow-level default profile ("" = use app default)
 )
+
+// ── Template Customization Rules ──
+
+@Serializable
+data class TemplateCustomization(
+    val editableSections: Set<EditableSection> = EditableSection.entries.toSet(),
+    val lockedActionIds: Set<String> = emptySet(), // action IDs that cannot be removed
+    val canAddActions: Boolean = true,
+    val canRemoveActions: Boolean = true
+)
+
+@Serializable
+enum class EditableSection {
+    BASICS,
+    TRIGGER,
+    ACTIONS,
+    INSTRUCTIONS,
+    OUTPUT,
+    NOTIFICATIONS
+}
 
 // ── Trigger ──
 
@@ -39,12 +65,11 @@ sealed interface WorkflowTrigger {
     @Serializable
     @SerialName("weekly")
     data class Weekly(
-        val daysOfWeek: Set<Int> = setOf(1), // 1=Mon..7=Sun (ISO)
+        val daysOfWeek: Set<Int> = setOf(1),
         val hour: Int = 8,
         val minute: Int = 0
     ) : WorkflowTrigger
 
-    // Future extension point — not implemented in V1 runtime
     @Serializable
     @SerialName("notification")
     data class NotificationKeyword(
@@ -63,21 +88,20 @@ enum class WorkflowActionType(val displayName: String) {
     USE_SAVED_NOTE("Saved Note"),
     USE_PREVIOUS_OUTPUT("Previous Workflow Output"),
     FETCH_RSS_MULTI("Multi-Feed RSS")
-    // Future: USE_FILE, USE_CLIPBOARD, USE_NOTIFICATION
 }
 
 // ── Action Model ──
 
 @Serializable
 data class WorkflowAction(
-    val id: String, // UUID string
+    val id: String,
     val type: WorkflowActionType,
     val label: String = "",
-    val sourceData: String = "", // URL, text, or primary identifier
-    val instruction: String = "", // per-action instruction
+    val sourceData: String = "",
+    val instruction: String = "",
     val order: Int = 0,
     val isEnabled: Boolean = true,
-    val extraConfig: String = "" // JSON string for type-specific config
+    val extraConfig: String = ""
 )
 
 // ── Per-Action Config Models ──
@@ -158,7 +182,8 @@ data class WorkflowOutputConfig(
     val outputType: WorkflowOutputType = WorkflowOutputType.BRIEFING,
     val customInstruction: String = "",
     val socialPlatforms: Set<SocialPlatform> = emptySet(),
-    val saveToHistory: Boolean = true
+    val saveToHistory: Boolean = true,
+    val outputProfileId: String = "" // profile override for final output generation ("" = inherit workflow default)
 )
 
 // ── Run ──
@@ -173,7 +198,7 @@ data class WorkflowRun(
     val id: Long = 0,
     val templateId: Long,
     val templateName: String,
-    val triggerType: String = "manual", // "manual", "scheduled"
+    val triggerType: String = "manual",
     val status: WorkflowRunStatus = WorkflowRunStatus.RUNNING,
     val currentStage: String = "",
     val outputText: String = "",

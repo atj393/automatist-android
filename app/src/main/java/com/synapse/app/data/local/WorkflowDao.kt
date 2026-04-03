@@ -70,4 +70,27 @@ interface WorkflowDao {
 
     @Query("SELECT * FROM workflow_runs WHERE templateId = :templateId AND status = 'COMPLETED' ORDER BY startedAtMillis DESC LIMIT 1")
     suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRunEntity?
+
+    // ── Provider Profiles ──
+
+    @Query("SELECT * FROM provider_profiles WHERE isEnabled = 1 ORDER BY isDefault DESC, name ASC")
+    fun getAllProfiles(): Flow<List<ProviderProfileEntity>>
+
+    @Query("SELECT * FROM provider_profiles WHERE id = :id")
+    suspend fun getProfileById(id: String): ProviderProfileEntity?
+
+    @Query("SELECT * FROM provider_profiles WHERE isDefault = 1 LIMIT 1")
+    suspend fun getDefaultProfile(): ProviderProfileEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProfile(entity: ProviderProfileEntity)
+
+    @Update
+    suspend fun updateProfile(entity: ProviderProfileEntity)
+
+    @Query("DELETE FROM provider_profiles WHERE id = :id")
+    suspend fun deleteProfile(id: String)
+
+    @Query("UPDATE provider_profiles SET isDefault = 0")
+    suspend fun clearDefaultProfiles()
 }

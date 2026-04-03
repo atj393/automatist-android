@@ -5,6 +5,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,7 +37,13 @@ fun WorkflowEditorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (state.isEditing) "Edit Workflow" else "New Workflow") },
+                title = {
+                    Text(
+                        if (state.isEditing) "Edit Workflow"
+                        else if (state.sourceTemplateName.isNotBlank()) "New from ${state.sourceTemplateName}"
+                        else "New Workflow"
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -59,8 +67,19 @@ fun WorkflowEditorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            // ── Template origin badge ──
+            if (state.sourceTemplateName.isNotBlank()) {
+                AssistChip(
+                    onClick = {},
+                    label = { Text("Based on: ${state.sourceTemplateName}") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Dashboard, null, modifier = Modifier.size(16.dp))
+                    }
+                )
+            }
+
             // ── Section 1: Basic Info ──
-            SectionHeader("1", "Basic Info")
+            SectionHeader("1", "Basic Info", locked = !state.isSectionEditable(EditableSection.BASICS))
 
             OutlinedTextField(
                 value = state.name,
@@ -68,7 +87,8 @@ fun WorkflowEditorScreen(
                 label = { Text("Workflow Name *") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                isError = state.validationErrors.any { "name" in it.lowercase() }
+                isError = state.validationErrors.any { "name" in it.lowercase() },
+                enabled = state.isSectionEditable(EditableSection.BASICS)
             )
 
             OutlinedTextField(
@@ -77,15 +97,24 @@ fun WorkflowEditorScreen(
                 label = { Text("Description (optional)") },
                 minLines = 2,
                 maxLines = 4,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.isSectionEditable(EditableSection.BASICS)
             )
 
             // ── Section 2: Trigger ──
-            SectionHeader("2", "Trigger")
-            TriggerSection(
-                trigger = state.trigger,
-                onTriggerChanged = viewModel::updateTrigger
-            )
+            SectionHeader("2", "Trigger", locked = !state.isSectionEditable(EditableSection.TRIGGER))
+            if (state.isSectionEditable(EditableSection.TRIGGER)) {
+                TriggerSection(
+                    trigger = state.trigger,
+                    onTriggerChanged = viewModel::updateTrigger
+                )
+            } else {
+                Text(
+                    triggerSummary(state.trigger),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             // ── Section 3: Input Actions ──
             SectionHeader("3", "Input Actions")
@@ -171,17 +200,17 @@ fun WorkflowEditorScreen(
 }
 
 @Composable
-private fun SectionHeader(number: String, title: String) {
+private fun SectionHeader(number: String, title: String, locked: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Surface(
             shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.primary,
+            color = if (locked) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(28.dp)
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Text(
                     number,
-                    color = MaterialTheme.colorScheme.onPrimary,
+                    color = if (locked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -189,7 +218,18 @@ private fun SectionHeader(number: String, title: String) {
         }
         Spacer(Modifier.width(10.dp))
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        if (locked) {
+            Spacer(Modifier.width(6.dp))
+            Icon(Icons.Default.Lock, "Locked", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
+}
+
+private fun triggerSummary(trigger: WorkflowTrigger): String = when (trigger) {
+    is WorkflowTrigger.Manual -> "Manual (run on demand)"
+    is WorkflowTrigger.Daily -> "Daily at ${trigger.hour.toString().padStart(2, '0')}:${trigger.minute.toString().padStart(2, '0')}"
+    is WorkflowTrigger.Weekly -> "Weekly"
+    is WorkflowTrigger.NotificationKeyword -> "Notification-based (coming soon)"
 }
 
 @Composable
@@ -333,43 +373,6 @@ private fun OutputSection(
                 )
                 Text(type.displayName)
             }
-        }
-
-        // Social platforms
-        if (config.outputType == WorkflowOutputType.SOCIAL_POST || config.outputType == WorkflowOutputType.BOTH) {
-            Text(
-                "Target Platforms",
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.padding(start = 48.dp, top = 4.dp)
-            )
-            Column(modifier = Modifier.padding(start = 48.dp)) {
-                SocialPlatform.entries.forEach { platform ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = platform in config.socialPlatforms,
-                            onCheckedChange = { checked ->
-                                val newPlatforms = if (checked)
-                                    config.socialPlatforms + platform else config.socialPlatforms - platform
-                                onConfigChanged(config.copy(socialPlatforms = newPlatforms))
-                            }
-                        )
-                        Text(platform.displayName)
-                    }
-                }
-            }
-        }
-
-        // Custom instruction
-        if (config.outputType == WorkflowOutputType.CUSTOM) {
-            OutlinedTextField(
-                value = config.customInstruction,
-                onValueChange = { onConfigChanged(config.copy(customInstruction = it)) },
-                label = { Text("Custom Output Instructions") },
-                placeholder = { Text("Describe the desired output format...") },
-                minLines = 3,
-                maxLines = 6,
-                modifier = Modifier.fillMaxWidth().padding(start = 48.dp)
-            )
         }
     }
 }

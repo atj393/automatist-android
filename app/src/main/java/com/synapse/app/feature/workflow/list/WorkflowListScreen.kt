@@ -15,12 +15,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.synapse.app.domain.models.*
+import com.synapse.app.domain.templates.BuiltInTemplates
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkflowListScreen(
     onBack: () -> Unit,
-    onCreateNew: () -> Unit,
+    onBrowseTemplates: () -> Unit,
     onEdit: (Long) -> Unit,
     onRun: (Long) -> Unit,
     onViewRunDetail: (Long) -> Unit,
@@ -31,7 +32,7 @@ fun WorkflowListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Workflow Builder") },
+                title = { Text("My Workflows") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -40,9 +41,11 @@ fun WorkflowListScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onCreateNew) {
-                Icon(Icons.Default.Add, "New Workflow")
-            }
+            ExtendedFloatingActionButton(
+                onClick = onBrowseTemplates,
+                icon = { Icon(Icons.Default.Dashboard, "Templates") },
+                text = { Text("Browse Templates") }
+            )
         }
     ) { padding ->
         if (workflows.isEmpty()) {
@@ -52,8 +55,7 @@ fun WorkflowListScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        Icons.Default.AutoAwesome,
-                        null,
+                        Icons.Default.AutoAwesome, null,
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
                     )
@@ -65,29 +67,26 @@ fun WorkflowListScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Create your first custom workflow",
+                        "Start by choosing a workflow template",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                     Spacer(Modifier.height(16.dp))
-                    Button(onClick = onCreateNew) {
-                        Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                    Button(onClick = onBrowseTemplates) {
+                        Icon(Icons.Default.Dashboard, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("New Workflow")
+                        Text("Browse Templates")
                     }
                 }
             }
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
+                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
                 items(workflows, key = { it.id }) { template ->
-                    WorkflowTemplateCard(
+                    MyWorkflowCard(
                         template = template,
                         onEdit = { onEdit(template.id) },
                         onRun = { onRun(template.id) },
@@ -100,13 +99,20 @@ fun WorkflowListScreen(
 }
 
 @Composable
-private fun WorkflowTemplateCard(
+private fun MyWorkflowCard(
     template: WorkflowTemplate,
     onEdit: () -> Unit,
     onRun: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+
+    // Look up source template name
+    val sourceTemplateName = remember(template.sourceTemplateId) {
+        if (template.sourceTemplateId.isNotBlank()) {
+            BuiltInTemplates.findById(template.sourceTemplateId)?.name ?: "Custom"
+        } else "Legacy"
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -141,24 +147,23 @@ private fun WorkflowTemplateCard(
 
             // Metadata chips
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Source template badge
                 AssistChip(
                     onClick = {},
-                    label = {
-                        Text(
-                            triggerLabel(template.trigger),
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    },
+                    label = { Text(sourceTemplateName, style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.height(28.dp),
+                    leadingIcon = {
+                        Icon(Icons.Default.Dashboard, null, modifier = Modifier.size(14.dp))
+                    }
+                )
+                AssistChip(
+                    onClick = {},
+                    label = { Text(triggerLabel(template.trigger), style = MaterialTheme.typography.labelSmall) },
                     modifier = Modifier.height(28.dp)
                 )
                 AssistChip(
                     onClick = {},
-                    label = {
-                        Text(
-                            "${template.actions.size} action(s)",
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    },
+                    label = { Text("${template.actions.size} action(s)", style = MaterialTheme.typography.labelSmall) },
                     modifier = Modifier.height(28.dp)
                 )
                 if (template.lastRunStatus != null) {
@@ -181,7 +186,6 @@ private fun WorkflowTemplateCard(
 
             Spacer(Modifier.height(8.dp))
 
-            // Action buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
@@ -198,11 +202,7 @@ private fun WorkflowTemplateCard(
                     Text("Run")
                 }
                 IconButton(onClick = { showDeleteDialog = true }) {
-                    Icon(
-                        Icons.Default.Delete, "Delete",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -214,10 +214,7 @@ private fun WorkflowTemplateCard(
             title = { Text("Delete Workflow") },
             text = { Text("Delete \"${template.name}\"? This will also remove all run history.") },
             confirmButton = {
-                TextButton(onClick = {
-                    onDelete()
-                    showDeleteDialog = false
-                }) {
+                TextButton(onClick = { onDelete(); showDeleteDialog = false }) {
                     Text("Delete", color = MaterialTheme.colorScheme.error)
                 }
             },

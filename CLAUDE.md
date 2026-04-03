@@ -188,7 +188,8 @@ app/src/main/java/com/synapse/app/
 │   ├── vault/       (VaultScreen.kt, VaultViewModel.kt)
 │   ├── notes/       (NotesScreen.kt, NotesViewModel.kt)
 │   └── workflow/    (Workflow Builder feature)
-│       ├── list/        (WorkflowListScreen.kt, WorkflowListViewModel.kt)
+│       ├── templates/   (WorkflowTemplatesScreen.kt — browse built-in templates)
+│       ├── list/        (WorkflowListScreen.kt, WorkflowListViewModel.kt — My Workflows)
 │       ├── editor/      (WorkflowEditorScreen.kt, WorkflowEditorViewModel.kt)
 │       ├── run/         (WorkflowRunScreen.kt, WorkflowRunViewModel.kt, WorkflowRunDetailScreen.kt)
 │       └── components/  (ActionBlockEditor.kt, ActionBlockList.kt)
@@ -196,6 +197,10 @@ app/src/main/java/com/synapse/app/
 ├── domain/
 │   └── actions/
 │       └── WorkflowActionRegistry.kt  # Centralized action metadata, validation, summaries
+│
+├── domain/
+│   └── templates/
+│       └── BuiltInTemplates.kt      # Code-defined workflow template blueprints
 │
 ├── domain/
 │   └── engine/
@@ -234,14 +239,22 @@ app/src/main/java/com/synapse/app/
 
 **Interface:** `ArticleTransformProvider.transform(input: ArticleInput, type: TransformType): Result<TransformResult>`
 
-**Router:** `TransformProviderRouter` reads `activeProvider` from settings and delegates. All providers share the same interface.
+**Router:** `TransformProviderRouter` resolves provider+model from profiles or falls back to legacy `activeProvider`. Resolution order: (1) explicit `profileId` on `ArticleInput`, (2) default profile from `provider_profiles` table, (3) legacy `activeProvider` from AppSettings.
+
+**Provider Profiles:** Stored in Room (`provider_profiles` table). Each profile specifies a provider type, model ID, and display name. One profile can be marked as default. API keys remain centralized in `SecureStorage` keyed by `ProviderType` (shared across profiles using the same provider).
+
+**Profile Routing in Workflows:**
+- `WorkflowTemplate.defaultProfileId` — workflow-level default profile
+- `WorkflowOutputConfig.outputProfileId` — override for final output generation
+- `ArticleInput.profileId` — resolved at execution time, passed to router
+- `ArticleInput.modelOverride` — resolved from profile's modelId, passed to concrete provider
 
 **Providers:**
-| Provider | Model | Auth |
-|----------|-------|------|
+| Provider | Default Model | Auth |
+|----------|--------------|------|
 | Fake | N/A (mock, 1.5s delay) | None |
-| OpenAI | gpt-3.5-turbo | Bearer token |
-| Anthropic | claude-3-haiku-20240307 | x-api-key header |
+| OpenAI | gpt-3.5-turbo (overridable) | Bearer token |
+| Anthropic | claude-3-haiku-20240307 (overridable) | x-api-key header |
 | Gemini | gemini-1.5-flash | API key query param |
 
 Each provider: fetches key from `SecureStorage` → builds system prompt (or uses `systemPromptOverride`) → calls API → returns `TransformResult`.
@@ -322,9 +335,40 @@ User creates WorkflowTemplate via editor
 
 ## Workflow Builder
 
-### 4. Workflow Builder (user-created)
+### Product Model: Template-First
 
-- **Input:** Multi-source actions (fetch URL, paste text) with per-action instructions
+**All user workflows are created from curated Workflow Templates.** There is no blank creation path.
+
+- **Workflow Templates** — built-in blueprints defined in code (`BuiltInTemplates.kt`), not stored in Room
+- **My Workflows** — user-owned instances created from templates, stored in Room
+- **Workflow Runs** — execution history, separate table with FK to user workflow
+
+**Flow:** Browse Templates → Use Template → Customize allowed fields → Save → Run
+
+### Template Customization
+
+Each template defines `TemplateCustomization`:
+- `editableSections: Set<EditableSection>` — which sections the user can modify (BASICS, TRIGGER, ACTIONS, INSTRUCTIONS, OUTPUT, NOTIFICATIONS)
+- `lockedActionIds: Set<String>` — action IDs that cannot be removed
+- `canAddActions: Boolean` — whether new actions can be added
+- `canRemoveActions: Boolean` — whether existing actions can be removed
+
+The editor UI respects these rules: locked sections are read-only, locked actions show config but no remove button.
+
+### Built-In Templates (6)
+
+| Template | Category | Default Trigger | Key Actions |
+|----------|----------|-----------------|-------------|
+| Morning Brief | News & Content | Daily 8:00 | RSS feed |
+| Article Transformer | Communication | Manual | Paste text |
+| Meeting Strategist | Communication | Manual | Paste text |
+| Content Repurposer | Social Media | Manual | Paste text |
+| Competitor Monitor | Research | Daily 9:00 | Multi-feed RSS |
+| Research Digest | Research | Manual | Fetch URL |
+
+### 4. Workflow Builder (user-created from templates)
+
+- **Input:** Multi-source actions (fetch URL, paste text, RSS, API, saved notes, previous output)
 - **Trigger types:** Manual | Daily schedule | Weekly schedule
 - **Processing:** Global instruction + per-action instructions → AI provider
 - **Output types:** `BRIEFING` | `SOCIAL_POST` | `BOTH` | `CUSTOM`
@@ -332,9 +376,9 @@ User creates WorkflowTemplate via editor
 - **Execution screen:** Stage-by-stage progress, token usage, duration, error handling
 
 **Models:**
-- `WorkflowTemplate` — stored in Room with JSON columns for trigger/actions/output config
+- `WorkflowTemplate` — stored in Room with JSON columns + sourceTemplateId + customization rules
 - `WorkflowRun` — stored in Room, tracks status, output, token usage, duration
-- `WorkflowAction` — id, type, label, sourceData, instruction, order
+- `WorkflowAction` — id, type, label, sourceData, instruction, order, extraConfig
 - `WorkflowTrigger` — sealed interface: Manual, Daily, Weekly, NotificationKeyword (future)
 
 **Action types:**
@@ -360,7 +404,10 @@ User creates WorkflowTemplate via editor
 **Per-action config:** Stored in `WorkflowAction.extraConfig` as JSON. Each action type has its own config model: `RssFeedConfig`, `ApiGetConfig`, `SavedNoteReference`, `PreviousOutputConfig`.
 
 **Navigation routes:**
-`workflow_list` → `workflow_editor?templateId={id}` | `workflow_run/{templateId}` | `workflow_run_detail/{runId}`
+`workflow_templates` → Browse built-in templates, "Use Template" creates instance
+`workflow_list` → My Workflows (user-owned instances)
+`workflow_editor?templateId={id}` | `workflow_editor?sourceTemplateId={builtInId}` → Edit or create from template
+`workflow_run/{templateId}` | `workflow_run_detail/{runId}` → Execution + history
 `saved_notes` — Saved Notes Manager (CRUD for reusable note content)
 
 ---

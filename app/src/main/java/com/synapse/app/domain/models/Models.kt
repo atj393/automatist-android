@@ -4,7 +4,9 @@ import kotlinx.serialization.Serializable
 
 data class ArticleInput(
     val text: String,
-    val systemPromptOverride: String? = null
+    val systemPromptOverride: String? = null,
+    val profileId: String? = null,     // provider profile ID (null = use app default)
+    val modelOverride: String? = null  // model ID override (null = use profile's default model)
 )
 
 @Serializable
