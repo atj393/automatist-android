@@ -5,10 +5,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -33,7 +33,7 @@ fun WorkflowTemplatesScreen(
                 title = { Text("Workflow Templates") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
@@ -187,10 +187,10 @@ private fun TemplateCard(
 
 private fun templateIcon(templateId: String) = when (templateId) {
     "morning_brief" -> Icons.Default.WbSunny
-    "article_summarizer" -> Icons.Default.Article
-    "meeting_prep" -> Icons.Default.EventNote
+    "article_summarizer" -> Icons.AutoMirrored.Filled.Article
+    "meeting_prep" -> Icons.AutoMirrored.Filled.EventNote
     "content_repurposer" -> Icons.Default.Share
-    "competitor_monitor" -> Icons.Default.TrendingUp
+    "competitor_monitor" -> Icons.AutoMirrored.Filled.TrendingUp
     "research_digest" -> Icons.Default.Science
     else -> Icons.Default.AutoAwesome
 }
