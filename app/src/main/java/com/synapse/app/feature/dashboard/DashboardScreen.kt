@@ -12,7 +12,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -21,9 +20,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
-    onNavigateToArticle: () -> Unit,
-    onNavigateToMeeting: () -> Unit,
-    onNavigateToBrief: () -> Unit,
+    onNavigateToArticle: () -> Unit = {},
+    onNavigateToMeeting: () -> Unit = {},
+    onNavigateToBrief: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
     onNavigateToHistoryDetail: (Long) -> Unit,
     onNavigateToVault: () -> Unit,
@@ -31,6 +30,7 @@ fun DashboardScreen(
     onNavigateToWorkflowRun: (Long) -> Unit = {},
     onNavigateToNotes: () -> Unit = {},
     onNavigateToTemplates: () -> Unit = {},
+    onCreateBlankWorkflow: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val recentHistory by viewModel.recentHistory.collectAsState()
@@ -58,56 +58,10 @@ fun DashboardScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // ── Workflow Templates (primary CTA) ──
+            // ── Create Workflow Section ──
             item {
                 Text(
-                    text = "Workflow Templates",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                )
-            }
-
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable(onClick = onNavigateToTemplates),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Dashboard, null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(36.dp)
-                        )
-                        Spacer(Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "Browse Templates",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            Text(
-                                "Create a workflow from curated templates",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                            )
-                        }
-                        Icon(
-                            Icons.Default.ArrowForward, null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-            }
-
-            // ── Quick Access (legacy built-in screens) ──
-            item {
-                Text(
-                    text = "Quick Access",
+                    text = "Create a Workflow",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                 )
@@ -115,24 +69,34 @@ fun DashboardScreen(
 
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    QuickAccessCard(
-                        title = "Article",
-                        icon = Icons.Default.Article,
-                        onClick = onNavigateToArticle,
-                        modifier = Modifier.weight(1f)
-                    )
-                    QuickAccessCard(
-                        title = "Meeting",
-                        icon = Icons.Default.EventNote,
-                        onClick = onNavigateToMeeting,
-                        modifier = Modifier.weight(1f)
-                    )
-                    QuickAccessCard(
-                        title = "Brief",
-                        icon = Icons.Default.WbSunny,
-                        onClick = onNavigateToBrief,
-                        modifier = Modifier.weight(1f)
-                    )
+                    // Browse Templates
+                    Card(
+                        modifier = Modifier.weight(1f).clickable(onClick = onNavigateToTemplates),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.Dashboard, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.height(6.dp))
+                            Text("From Template", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                    }
+                    // Start Empty
+                    OutlinedCard(
+                        modifier = Modifier.weight(1f).clickable(onClick = onCreateBlankWorkflow)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                            Spacer(Modifier.height(6.dp))
+                            Text("Start Empty", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                 }
             }
 
@@ -159,7 +123,7 @@ fun DashboardScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                "No workflows yet. Browse templates to get started.",
+                                "No workflows yet. Create one from a template or start empty.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -167,7 +131,7 @@ fun DashboardScreen(
                     }
                 }
             } else {
-                items(myWorkflows.take(3)) { wf ->
+                items(myWorkflows.take(5)) { wf ->
                     Card(
                         modifier = Modifier.fillMaxWidth().clickable { onNavigateToWorkflowRun(wf.id) },
                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -235,28 +199,6 @@ fun DashboardScreen(
             }
 
             item { Spacer(Modifier.height(16.dp)) }
-        }
-    }
-}
-
-@Composable
-private fun QuickAccessCard(
-    title: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-            Spacer(Modifier.height(6.dp))
-            Text(title, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
         }
     }
 }

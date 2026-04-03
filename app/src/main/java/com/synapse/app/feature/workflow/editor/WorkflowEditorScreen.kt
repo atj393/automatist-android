@@ -6,7 +6,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -67,11 +66,11 @@ fun WorkflowEditorScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // ── Template origin badge ──
+            // ── Template origin — informational only ──
             if (state.sourceTemplateName.isNotBlank()) {
                 AssistChip(
                     onClick = {},
-                    label = { Text("Based on: ${state.sourceTemplateName}") },
+                    label = { Text("Started from: ${state.sourceTemplateName}") },
                     leadingIcon = {
                         Icon(Icons.Default.Dashboard, null, modifier = Modifier.size(16.dp))
                     }
@@ -79,7 +78,7 @@ fun WorkflowEditorScreen(
             }
 
             // ── Section 1: Basic Info ──
-            SectionHeader("1", "Basic Info", locked = !state.isSectionEditable(EditableSection.BASICS))
+            SectionHeader("1", "Basic Info")
 
             OutlinedTextField(
                 value = state.name,
@@ -87,8 +86,7 @@ fun WorkflowEditorScreen(
                 label = { Text("Workflow Name *") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
-                isError = state.validationErrors.any { "name" in it.lowercase() },
-                enabled = state.isSectionEditable(EditableSection.BASICS)
+                isError = state.validationErrors.any { "name" in it.lowercase() }
             )
 
             OutlinedTextField(
@@ -97,24 +95,15 @@ fun WorkflowEditorScreen(
                 label = { Text("Description (optional)") },
                 minLines = 2,
                 maxLines = 4,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = state.isSectionEditable(EditableSection.BASICS)
+                modifier = Modifier.fillMaxWidth()
             )
 
             // ── Section 2: Trigger ──
-            SectionHeader("2", "Trigger", locked = !state.isSectionEditable(EditableSection.TRIGGER))
-            if (state.isSectionEditable(EditableSection.TRIGGER)) {
-                TriggerSection(
-                    trigger = state.trigger,
-                    onTriggerChanged = viewModel::updateTrigger
-                )
-            } else {
-                Text(
-                    triggerSummary(state.trigger),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            SectionHeader("2", "Trigger")
+            TriggerSection(
+                trigger = state.trigger,
+                onTriggerChanged = viewModel::updateTrigger
+            )
 
             // ── Section 3: Input Actions ──
             SectionHeader("3", "Input Actions")
@@ -200,17 +189,17 @@ fun WorkflowEditorScreen(
 }
 
 @Composable
-private fun SectionHeader(number: String, title: String, locked: Boolean = false) {
+private fun SectionHeader(number: String, title: String) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Surface(
             shape = MaterialTheme.shapes.small,
-            color = if (locked) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(28.dp)
         ) {
             Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                 Text(
                     number,
-                    color = if (locked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary,
+                    color = MaterialTheme.colorScheme.onPrimary,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -218,18 +207,7 @@ private fun SectionHeader(number: String, title: String, locked: Boolean = false
         }
         Spacer(Modifier.width(10.dp))
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        if (locked) {
-            Spacer(Modifier.width(6.dp))
-            Icon(Icons.Default.Lock, "Locked", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
-}
-
-private fun triggerSummary(trigger: WorkflowTrigger): String = when (trigger) {
-    is WorkflowTrigger.Manual -> "Manual (run on demand)"
-    is WorkflowTrigger.Daily -> "Daily at ${trigger.hour.toString().padStart(2, '0')}:${trigger.minute.toString().padStart(2, '0')}"
-    is WorkflowTrigger.Weekly -> "Weekly"
-    is WorkflowTrigger.NotificationKeyword -> "Notification-based (coming soon)"
 }
 
 @Composable
@@ -248,10 +226,7 @@ private fun TriggerSection(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         triggerOptions.forEachIndexed { index, label ->
             val isNotification = index == 3
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 RadioButton(
                     selected = selectedIndex == index,
                     onClick = {
@@ -273,7 +248,6 @@ private fun TriggerSection(
             }
         }
 
-        // Daily config
         if (trigger is WorkflowTrigger.Daily) {
             Row(
                 modifier = Modifier.padding(start = 48.dp),
@@ -287,9 +261,7 @@ private fun TriggerSection(
                         val h = v.filter { it.isDigit() }.take(2).toIntOrNull() ?: 0
                         onTriggerChanged(trigger.copy(hour = h.coerceIn(0, 23)))
                     },
-                    label = { Text("Hour") },
-                    singleLine = true,
-                    modifier = Modifier.width(80.dp)
+                    label = { Text("Hour") }, singleLine = true, modifier = Modifier.width(80.dp)
                 )
                 Text(":")
                 OutlinedTextField(
@@ -298,14 +270,11 @@ private fun TriggerSection(
                         val m = v.filter { it.isDigit() }.take(2).toIntOrNull() ?: 0
                         onTriggerChanged(trigger.copy(minute = m.coerceIn(0, 59)))
                     },
-                    label = { Text("Min") },
-                    singleLine = true,
-                    modifier = Modifier.width(80.dp)
+                    label = { Text("Min") }, singleLine = true, modifier = Modifier.width(80.dp)
                 )
             }
         }
 
-        // Weekly config
         if (trigger is WorkflowTrigger.Weekly) {
             val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
             Column(modifier = Modifier.padding(start = 48.dp)) {
@@ -324,10 +293,7 @@ private fun TriggerSection(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("at")
                     OutlinedTextField(
                         value = trigger.hour.toString().padStart(2, '0'),
@@ -335,9 +301,7 @@ private fun TriggerSection(
                             val h = v.filter { it.isDigit() }.take(2).toIntOrNull() ?: 0
                             onTriggerChanged(trigger.copy(hour = h.coerceIn(0, 23)))
                         },
-                        label = { Text("Hour") },
-                        singleLine = true,
-                        modifier = Modifier.width(80.dp)
+                        label = { Text("Hour") }, singleLine = true, modifier = Modifier.width(80.dp)
                     )
                     Text(":")
                     OutlinedTextField(
@@ -346,9 +310,7 @@ private fun TriggerSection(
                             val m = v.filter { it.isDigit() }.take(2).toIntOrNull() ?: 0
                             onTriggerChanged(trigger.copy(minute = m.coerceIn(0, 59)))
                         },
-                        label = { Text("Min") },
-                        singleLine = true,
-                        modifier = Modifier.width(80.dp)
+                        label = { Text("Min") }, singleLine = true, modifier = Modifier.width(80.dp)
                     )
                 }
             }
@@ -363,10 +325,7 @@ private fun OutputSection(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         WorkflowOutputType.entries.forEach { type ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 RadioButton(
                     selected = config.outputType == type,
                     onClick = { onConfigChanged(config.copy(outputType = type)) }
