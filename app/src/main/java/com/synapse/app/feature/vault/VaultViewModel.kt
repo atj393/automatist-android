@@ -3,69 +3,201 @@ package com.synapse.app.feature.vault
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.synapse.app.data.local.SettingsRepository
-import com.synapse.app.domain.models.ProviderType
+import com.synapse.app.domain.models.*
+import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.platform.security.SecureStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.UUID
 import javax.inject.Inject
+
+data class VaultUiState(
+    // Provider API keys
+    val providerKeyStatus: Map<ProviderType, Boolean> = emptyMap(),
+    val activeProvider: ProviderType = ProviderType.FAKE,
+
+    // Service keys
+    val serviceKeyStatus: Map<String, Boolean> = emptyMap(),
+
+    // Provider profiles
+    val profiles: List<ProviderProfile> = emptyList(),
+
+    // Profile editor
+    val isProfileEditorOpen: Boolean = false,
+    val editingProfile: ProviderProfile? = null,
+    val profileEditorName: String = "",
+    val profileEditorProvider: ProviderType = ProviderType.OPENAI,
+    val profileEditorModel: String = "",
+    val profileEditorError: String? = null
+)
 
 @HiltViewModel
 class VaultViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
-    private val secureStorage: SecureStorage
+    private val secureStorage: SecureStorage,
+    private val workflowRepository: WorkflowRepository
 ) : ViewModel() {
 
-    val appSettings = settingsRepository.settings.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = null
-    )
+    companion object {
+        val SERVICE_KEYS = listOf(
+            ServiceKeyInfo("openweathermap", "OpenWeatherMap", "Weather data for workflows"),
+            ServiceKeyInfo("openrouteservice", "OpenRouteService", "Route and commute time data")
+        )
+    }
 
-    private val _apiKeys = MutableStateFlow<Map<ProviderType, Boolean>>(emptyMap())
-    val apiKeysLoaded = _apiKeys.asStateFlow()
+    data class ServiceKeyInfo(val id: String, val displayName: String, val description: String)
+
+    private val _state = MutableStateFlow(VaultUiState())
+    val state = _state.asStateFlow()
+
+    private val profiles = workflowRepository.getAllProfiles()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     init {
-        loadKeysStatus()
-    }
-
-    private fun loadKeysStatus() {
+        loadAllStatus()
         viewModelScope.launch {
-            val status = mutableMapOf<ProviderType, Boolean>()
-            ProviderType.entries.filter { it != ProviderType.FAKE }.forEach { provider ->
-                val key = secureStorage.getApiKey(provider)
-                status[provider] = !key.isNullOrBlank()
+            profiles.collect { profileList ->
+                _state.update { it.copy(profiles = profileList) }
             }
-            _apiKeys.value = status
+        }
+        viewModelScope.launch {
+            settingsRepository.settings.collect { settings ->
+                _state.update { it.copy(activeProvider = settings.activeProvider) }
+            }
         }
     }
+
+    private fun loadAllStatus() {
+        viewModelScope.launch {
+            // Provider API keys
+            val providerStatus = mutableMapOf<ProviderType, Boolean>()
+            ProviderType.entries.filter { it != ProviderType.FAKE }.forEach { provider ->
+                providerStatus[provider] = !secureStorage.getApiKey(provider).isNullOrBlank()
+            }
+
+            // Service keys
+            val serviceStatus = mutableMapOf<String, Boolean>()
+            SERVICE_KEYS.forEach { info ->
+                serviceStatus[info.id] = !secureStorage.getServiceKey(info.id).isNullOrBlank()
+            }
+
+            _state.update { it.copy(providerKeyStatus = providerStatus, serviceKeyStatus = serviceStatus) }
+        }
+    }
+
+    // ── Provider API Keys ──
 
     fun setActiveProvider(provider: ProviderType) {
-        viewModelScope.launch {
-            settingsRepository.setActiveProvider(provider)
-        }
+        viewModelScope.launch { settingsRepository.setActiveProvider(provider) }
     }
 
-    fun saveApiKey(provider: ProviderType, key: String) {
+    fun saveProviderKey(provider: ProviderType, key: String) {
         viewModelScope.launch {
             secureStorage.saveApiKey(provider, key)
-            loadKeysStatus()
+            loadAllStatus()
         }
     }
 
-    fun removeApiKey(provider: ProviderType) {
+    fun removeProviderKey(provider: ProviderType) {
         viewModelScope.launch {
             secureStorage.clearApiKey(provider)
-            loadKeysStatus()
-            
-            // Revert safely back to Sandbox FAKE variant if their live configured variant deletes entirely
-            if (appSettings.value?.activeProvider == provider) {
-                setActiveProvider(ProviderType.FAKE)
+            if (_state.value.activeProvider == provider) {
+                settingsRepository.setActiveProvider(ProviderType.FAKE)
             }
+            loadAllStatus()
         }
+    }
+
+    // ── Service Keys ──
+
+    fun saveServiceKey(serviceId: String, key: String) {
+        viewModelScope.launch {
+            secureStorage.saveServiceKey(serviceId, key)
+            loadAllStatus()
+        }
+    }
+
+    fun removeServiceKey(serviceId: String) {
+        viewModelScope.launch {
+            secureStorage.clearServiceKey(serviceId)
+            loadAllStatus()
+        }
+    }
+
+    // ── Provider Profiles ──
+
+    fun openNewProfile() {
+        _state.update {
+            it.copy(
+                isProfileEditorOpen = true,
+                editingProfile = null,
+                profileEditorName = "",
+                profileEditorProvider = ProviderType.OPENAI,
+                profileEditorModel = ProviderModels.defaultModelFor(ProviderType.OPENAI),
+                profileEditorError = null
+            )
+        }
+    }
+
+    fun openEditProfile(profile: ProviderProfile) {
+        _state.update {
+            it.copy(
+                isProfileEditorOpen = true,
+                editingProfile = profile,
+                profileEditorName = profile.name,
+                profileEditorProvider = profile.providerType,
+                profileEditorModel = profile.modelId,
+                profileEditorError = null
+            )
+        }
+    }
+
+    fun closeProfileEditor() {
+        _state.update { it.copy(isProfileEditorOpen = false, profileEditorError = null) }
+    }
+
+    fun updateProfileName(name: String) = _state.update { it.copy(profileEditorName = name) }
+    fun updateProfileProvider(provider: ProviderType) = _state.update {
+        it.copy(
+            profileEditorProvider = provider,
+            profileEditorModel = ProviderModels.defaultModelFor(provider)
+        )
+    }
+    fun updateProfileModel(model: String) = _state.update { it.copy(profileEditorModel = model) }
+
+    fun saveProfile() {
+        val current = _state.value
+        if (current.profileEditorName.isBlank()) {
+            _state.update { it.copy(profileEditorError = "Name is required.") }
+            return
+        }
+
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val existing = current.editingProfile
+
+            val profile = ProviderProfile(
+                id = existing?.id ?: UUID.randomUUID().toString(),
+                name = current.profileEditorName.trim(),
+                providerType = current.profileEditorProvider,
+                modelId = current.profileEditorModel,
+                isDefault = existing?.isDefault ?: (current.profiles.isEmpty()),
+                isEnabled = true,
+                createdAtMillis = existing?.createdAtMillis ?: now,
+                updatedAtMillis = now
+            )
+
+            workflowRepository.saveProfile(profile)
+            _state.update { it.copy(isProfileEditorOpen = false, profileEditorError = null) }
+        }
+    }
+
+    fun deleteProfile(id: String) {
+        viewModelScope.launch { workflowRepository.deleteProfile(id) }
+    }
+
+    fun setDefaultProfile(id: String) {
+        viewModelScope.launch { workflowRepository.setDefaultProfile(id) }
     }
 }

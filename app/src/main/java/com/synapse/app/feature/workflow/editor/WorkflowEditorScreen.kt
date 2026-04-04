@@ -116,7 +116,8 @@ fun WorkflowEditorScreen(
                 actions = state.actions,
                 onActionsChanged = viewModel::updateActions,
                 availableNotes = availableNotes,
-                availableWorkflows = availableWorkflows
+                availableWorkflows = availableWorkflows,
+                readinessEvaluator = viewModel.readinessEvaluator
             )
 
             // ── Section 4: Processing Instructions ──

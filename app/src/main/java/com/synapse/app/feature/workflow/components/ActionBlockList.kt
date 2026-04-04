@@ -7,11 +7,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.models.SavedNote
 import com.synapse.app.domain.models.WorkflowAction
 import com.synapse.app.domain.models.WorkflowActionType
 import com.synapse.app.domain.models.WorkflowTemplate
+import com.synapse.app.domain.readiness.ReadinessEvaluator
 import java.util.UUID
 
 @Composable
@@ -19,9 +19,10 @@ fun ActionBlockList(
     actions: List<WorkflowAction>,
     onActionsChanged: (List<WorkflowAction>) -> Unit,
     availableNotes: List<SavedNote> = emptyList(),
-    availableWorkflows: List<WorkflowTemplate> = emptyList()
+    availableWorkflows: List<WorkflowTemplate> = emptyList(),
+    readinessEvaluator: ReadinessEvaluator? = null
 ) {
-    var showTypeDialog by remember { mutableStateOf(false) }
+    var showCatalog by remember { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         actions.forEachIndexed { index, action ->
@@ -56,9 +57,9 @@ fun ActionBlockList(
             )
         }
 
-        // Add action button
+        // Add action button — opens the full-screen Action Catalog
         OutlinedButton(
-            onClick = { showTypeDialog = true },
+            onClick = { showCatalog = true },
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -67,53 +68,19 @@ fun ActionBlockList(
         }
     }
 
-    if (showTypeDialog) {
-        AlertDialog(
-            onDismissRequest = { showTypeDialog = false },
-            title = { Text("Choose Action Type") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Group action types by category for better organization
-                    WorkflowActionRegistry.getTypesByCategory().forEach { (category, types) ->
-                        Text(
-                            category.label,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                        )
-                        types.forEach { info ->
-                            TextButton(
-                                onClick = {
-                                    val newAction = WorkflowAction(
-                                        id = UUID.randomUUID().toString(),
-                                        type = info.type,
-                                        order = actions.size
-                                    )
-                                    onActionsChanged(actions + newAction)
-                                    showTypeDialog = false
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.fillMaxWidth()) {
-                                    Text(info.displayName, style = MaterialTheme.typography.bodyLarge)
-                                    Text(
-                                        info.description,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+    // Action Catalog (full-screen bottom sheet)
+    if (showCatalog) {
+        ActionCatalog(
+            readinessEvaluator = readinessEvaluator,
+            onSelectAction = { type ->
+                val newAction = WorkflowAction(
+                    id = UUID.randomUUID().toString(),
+                    type = type,
+                    order = actions.size
+                )
+                onActionsChanged(actions + newAction)
             },
-            confirmButton = {
-                TextButton(onClick = { showTypeDialog = false }) {
-                    Text("Cancel")
-                }
-            }
+            onDismiss = { showCatalog = false }
         )
     }
 }
-
-// Description now provided by WorkflowActionRegistry

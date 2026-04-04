@@ -259,6 +259,22 @@ app/src/main/java/com/synapse/app/
 
 Each provider: fetches key from `SecureStorage` → builds system prompt (or uses `systemPromptOverride`) → calls API → returns `TransformResult`.
 
+### Readiness System
+
+**`ReadinessEvaluator`** — singleton that dynamically checks if actions/workflows are ready to run by querying `SecureStorage` and `WorkflowRepository`. Returns `ActionReadiness` (per-action) or `WorkflowReadiness` (per-workflow).
+
+**Requirement types:** `SERVICE_KEY` (weather, route APIs), `API_KEY` (AI provider), `PERMISSION` (future: calendar, location), `NONE`.
+
+**Used by:** Action Catalog (dynamic badges), workflow editor, template preview. Badges show "Ready" (green) or "Needs Setup" (orange) based on actual configuration state.
+
+### Settings Structure
+
+**Settings (VaultScreen)** organized into 4 sections:
+1. **AI Provider Profiles** — named provider+model configurations (CRUD), one set as default
+2. **Provider API Keys** — per-provider AI keys (OpenAI, Anthropic, Gemini)
+3. **Service API Keys** — external service keys (OpenWeatherMap, OpenRouteService)
+4. **Active Provider (Legacy)** — fallback provider selection for legacy screens
+
 ### Transform Types
 
 | Enum | Used By |
@@ -394,6 +410,8 @@ Users can create workflows from curated templates OR from scratch. Templates are
 **External service API keys** stored in `SecureStorage.saveServiceKey(service, key)` — separate from AI provider keys. Services: `openweathermap`, `openrouteservice`.
 
 **Action system architecture:** `WorkflowActionRegistry` centralizes metadata, validation, and summary generation per action type. Editor composables and executor methods are dispatched per type. Adding a new action type requires changes to: (1) enum, (2) registry entry, (3) executor method, (4) editor composable.
+
+**Action Catalog UX:** The "Add Action" flow uses a full-screen `ModalBottomSheet` (`ActionCatalog.kt`) with category-grouped cards, expandable detail views, search, readiness badges, and "Add to Workflow" buttons. Categories: Daily Life, News & Web, Notes & Text, Data & APIs, Workflow.
 
 **Saved Notes Manager:** Dedicated screen for CRUD operations on reusable notes. Notes are stored in Room (`saved_notes` table) and can be referenced by workflows via `SavedNoteReference` in action `extraConfig`.
 
