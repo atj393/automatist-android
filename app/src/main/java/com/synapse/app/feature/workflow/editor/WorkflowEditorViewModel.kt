@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.*
 import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.models.*
+import com.synapse.app.domain.readiness.ReadinessEvaluator
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.domain.templates.BuiltInTemplates
 import com.synapse.app.platform.automation.WorkflowWorker
@@ -44,6 +45,7 @@ data class EditorUiState(
 @HiltViewModel
 class WorkflowEditorViewModel @Inject constructor(
     private val repository: WorkflowRepository,
+    val readinessEvaluator: ReadinessEvaluator,
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
