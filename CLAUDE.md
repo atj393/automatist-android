@@ -353,10 +353,11 @@ Users can create workflows from curated templates OR from scratch. Templates are
 
 **Seeded sample:** "Article Briefing" workflow auto-created for new users as a useful starter.
 
-### Built-In Templates (6)
+### Built-In Templates (7)
 
 | Template | Category | Default Trigger | Key Actions |
 |----------|----------|-----------------|-------------|
+| Morning Commute Brief | Daily Routines | Daily 7:00 | Weather + Route + RSS |
 | Morning Brief | News & Content | Daily 8:00 | RSS feed |
 | Article Transformer | Communication | Manual | Paste text |
 | Meeting Strategist | Communication | Manual | Paste text |
@@ -387,6 +388,10 @@ Users can create workflows from curated templates OR from scratch. Templates are
 - `USE_SAVED_NOTE` — references a reusable saved note (stored in `saved_notes` table) or inline text
 - `USE_PREVIOUS_OUTPUT` — uses output from another workflow's latest successful run or a specific run
 - `FETCH_RSS_MULTI` — pulls and merges items from multiple RSS/Atom feeds with deduplication, keyword filtering, and configurable item limits
+- `FETCH_WEATHER` — fetches current weather for a location via OpenWeatherMap API; extracts temperature, humidity, conditions into structured text
+- `FETCH_ROUTE_TIME` — fetches travel time and distance between two locations via OpenRouteService API; supports driving, walking, cycling modes with geocoding
+
+**External service API keys** stored in `SecureStorage.saveServiceKey(service, key)` — separate from AI provider keys. Services: `openweathermap`, `openrouteservice`.
 
 **Action system architecture:** `WorkflowActionRegistry` centralizes metadata, validation, and summary generation per action type. Editor composables and executor methods are dispatched per type. Adding a new action type requires changes to: (1) enum, (2) registry entry, (3) executor method, (4) editor composable.
 

@@ -108,6 +108,8 @@ fun ActionBlockEditor(
                         WorkflowActionType.USE_SAVED_NOTE -> SavedNoteEditor(action, onUpdate, availableNotes)
                         WorkflowActionType.USE_PREVIOUS_OUTPUT -> PreviousOutputEditor(action, onUpdate, availableWorkflows)
                         WorkflowActionType.FETCH_RSS_MULTI -> MultiFeedRssEditor(action, onUpdate)
+                        WorkflowActionType.FETCH_WEATHER -> WeatherEditor(action, onUpdate)
+                        WorkflowActionType.FETCH_ROUTE_TIME -> RouteTimeEditor(action, onUpdate)
                     }
 
                     // Per-action instruction (common to all types)
@@ -486,6 +488,101 @@ private fun MultiFeedRssEditor(action: WorkflowAction, onUpdate: (WorkflowAction
         )
         Text("Deduplicate by title", style = MaterialTheme.typography.bodySmall)
     }
+}
+
+// ── Weather Editor ──
+
+@Composable
+private fun WeatherEditor(action: WorkflowAction, onUpdate: (WorkflowAction) -> Unit) {
+    val config = remember(action.extraConfig) {
+        if (action.extraConfig.isNotBlank()) {
+            try { json.decodeFromString<WeatherConfig>(action.extraConfig) }
+            catch (_: Exception) { WeatherConfig() }
+        } else WeatherConfig()
+    }
+
+    fun updateConfig(newConfig: WeatherConfig) {
+        onUpdate(action.copy(extraConfig = json.encodeToString(newConfig)))
+    }
+
+    OutlinedTextField(
+        value = config.location,
+        onValueChange = { updateConfig(config.copy(location = it)) },
+        label = { Text("Location *") },
+        placeholder = { Text("e.g. New York, 10001, or 40.71,-74.00") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Units:", style = MaterialTheme.typography.bodySmall)
+        WeatherUnits.entries.forEach { unit ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(
+                    selected = config.units == unit,
+                    onClick = { updateConfig(config.copy(units = unit)) }
+                )
+                Text(unit.displayName, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+
+    Text(
+        "Requires OpenWeatherMap API key (free tier). Configure in Settings.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+    )
+}
+
+// ── Route/Commute Editor ──
+
+@Composable
+private fun RouteTimeEditor(action: WorkflowAction, onUpdate: (WorkflowAction) -> Unit) {
+    val config = remember(action.extraConfig) {
+        if (action.extraConfig.isNotBlank()) {
+            try { json.decodeFromString<RouteConfig>(action.extraConfig) }
+            catch (_: Exception) { RouteConfig() }
+        } else RouteConfig()
+    }
+
+    fun updateConfig(newConfig: RouteConfig) {
+        onUpdate(action.copy(extraConfig = json.encodeToString(newConfig)))
+    }
+
+    OutlinedTextField(
+        value = config.origin,
+        onValueChange = { updateConfig(config.copy(origin = it)) },
+        label = { Text("Origin *") },
+        placeholder = { Text("e.g. Home address or 40.71,-74.00") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    OutlinedTextField(
+        value = config.destination,
+        onValueChange = { updateConfig(config.copy(destination = it)) },
+        label = { Text("Destination *") },
+        placeholder = { Text("e.g. Office address or 40.75,-73.99") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Text("Travel mode:", style = MaterialTheme.typography.bodySmall)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        TravelMode.entries.forEach { mode ->
+            FilterChip(
+                selected = config.travelMode == mode,
+                onClick = { updateConfig(config.copy(travelMode = mode)) },
+                label = { Text(mode.displayName, style = MaterialTheme.typography.labelSmall) }
+            )
+        }
+    }
+
+    Text(
+        "Requires OpenRouteService API key (free tier). Configure in Settings.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+    )
 }
 
 // ── Collapsed summary — delegates to registry ──
