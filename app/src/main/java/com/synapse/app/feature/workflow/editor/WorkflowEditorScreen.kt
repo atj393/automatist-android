@@ -4,16 +4,20 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.models.*
+import com.synapse.app.domain.readiness.WorkflowReadiness
 import com.synapse.app.feature.workflow.components.ActionBlockList
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -22,11 +26,24 @@ fun WorkflowEditorScreen(
     onBack: () -> Unit,
     onSaved: (Long) -> Unit,
     onTestRun: (Long) -> Unit,
+    onNavigateToSettings: () -> Unit = {},
     viewModel: WorkflowEditorViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val availableNotes by viewModel.availableNotes.collectAsState()
     val availableWorkflows by viewModel.availableWorkflows.collectAsState()
+
+    // Refresh readiness when returning from Settings
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshReadiness()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Navigate on save
     LaunchedEffect(state.savedTemplateId) {
@@ -77,6 +94,12 @@ fun WorkflowEditorScreen(
                 )
             }
 
+            // ── Readiness Bar ──
+            ReadinessBar(
+                readiness = state.workflowReadiness,
+                onSetup = onNavigateToSettings
+            )
+
             // ── Section 1: Basic Info ──
             SectionHeader("1", "Basic Info")
 
@@ -117,7 +140,8 @@ fun WorkflowEditorScreen(
                 onActionsChanged = viewModel::updateActions,
                 availableNotes = availableNotes,
                 availableWorkflows = availableWorkflows,
-                readinessEvaluator = viewModel.readinessEvaluator
+                readinessEvaluator = viewModel.readinessEvaluator,
+                onNavigateToSettings = onNavigateToSettings
             )
 
             // ── Section 4: Processing Instructions ──
@@ -332,6 +356,59 @@ private fun OutputSection(
                     onClick = { onConfigChanged(config.copy(outputType = type)) }
                 )
                 Text(type.displayName)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadinessBar(
+    readiness: WorkflowReadiness?,
+    onSetup: () -> Unit
+) {
+    if (readiness == null) return
+
+    val containerColor = if (readiness.isFullyReady)
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+    else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
+
+    val contentColor = if (readiness.isFullyReady)
+        MaterialTheme.colorScheme.onPrimaryContainer
+    else MaterialTheme.colorScheme.onErrorContainer
+
+    Card(colors = CardDefaults.cardColors(containerColor = containerColor)) {
+        Row(
+            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                if (readiness.isFullyReady) Icons.Default.CheckCircle else Icons.Default.Warning,
+                null,
+                tint = contentColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                if (readiness.isFullyReady) {
+                    Text("Ready to run", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, color = contentColor)
+                } else {
+                    val setupCount = readiness.needsSetupActions.size
+                    Text(
+                        "$setupCount action(s) need setup",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = contentColor
+                    )
+                    val names = readiness.needsSetupActions.joinToString(", ") {
+                        WorkflowActionRegistry.getInfo(it.type).displayName
+                    }
+                    Text(names, style = MaterialTheme.typography.bodySmall, color = contentColor.copy(alpha = 0.8f))
+                }
+            }
+            if (!readiness.isFullyReady) {
+                TextButton(onClick = onSetup) {
+                    Text("Fix in Settings", color = contentColor)
+                }
             }
         }
     }

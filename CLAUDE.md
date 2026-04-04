@@ -265,7 +265,20 @@ Each provider: fetches key from `SecureStorage` → builds system prompt (or use
 
 **Requirement types:** `SERVICE_KEY` (weather, route APIs), `API_KEY` (AI provider), `PERMISSION` (future: calendar, location), `NONE`.
 
-**Used by:** Action Catalog (dynamic badges), workflow editor, template preview. Badges show "Ready" (green) or "Needs Setup" (orange) based on actual configuration state.
+**Used by:**
+- Action Catalog — dynamic badges + "Set Up" CTA navigating to Settings
+- Workflow editor — readiness bar at top ("Ready to run" or "X actions need setup" with "Fix in Settings" CTA)
+- Template browser — per-template readiness badges ("Ready" or "Setup" chip)
+
+**Legacy auto-migration:** When Settings opens and no profiles exist but legacy activeProvider has a configured API key, a default profile is auto-created.
+
+**Settings deep-linking:** `SettingsSection` enum (PROFILES, PROVIDER_KEYS, SERVICE_KEYS, LEGACY) allows navigation directly to a specific Settings section via `vault?section={key}`.
+
+**Execution preflight:** Before running a workflow, `WorkflowRunViewModel` evaluates readiness and blocks execution with a clear setup-required screen if critical configuration is missing. The blocking screen lists missing requirements and offers a "Open Settings" CTA.
+
+**Template quick-setup:** When using a template that needs setup, a dialog shows what's missing with "Set Up Now" (→ Settings) and "Continue Anyway" options.
+
+**Reactive readiness:** Editor screen refreshes readiness on `ON_RESUME` lifecycle event (e.g., after returning from Settings).
 
 ### Settings Structure
 

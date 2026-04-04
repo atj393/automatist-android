@@ -14,18 +14,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.synapse.app.domain.readiness.ReadinessEvaluator
+import com.synapse.app.domain.readiness.WorkflowReadiness
 import com.synapse.app.domain.templates.BuiltInTemplates
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WorkflowTemplatesScreen(
     onBack: () -> Unit,
-    onUseTemplate: (String) -> Unit, // passes built-in template ID
+    onUseTemplate: (String) -> Unit,
     onNavigateToMyWorkflows: () -> Unit,
-    onCreateBlank: () -> Unit = {}
+    onCreateBlank: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
+    viewModel: WorkflowTemplatesViewModel = hiltViewModel()
 ) {
+    val readinessEvaluator = viewModel.readinessEvaluator
     val templates = remember { BuiltInTemplates.ALL }
     val categories = remember { BuiltInTemplates.CATEGORIES }
+
+    // Evaluate readiness for all templates
+    val scope = rememberCoroutineScope()
+    var readinessMap by remember { mutableStateOf<Map<String, WorkflowReadiness>>(emptyMap()) }
+    LaunchedEffect(readinessEvaluator) {
+        if (readinessEvaluator != null) {
+            scope.launch {
+                val map = mutableMapOf<String, WorkflowReadiness>()
+                templates.forEach { t ->
+                    map[t.id] = readinessEvaluator.evaluateWorkflow(t.blueprint)
+                }
+                readinessMap = map
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -92,7 +114,9 @@ fun WorkflowTemplatesScreen(
                     items(categoryTemplates, key = { it.id }) { template ->
                         TemplateCard(
                             template = template,
-                            onUse = { onUseTemplate(template.id) }
+                            readiness = readinessMap[template.id],
+                            onUse = { onUseTemplate(template.id) },
+                            onSetup = onNavigateToSettings
                         )
                     }
                 }
@@ -104,9 +128,12 @@ fun WorkflowTemplatesScreen(
 @Composable
 private fun TemplateCard(
     template: BuiltInTemplates.BuiltInTemplate,
-    onUse: () -> Unit
+    readiness: WorkflowReadiness? = null,
+    onUse: () -> Unit,
+    onSetup: () -> Unit = {}
 ) {
     var showDetail by remember { mutableStateOf(false) }
+    var showSetupDialog by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth().clickable { showDetail = !showDetail },
@@ -140,6 +167,33 @@ private fun TemplateCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                // Readiness badge
+                if (readiness != null) {
+                    Spacer(Modifier.width(8.dp))
+                    if (readiness.isFullyReady) {
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("Ready", style = MaterialTheme.typography.labelSmall) },
+                            leadingIcon = { Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(14.dp)) },
+                            modifier = Modifier.height(26.dp),
+                            colors = AssistChipDefaults.assistChipColors(
+                                labelColor = MaterialTheme.colorScheme.primary,
+                                leadingIconContentColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                    } else {
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("Setup", style = MaterialTheme.typography.labelSmall) },
+                            leadingIcon = { Icon(Icons.Default.Info, null, modifier = Modifier.size(14.dp)) },
+                            modifier = Modifier.height(26.dp),
+                            colors = AssistChipDefaults.assistChipColors(
+                                labelColor = MaterialTheme.colorScheme.tertiary,
+                                leadingIconContentColor = MaterialTheme.colorScheme.tertiary
+                            )
+                        )
+                    }
+                }
             }
 
             if (showDetail) {
@@ -172,9 +226,13 @@ private fun TemplateCard(
                 Spacer(Modifier.height(12.dp))
             }
 
-            // CTA button
+            // CTA button — show quick-setup dialog if not ready
+            val needsSetup = readiness != null && !readiness.isFullyReady
             Button(
-                onClick = onUse,
+                onClick = {
+                    if (needsSetup) showSetupDialog = true
+                    else onUse()
+                },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
@@ -182,6 +240,40 @@ private fun TemplateCard(
                 Text("Use Template")
             }
         }
+    }
+
+    // Quick-setup dialog
+    if (showSetupDialog && readiness != null) {
+        val issues = readiness.needsSetupActions.map { ar ->
+            com.synapse.app.domain.actions.WorkflowActionRegistry.getInfo(ar.type).displayName +
+                ": " + ar.requirements.filter { it.status == com.synapse.app.domain.readiness.ReadinessStatus.NEEDS_SETUP }
+                    .joinToString(", ") { it.requirement.label }
+        }
+        AlertDialog(
+            onDismissRequest = { showSetupDialog = false },
+            title = { Text("Setup Needed") },
+            text = {
+                Column {
+                    Text("This template needs some configuration before it can run:")
+                    Spacer(Modifier.height(8.dp))
+                    issues.forEach { issue ->
+                        Text("- $issue", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("You can set this up now or continue and configure later.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showSetupDialog = false; onSetup() }) {
+                    Text("Set Up Now")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSetupDialog = false; onUse() }) {
+                    Text("Continue Anyway")
+                }
+            }
+        )
     }
 }
 

@@ -20,7 +20,8 @@ fun ActionBlockList(
     onActionsChanged: (List<WorkflowAction>) -> Unit,
     availableNotes: List<SavedNote> = emptyList(),
     availableWorkflows: List<WorkflowTemplate> = emptyList(),
-    readinessEvaluator: ReadinessEvaluator? = null
+    readinessEvaluator: ReadinessEvaluator? = null,
+    onNavigateToSettings: () -> Unit = {}
 ) {
     var showCatalog by remember { mutableStateOf(false) }
 
@@ -72,6 +73,7 @@ fun ActionBlockList(
     if (showCatalog) {
         ActionCatalog(
             readinessEvaluator = readinessEvaluator,
+            onNavigateToSettings = onNavigateToSettings,
             onSelectAction = { type ->
                 val newAction = WorkflowAction(
                     id = UUID.randomUUID().toString(),
