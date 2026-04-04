@@ -22,6 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun WorkflowRunScreen(
     onBack: () -> Unit,
+    onNavigateToSettings: () -> Unit = {},
     viewModel: WorkflowRunViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -42,6 +43,52 @@ fun WorkflowRunScreen(
         if (state.isLoading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
+            }
+            return@Scaffold
+        }
+
+        // Blocked by missing setup
+        if (state.isBlockedBySetup) {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                    Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Setup Required",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "This workflow cannot run because some actions need configuration:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        state.setupIssues.forEach { issue ->
+                            Text(
+                                "- $issue",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+                Button(onClick = onNavigateToSettings, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Settings, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Open Settings")
+                }
+                OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+                    Text("Go Back")
+                }
             }
             return@Scaffold
         }

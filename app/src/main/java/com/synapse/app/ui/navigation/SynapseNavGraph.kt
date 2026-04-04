@@ -20,6 +20,7 @@ import com.synapse.app.feature.workflow.editor.WorkflowEditorScreen
 import com.synapse.app.feature.workflow.run.WorkflowRunScreen
 import com.synapse.app.feature.workflow.run.WorkflowRunDetailScreen
 import com.synapse.app.feature.workflow.templates.WorkflowTemplatesScreen
+import com.synapse.app.feature.vault.SettingsSection
 import com.synapse.app.feature.notes.NotesScreen
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -91,8 +92,12 @@ fun SynapseNavGraph(
             BriefScreen(onBack = { navController.popBackStack() })
         }
 
-        composable(Routes.VAULT) {
-            VaultScreen(onBack = { navController.popBackStack() })
+        composable(
+            "${Routes.VAULT}?section={section}",
+            arguments = listOf(navArgument("section") { type = NavType.StringType; defaultValue = "" })
+        ) { backStackEntry ->
+            val section = backStackEntry.arguments?.getString("section") ?: ""
+            VaultScreen(onBack = { navController.popBackStack() }, initialSection = section)
         }
 
         // ── Workflow Templates (browse built-in templates) ──
@@ -104,7 +109,8 @@ fun SynapseNavGraph(
                     navController.navigate("${Routes.WORKFLOW_EDITOR}?sourceTemplateId=$builtInId")
                 },
                 onNavigateToMyWorkflows = { navController.navigate(Routes.WORKFLOW_LIST) },
-                onCreateBlank = { navController.navigate(Routes.WORKFLOW_EDITOR) }
+                onCreateBlank = { navController.navigate(Routes.WORKFLOW_EDITOR) },
+                onNavigateToSettings = { navController.navigate("${Routes.VAULT}?section=${SettingsSection.SERVICE_KEYS.key}") }
             )
         }
 
@@ -136,12 +142,16 @@ fun SynapseNavGraph(
                     navController.popBackStack()
                     navController.navigate(Routes.WORKFLOW_LIST)
                 },
-                onTestRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") }
+                onTestRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
+                onNavigateToSettings = { navController.navigate("${Routes.VAULT}?section=${SettingsSection.SERVICE_KEYS.key}") }
             )
         }
 
         composable("${Routes.WORKFLOW_RUN}/{templateId}", arguments = listOf(navArgument("templateId") { type = NavType.LongType })) {
-            WorkflowRunScreen(onBack = { navController.popBackStack() })
+            WorkflowRunScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToSettings = { navController.navigate("${Routes.VAULT}?section=${SettingsSection.SERVICE_KEYS.key}") }
+            )
         }
 
         composable("${Routes.WORKFLOW_RUN_DETAIL}/{runId}", arguments = listOf(navArgument("runId") { type = NavType.LongType })) { backStackEntry ->

@@ -3,9 +3,12 @@ package com.synapse.app.feature.workflow.run
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.engine.ExecutionState
 import com.synapse.app.domain.engine.WorkflowExecutionEngine
 import com.synapse.app.domain.models.*
+import com.synapse.app.domain.readiness.ReadinessEvaluator
+import com.synapse.app.domain.readiness.WorkflowReadiness
 import com.synapse.app.domain.repositories.WorkflowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +30,10 @@ data class RunUiState(
     val errorMessage: String? = null,
     val isCompleted: Boolean = false,
     val isFailed: Boolean = false,
-    val runId: Long? = null
+    val runId: Long? = null,
+    // Preflight
+    val isBlockedBySetup: Boolean = false,
+    val setupIssues: List<String> = emptyList()
 )
 
 data class StageInfo(
@@ -42,6 +48,7 @@ enum class StageStatus { PENDING, RUNNING, COMPLETED, FAILED }
 class WorkflowRunViewModel @Inject constructor(
     private val repository: WorkflowRepository,
     private val engine: WorkflowExecutionEngine,
+    private val readinessEvaluator: ReadinessEvaluator,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -65,6 +72,24 @@ class WorkflowRunViewModel @Inject constructor(
                 isLoading = false,
                 templateName = template.name
             )
+
+            // Preflight readiness check
+            val readiness = readinessEvaluator.evaluateWorkflow(template)
+            if (!readiness.isFullyReady) {
+                val issues = readiness.needsSetupActions.map { ar ->
+                    val info = WorkflowActionRegistry.getInfo(ar.type)
+                    val missing = ar.requirements.filter { it.status == com.synapse.app.domain.readiness.ReadinessStatus.NEEDS_SETUP }
+                        .joinToString(", ") { it.requirement.label }
+                    "${info.displayName}: $missing"
+                }
+                _state.value = RunUiState(
+                    isLoading = false,
+                    templateName = template.name,
+                    isBlockedBySetup = true,
+                    setupIssues = issues
+                )
+                return@launch
+            }
 
             startRun(template)
         }
