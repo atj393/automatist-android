@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 fun ActionCatalog(
     readinessEvaluator: ReadinessEvaluator? = null,
     onSelectAction: (WorkflowActionType) -> Unit,
+    onNavigateToSettings: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val categorizedActions = remember { WorkflowActionRegistry.getTypesByCategory() }
@@ -131,6 +132,10 @@ fun ActionCatalog(
                                 onAdd = {
                                     onSelectAction(info.type)
                                     onDismiss()
+                                },
+                                onSetup = {
+                                    onDismiss()
+                                    onNavigateToSettings()
                                 }
                             )
                         }
@@ -149,7 +154,8 @@ private fun ActionCatalogCard(
     readiness: ActionReadiness?,
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
-    onAdd: () -> Unit
+    onAdd: () -> Unit,
+    onSetup: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onToggleExpand),
@@ -257,13 +263,30 @@ private fun ActionCatalogCard(
 
                     Spacer(Modifier.height(12.dp))
 
-                    Button(
-                        onClick = onAdd,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Add to Workflow")
+                    val needsSetup = readiness != null && !readiness.isReady
+
+                    if (needsSetup) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(onClick = onSetup, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.Settings, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Set Up")
+                            }
+                            Button(onClick = onAdd, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Add Anyway")
+                            }
+                        }
+                    } else {
+                        Button(
+                            onClick = onAdd,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Add to Workflow")
+                        }
                     }
                 }
             }

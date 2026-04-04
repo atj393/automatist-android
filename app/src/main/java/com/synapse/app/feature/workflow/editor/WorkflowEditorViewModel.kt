@@ -8,6 +8,7 @@ import androidx.work.*
 import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.models.*
 import com.synapse.app.domain.readiness.ReadinessEvaluator
+import com.synapse.app.domain.readiness.WorkflowReadiness
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.domain.templates.BuiltInTemplates
 import com.synapse.app.platform.automation.WorkflowWorker
@@ -39,7 +40,8 @@ data class EditorUiState(
     val sourceTemplateId: String = "",
     val sourceTemplateName: String = "",
     val category: String = "",
-    val defaultProfileId: String = ""
+    val defaultProfileId: String = "",
+    val workflowReadiness: WorkflowReadiness? = null
 )
 
 @HiltViewModel
@@ -132,6 +134,7 @@ class WorkflowEditorViewModel @Inject constructor(
                     )
                 }
             }
+            refreshReadiness()
         }
     }
 
@@ -139,10 +142,26 @@ class WorkflowEditorViewModel @Inject constructor(
     fun updateName(name: String) = _state.update { it.copy(name = name) }
     fun updateDescription(desc: String) = _state.update { it.copy(description = desc) }
     fun updateTrigger(trigger: WorkflowTrigger) = _state.update { it.copy(trigger = trigger) }
-    fun updateActions(actions: List<WorkflowAction>) = _state.update { it.copy(actions = actions) }
+    fun updateActions(actions: List<WorkflowAction>) {
+        _state.update { it.copy(actions = actions) }
+        refreshReadiness()
+    }
     fun updateGlobalInstruction(text: String) = _state.update { it.copy(globalInstruction = text) }
     fun updateNotifyOnCompletion(enabled: Boolean) = _state.update { it.copy(notifyOnCompletion = enabled) }
     fun updateOutputConfig(config: WorkflowOutputConfig) = _state.update { it.copy(outputConfig = config) }
+
+    fun refreshReadiness() {
+        viewModelScope.launch {
+            val current = _state.value
+            val template = WorkflowTemplate(
+                name = current.name,
+                actions = current.actions,
+                outputConfig = current.outputConfig
+            )
+            val readiness = readinessEvaluator.evaluateWorkflow(template)
+            _state.update { it.copy(workflowReadiness = readiness) }
+        }
+    }
 
     fun save() {
         val current = _state.value

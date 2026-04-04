@@ -3,6 +3,7 @@ package com.synapse.app.feature.vault
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -16,14 +17,25 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.synapse.app.domain.models.ProviderModels
 import com.synapse.app.domain.models.ProviderProfile
 import com.synapse.app.domain.models.ProviderType
+import kotlinx.coroutines.launch
+
+enum class SettingsSection(val key: String) {
+    PROFILES("section_profiles"),
+    PROVIDER_KEYS("section_provider_keys"),
+    SERVICE_KEYS("section_service_keys"),
+    LEGACY("section_legacy")
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultScreen(
     onBack: () -> Unit,
+    initialSection: String = "",
     viewModel: VaultViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -46,13 +58,30 @@ fun VaultScreen(
                 modifier = Modifier.padding(padding)
             )
         } else {
+            // Auto-scroll to target section
+            LaunchedEffect(initialSection) {
+                if (initialSection.isNotBlank()) {
+                    // Small delay for list to render
+                    kotlinx.coroutines.delay(300)
+                    val sectionIndex = when (initialSection) {
+                        SettingsSection.PROFILES.key -> 0
+                        SettingsSection.PROVIDER_KEYS.key -> 4 + (state.profiles.size.coerceAtLeast(1))
+                        SettingsSection.SERVICE_KEYS.key -> 7 + (state.profiles.size.coerceAtLeast(1))
+                        SettingsSection.LEGACY.key -> 10 + (state.profiles.size.coerceAtLeast(1))
+                        else -> 0
+                    }
+                    listState.animateScrollToItem(sectionIndex)
+                }
+            }
+
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
                 // ── Section 1: Provider Profiles ──
-                item { SectionTitle("AI Provider Profiles") }
+                item(key = SettingsSection.PROFILES.key) { SectionTitle("AI Provider Profiles") }
                 item {
                     Text(
                         "Configure AI provider and model combinations for your workflows.",
@@ -89,7 +118,7 @@ fun VaultScreen(
                 }
 
                 // ── Section 2: Provider API Keys ──
-                item { Spacer(Modifier.height(8.dp)); SectionTitle("Provider API Keys") }
+                item(key = SettingsSection.PROVIDER_KEYS.key) { Spacer(Modifier.height(8.dp)); SectionTitle("Provider API Keys") }
                 item {
                     Text(
                         "API keys are shared across all profiles using the same provider.",
@@ -110,7 +139,7 @@ fun VaultScreen(
                 }
 
                 // ── Section 3: Service API Keys ──
-                item { Spacer(Modifier.height(8.dp)); SectionTitle("Service API Keys") }
+                item(key = SettingsSection.SERVICE_KEYS.key) { Spacer(Modifier.height(8.dp)); SectionTitle("Service API Keys") }
                 item {
                     Text(
                         "External service keys for workflow actions like weather and route data.",
@@ -132,7 +161,7 @@ fun VaultScreen(
                 }
 
                 // ── Section 4: Legacy Provider ──
-                item { Spacer(Modifier.height(8.dp)); SectionTitle("Active Provider (Legacy)") }
+                item(key = SettingsSection.LEGACY.key) { Spacer(Modifier.height(8.dp)); SectionTitle("Active Provider (Legacy)") }
                 item {
                     Text(
                         "Fallback provider when no profile is set. Used by quick-access screens.",

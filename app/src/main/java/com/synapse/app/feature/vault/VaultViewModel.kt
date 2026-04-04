@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.synapse.app.data.local.SettingsRepository
 import com.synapse.app.domain.models.*
+import kotlinx.coroutines.flow.first
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.platform.security.SecureStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -56,6 +57,7 @@ class VaultViewModel @Inject constructor(
 
     init {
         loadAllStatus()
+        autoMigrateLegacyProvider()
         viewModelScope.launch {
             profiles.collect { profileList ->
                 _state.update { it.copy(profiles = profileList) }
@@ -65,6 +67,44 @@ class VaultViewModel @Inject constructor(
             settingsRepository.settings.collect { settings ->
                 _state.update { it.copy(activeProvider = settings.activeProvider) }
             }
+        }
+    }
+
+    /**
+     * Auto-create a provider profile from the legacy activeProvider if:
+     * - No profiles exist yet
+     * - The legacy activeProvider is a real cloud provider (not FAKE)
+     * - That provider has an API key configured
+     *
+     * This runs once on Settings open and creates a smooth migration path.
+     */
+    private fun autoMigrateLegacyProvider() {
+        viewModelScope.launch {
+            val existingProfiles = profiles.value
+            if (existingProfiles.isNotEmpty()) return@launch
+
+            val settings = settingsRepository.settings.first()
+            val provider = settings.activeProvider
+            if (provider == ProviderType.FAKE) return@launch
+
+            val hasKey = !secureStorage.getApiKey(provider).isNullOrBlank()
+            if (!hasKey) return@launch
+
+            val defaultModel = ProviderModels.defaultModelFor(provider)
+            val now = System.currentTimeMillis()
+
+            val profile = ProviderProfile(
+                id = UUID.randomUUID().toString(),
+                name = "${provider.displayName} (Migrated)",
+                providerType = provider,
+                modelId = defaultModel,
+                isDefault = true,
+                isEnabled = true,
+                createdAtMillis = now,
+                updatedAtMillis = now
+            )
+
+            workflowRepository.saveProfile(profile)
         }
     }
 
