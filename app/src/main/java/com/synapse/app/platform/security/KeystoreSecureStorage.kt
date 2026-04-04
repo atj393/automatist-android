@@ -38,4 +38,25 @@ class KeystoreSecureStorage @Inject constructor(
             prefs.remove(prefKey)
         }
     }
+
+    // External service API keys
+    override suspend fun saveServiceKey(service: String, key: String) {
+        val prefKey = stringPreferencesKey("service_key_$service")
+        context.secureDataStore.edit { prefs ->
+            prefs[prefKey] = key
+        }
+    }
+
+    override suspend fun getServiceKey(service: String): String? {
+        val prefKey = stringPreferencesKey("service_key_$service")
+        val prefs = context.secureDataStore.data.first()
+        return prefs[prefKey]
+    }
+
+    override suspend fun clearServiceKey(service: String) {
+        val prefKey = stringPreferencesKey("service_key_$service")
+        context.secureDataStore.edit { prefs ->
+            prefs.remove(prefKey)
+        }
+    }
 }

@@ -87,7 +87,9 @@ enum class WorkflowActionType(val displayName: String) {
     FETCH_API_GET("Fetch API (GET)"),
     USE_SAVED_NOTE("Saved Note"),
     USE_PREVIOUS_OUTPUT("Previous Workflow Output"),
-    FETCH_RSS_MULTI("Multi-Feed RSS")
+    FETCH_RSS_MULTI("Multi-Feed RSS"),
+    FETCH_WEATHER("Weather Data"),
+    FETCH_ROUTE_TIME("Route / Commute Time")
 }
 
 // ── Action Model ──
@@ -156,6 +158,49 @@ data class MultiFeedRssConfig(
     val deduplicateByTitle: Boolean = true,
     val sortNewestFirst: Boolean = true
 )
+
+// ── Weather Config ──
+
+@Serializable
+enum class WeatherUnits(val displayName: String) {
+    METRIC("Celsius"),
+    IMPERIAL("Fahrenheit")
+}
+
+@Serializable
+data class WeatherConfig(
+    val location: String = "",          // city name, zip code, or "lat,lon"
+    val units: WeatherUnits = WeatherUnits.METRIC,
+    val includeForecast: Boolean = false,
+    val forecastDays: Int = 1
+)
+
+object WeatherService {
+    const val SERVICE_KEY = "openweathermap"
+    const val BASE_URL = "https://api.openweathermap.org/data/2.5"
+}
+
+// ── Route Config ──
+
+@Serializable
+enum class TravelMode(val displayName: String) {
+    DRIVING("Driving"),
+    TRANSIT("Public Transit"),
+    WALKING("Walking"),
+    BICYCLING("Bicycling")
+}
+
+@Serializable
+data class RouteConfig(
+    val origin: String = "",            // address or "lat,lon"
+    val destination: String = "",       // address or "lat,lon"
+    val travelMode: TravelMode = TravelMode.DRIVING
+)
+
+object RouteService {
+    const val SERVICE_KEY = "openrouteservice"
+    const val BASE_URL = "https://api.openrouteservice.org"
+}
 
 // ── Saved Note ──
 
