@@ -4,11 +4,16 @@ import com.synapse.app.data.network.RssParser
 import com.synapse.app.domain.models.*
 import com.synapse.app.domain.providers.ArticleTransformProvider
 import com.synapse.app.domain.repositories.WorkflowRepository
+import com.synapse.app.platform.security.SecureStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -20,7 +25,8 @@ class WorkflowExecutionEngine @Inject constructor(
     private val transformProvider: ArticleTransformProvider,
     private val httpClient: OkHttpClient,
     private val rssParser: RssParser,
-    private val workflowRepository: WorkflowRepository
+    private val workflowRepository: WorkflowRepository,
+    private val secureStorage: SecureStorage
 ) {
 
     companion object {
@@ -148,6 +154,10 @@ class WorkflowExecutionEngine @Inject constructor(
             WorkflowActionType.USE_PREVIOUS_OUTPUT -> executePreviousOutput(action)
 
             WorkflowActionType.FETCH_RSS_MULTI -> executeMultiFeedRss(action)
+
+            WorkflowActionType.FETCH_WEATHER -> executeWeather(action)
+
+            WorkflowActionType.FETCH_ROUTE_TIME -> executeRouteTime(action)
         }
     }
 
@@ -398,6 +408,202 @@ class WorkflowExecutionEngine @Inject constructor(
             Result.success(result.take(MAX_CHARS_PER_ACTION))
         } catch (e: Exception) {
             Result.failure(Exception("Multi-feed RSS error: ${e.message}"))
+        }
+    }
+
+    // ── FETCH_WEATHER ──
+
+    private suspend fun executeWeather(action: WorkflowAction): Result<String> {
+        return try {
+            if (action.extraConfig.isBlank()) {
+                return Result.failure(Exception("No weather configuration provided"))
+            }
+
+            val config = json.decodeFromString<WeatherConfig>(action.extraConfig)
+            if (config.location.isBlank()) {
+                return Result.failure(Exception("Weather location is required"))
+            }
+
+            val apiKey = secureStorage.getServiceKey(WeatherService.SERVICE_KEY)
+            if (apiKey.isNullOrBlank()) {
+                return Result.failure(Exception("OpenWeatherMap API key not configured. Add it in Settings."))
+            }
+
+            val units = when (config.units) {
+                WeatherUnits.METRIC -> "metric"
+                WeatherUnits.IMPERIAL -> "imperial"
+            }
+
+            // Build current weather URL
+            val urlBuilder = "${WeatherService.BASE_URL}/weather".toHttpUrlOrNull()?.newBuilder()
+                ?: return Result.failure(Exception("Invalid weather API URL"))
+
+            urlBuilder.addQueryParameter("q", config.location)
+            urlBuilder.addQueryParameter("appid", apiKey)
+            urlBuilder.addQueryParameter("units", units)
+
+            val request = Request.Builder()
+                .url(urlBuilder.build())
+                .header("User-Agent", "Synapse/1.0")
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return Result.failure(Exception("Weather API returned HTTP ${response.code}: ${response.message}"))
+            }
+
+            val body = response.body?.string() ?: return Result.failure(Exception("Empty weather response"))
+
+            // Parse JSON and extract key weather fields
+            val weatherData = try {
+                val jsonObj = kotlinx.serialization.json.Json.parseToJsonElement(body)
+                val main = jsonObj.jsonObject["main"]?.jsonObject
+                val weather = jsonObj.jsonObject["weather"]?.jsonArray?.firstOrNull()?.jsonObject
+                val wind = jsonObj.jsonObject["wind"]?.jsonObject
+                val name = jsonObj.jsonObject["name"]?.jsonPrimitive?.content ?: config.location
+
+                val unitLabel = if (config.units == WeatherUnits.METRIC) "C" else "F"
+                val speedLabel = if (config.units == WeatherUnits.METRIC) "m/s" else "mph"
+
+                buildString {
+                    appendLine("Weather for $name:")
+                    main?.let { m ->
+                        m["temp"]?.jsonPrimitive?.content?.let { appendLine("  Temperature: $it°$unitLabel") }
+                        m["feels_like"]?.jsonPrimitive?.content?.let { appendLine("  Feels like: $it°$unitLabel") }
+                        m["humidity"]?.jsonPrimitive?.content?.let { appendLine("  Humidity: $it%") }
+                    }
+                    weather?.let { w ->
+                        w["description"]?.jsonPrimitive?.content?.let { appendLine("  Conditions: $it") }
+                    }
+                    wind?.let { w ->
+                        w["speed"]?.jsonPrimitive?.content?.let { appendLine("  Wind: $it $speedLabel") }
+                    }
+                }
+            } catch (_: Exception) {
+                // Fallback: return raw JSON for AI to parse
+                body.take(MAX_CHARS_PER_ACTION)
+            }
+
+            Result.success(weatherData.take(MAX_CHARS_PER_ACTION))
+        } catch (e: Exception) {
+            Result.failure(Exception("Weather error: ${e.message}"))
+        }
+    }
+
+    // ── FETCH_ROUTE_TIME ──
+
+    private suspend fun executeRouteTime(action: WorkflowAction): Result<String> {
+        return try {
+            if (action.extraConfig.isBlank()) {
+                return Result.failure(Exception("No route configuration provided"))
+            }
+
+            val config = json.decodeFromString<RouteConfig>(action.extraConfig)
+            if (config.origin.isBlank()) return Result.failure(Exception("Origin is required"))
+            if (config.destination.isBlank()) return Result.failure(Exception("Destination is required"))
+
+            val apiKey = secureStorage.getServiceKey(RouteService.SERVICE_KEY)
+            if (apiKey.isNullOrBlank()) {
+                return Result.failure(Exception("OpenRouteService API key not configured. Add it in Settings."))
+            }
+
+            // Use ORS directions API — geocode-capable via address strings
+            val profile = when (config.travelMode) {
+                TravelMode.DRIVING -> "driving-car"
+                TravelMode.TRANSIT -> "driving-car" // ORS free tier: no transit; fallback to driving
+                TravelMode.WALKING -> "foot-walking"
+                TravelMode.BICYCLING -> "cycling-regular"
+            }
+
+            // ORS geocode search for origin
+            val originCoords = geocodeLocation(config.origin, apiKey)
+                ?: return Result.failure(Exception("Could not geocode origin: ${config.origin}"))
+            val destCoords = geocodeLocation(config.destination, apiKey)
+                ?: return Result.failure(Exception("Could not geocode destination: ${config.destination}"))
+
+            // ORS directions
+            val dirUrl = "${RouteService.BASE_URL}/v2/directions/$profile".toHttpUrlOrNull()?.newBuilder()
+                ?: return Result.failure(Exception("Invalid route API URL"))
+            dirUrl.addQueryParameter("api_key", apiKey)
+            dirUrl.addQueryParameter("start", "${originCoords.first},${originCoords.second}")
+            dirUrl.addQueryParameter("end", "${destCoords.first},${destCoords.second}")
+
+            val dirRequest = Request.Builder()
+                .url(dirUrl.build())
+                .header("User-Agent", "Synapse/1.0")
+                .build()
+
+            val dirResponse = httpClient.newCall(dirRequest).execute()
+            if (!dirResponse.isSuccessful) {
+                return Result.failure(Exception("Route API returned HTTP ${dirResponse.code}"))
+            }
+
+            val dirBody = dirResponse.body?.string() ?: return Result.failure(Exception("Empty route response"))
+
+            val routeData = try {
+                val jsonObj = kotlinx.serialization.json.Json.parseToJsonElement(dirBody)
+                val features = jsonObj.jsonObject["features"]?.jsonArray
+                val segment = features?.firstOrNull()?.jsonObject
+                    ?.get("properties")?.jsonObject
+                    ?.get("segments")?.jsonArray?.firstOrNull()?.jsonObject
+
+                buildString {
+                    appendLine("Route: ${config.origin} → ${config.destination}")
+                    appendLine("  Mode: ${config.travelMode.displayName}")
+                    segment?.let { s ->
+                        s["distance"]?.jsonPrimitive?.content?.toDoubleOrNull()?.let { d ->
+                            appendLine("  Distance: ${"%.1f".format(d / 1000)} km")
+                        }
+                        s["duration"]?.jsonPrimitive?.content?.toDoubleOrNull()?.let { d ->
+                            val mins = (d / 60).toInt()
+                            if (mins >= 60) appendLine("  Duration: ${mins / 60}h ${mins % 60}m")
+                            else appendLine("  Duration: ${mins} min")
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                dirBody.take(MAX_CHARS_PER_ACTION)
+            }
+
+            Result.success(routeData.take(MAX_CHARS_PER_ACTION))
+        } catch (e: Exception) {
+            Result.failure(Exception("Route error: ${e.message}"))
+        }
+    }
+
+    private fun geocodeLocation(query: String, apiKey: String): Pair<Double, Double>? {
+        return try {
+            // Check if already lat,lon format
+            val parts = query.split(",").map { it.trim() }
+            if (parts.size == 2) {
+                val lat = parts[0].toDoubleOrNull()
+                val lon = parts[1].toDoubleOrNull()
+                if (lat != null && lon != null) return lon to lat // ORS uses lon,lat order
+            }
+
+            // Geocode via ORS
+            val url = "${RouteService.BASE_URL}/geocode/search".toHttpUrlOrNull()?.newBuilder()
+                ?: return null
+            url.addQueryParameter("api_key", apiKey)
+            url.addQueryParameter("text", query)
+            url.addQueryParameter("size", "1")
+
+            val request = Request.Builder().url(url.build()).header("User-Agent", "Synapse/1.0").build()
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) return null
+
+            val body = response.body?.string() ?: return null
+            val jsonObj = kotlinx.serialization.json.Json.parseToJsonElement(body)
+            val coords = jsonObj.jsonObject["features"]?.jsonArray?.firstOrNull()
+                ?.jsonObject?.get("geometry")?.jsonObject?.get("coordinates")?.jsonArray
+            if (coords != null && coords.size >= 2) {
+                val lon = coords[0].jsonPrimitive.double
+                val lat = coords[1].jsonPrimitive.double
+                return lon to lat
+            }
+            null
+        } catch (_: Exception) {
+            null
         }
     }
 

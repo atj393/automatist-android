@@ -21,6 +21,7 @@ object BuiltInTemplates {
     )
 
     val ALL: List<BuiltInTemplate> = listOf(
+        morningCommuteBrief(),
         morningBrief(),
         articleSummarizer(),
         meetingPrep(),
@@ -31,9 +32,57 @@ object BuiltInTemplates {
 
     fun findById(id: String): BuiltInTemplate? = ALL.find { it.id == id }
 
-    val CATEGORIES = listOf("News & Content", "Communication", "Research", "Social Media")
+    val CATEGORIES = listOf("Daily Routines", "News & Content", "Communication", "Research", "Social Media")
 
     // ── Template Definitions ──
+
+    private fun morningCommuteBrief() = BuiltInTemplate(
+        id = "morning_commute",
+        name = "Morning Commute Brief",
+        description = "Get weather, commute time, and top headlines before you leave. Your personal morning briefing.",
+        category = "Daily Routines",
+        useCases = listOf("Morning routine", "Commute planning", "Daily weather + news"),
+        blueprint = WorkflowTemplate(
+            name = "Morning Commute Brief",
+            description = "Weather, commute time, and top headlines for your morning",
+            category = "Daily Routines",
+            sourceTemplateId = "morning_commute",
+            trigger = WorkflowTrigger.Daily(hour = 7, minute = 0),
+            actions = listOf(
+                WorkflowAction(
+                    id = "weather",
+                    type = WorkflowActionType.FETCH_WEATHER,
+                    label = "Today's Weather",
+                    instruction = "Summarize today's weather conditions and whether I need an umbrella or jacket.",
+                    order = 0,
+                    extraConfig = kotlinx.serialization.json.Json.encodeToString(
+                        WeatherConfig(location = "", units = WeatherUnits.METRIC)
+                    )
+                ),
+                WorkflowAction(
+                    id = "commute",
+                    type = WorkflowActionType.FETCH_ROUTE_TIME,
+                    label = "Commute to Office",
+                    instruction = "Report travel time and suggest when to leave based on the estimated duration.",
+                    order = 1,
+                    extraConfig = kotlinx.serialization.json.Json.encodeToString(
+                        RouteConfig(origin = "", destination = "", travelMode = TravelMode.DRIVING)
+                    )
+                ),
+                WorkflowAction(
+                    id = "news",
+                    type = WorkflowActionType.FETCH_RSS_FEED,
+                    label = "Morning Headlines",
+                    sourceData = "",
+                    instruction = "Pick the top 3-5 most relevant headlines.",
+                    order = 2
+                )
+            ),
+            globalInstruction = "Create a concise, friendly morning briefing. Start with weather, then commute info, then headlines. Keep it scannable so I can read it in 30 seconds.",
+            outputConfig = WorkflowOutputConfig(outputType = WorkflowOutputType.BRIEFING),
+            notifyOnCompletion = true
+        )
+    )
 
     private fun morningBrief() = BuiltInTemplate(
         id = "morning_brief",

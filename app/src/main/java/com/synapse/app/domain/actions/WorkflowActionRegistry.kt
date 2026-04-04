@@ -80,7 +80,21 @@ object WorkflowActionRegistry {
             displayName = "Multi-Feed RSS",
             description = "Pull and merge items from multiple RSS/Atom feeds",
             category = ActionCategory.WEB,
-            requiresSourceData = false // feeds stored in extraConfig
+            requiresSourceData = false
+        ),
+        WorkflowActionType.FETCH_WEATHER to ActionTypeInfo(
+            type = WorkflowActionType.FETCH_WEATHER,
+            displayName = "Weather Data",
+            description = "Fetch current weather and forecast for a location",
+            category = ActionCategory.WEB,
+            requiresSourceData = false
+        ),
+        WorkflowActionType.FETCH_ROUTE_TIME to ActionTypeInfo(
+            type = WorkflowActionType.FETCH_ROUTE_TIME,
+            displayName = "Route / Commute",
+            description = "Get travel time and distance between two locations",
+            category = ActionCategory.WEB,
+            requiresSourceData = false
         )
     )
 
@@ -153,6 +167,31 @@ object WorkflowActionRegistry {
                     }
                 }
             }
+            WorkflowActionType.FETCH_WEATHER -> {
+                if (action.extraConfig.isBlank()) {
+                    errors.add("$label: configure a location for weather data.")
+                } else {
+                    try {
+                        val cfg = json.decodeFromString<WeatherConfig>(action.extraConfig)
+                        if (cfg.location.isBlank()) errors.add("$label: location is required (city, zip, or lat,lon).")
+                    } catch (_: Exception) {
+                        errors.add("$label: invalid weather configuration.")
+                    }
+                }
+            }
+            WorkflowActionType.FETCH_ROUTE_TIME -> {
+                if (action.extraConfig.isBlank()) {
+                    errors.add("$label: configure origin and destination.")
+                } else {
+                    try {
+                        val cfg = json.decodeFromString<RouteConfig>(action.extraConfig)
+                        if (cfg.origin.isBlank()) errors.add("$label: origin address is required.")
+                        if (cfg.destination.isBlank()) errors.add("$label: destination address is required.")
+                    } catch (_: Exception) {
+                        errors.add("$label: invalid route configuration.")
+                    }
+                }
+            }
         }
 
         return errors
@@ -190,6 +229,25 @@ object WorkflowActionRegistry {
                         "${cfg.feedUrls.size} feed(s), max ${cfg.maxItems} items"
                     } catch (_: Exception) { "Configuration error" }
                 } else "No feeds configured"
+            }
+            WorkflowActionType.FETCH_WEATHER -> {
+                if (action.extraConfig.isNotBlank()) {
+                    try {
+                        val cfg = json.decodeFromString<WeatherConfig>(action.extraConfig)
+                        if (cfg.location.isNotBlank()) "${cfg.location} (${cfg.units.displayName})"
+                        else "No location set"
+                    } catch (_: Exception) { "Configuration error" }
+                } else "No location set"
+            }
+            WorkflowActionType.FETCH_ROUTE_TIME -> {
+                if (action.extraConfig.isNotBlank()) {
+                    try {
+                        val cfg = json.decodeFromString<RouteConfig>(action.extraConfig)
+                        if (cfg.origin.isNotBlank() && cfg.destination.isNotBlank())
+                            "${cfg.origin.take(20)} → ${cfg.destination.take(20)}"
+                        else "Configure route"
+                    } catch (_: Exception) { "Configuration error" }
+                } else "Configure route"
             }
         }
     }
