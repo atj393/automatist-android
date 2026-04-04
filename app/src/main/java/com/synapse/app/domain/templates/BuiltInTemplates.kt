@@ -1,6 +1,8 @@
 package com.synapse.app.domain.templates
 
 import com.synapse.app.domain.models.*
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 /**
  * Curated built-in workflow templates provided by the app.
@@ -55,7 +57,7 @@ object BuiltInTemplates {
                     label = "Today's Weather",
                     instruction = "Summarize today's weather conditions and whether I need an umbrella or jacket.",
                     order = 0,
-                    extraConfig = kotlinx.serialization.json.Json.encodeToString(
+                    extraConfig = Json.encodeToString(
                         WeatherConfig(location = "", units = WeatherUnits.METRIC)
                     )
                 ),
@@ -65,7 +67,7 @@ object BuiltInTemplates {
                     label = "Commute to Office",
                     instruction = "Report travel time and suggest when to leave based on the estimated duration.",
                     order = 1,
-                    extraConfig = kotlinx.serialization.json.Json.encodeToString(
+                    extraConfig = Json.encodeToString(
                         RouteConfig(origin = "", destination = "", travelMode = TravelMode.DRIVING)
                     )
                 ),
