@@ -42,12 +42,43 @@ class VaultViewModel @Inject constructor(
 
     companion object {
         val SERVICE_KEYS = listOf(
-            ServiceKeyInfo("openweathermap", "OpenWeatherMap", "Weather data for workflows"),
-            ServiceKeyInfo("openrouteservice", "OpenRouteService", "Route and commute time data")
+            ServiceKeyInfo(
+                id = "openweathermap",
+                displayName = "OpenWeatherMap",
+                description = "Weather data for workflows",
+                helpText = "Create a free API key to fetch current weather conditions in your workflows.",
+                signUpUrl = "https://home.openweathermap.org/api_keys",
+                steps = listOf(
+                    "Open the link below and create a free account (or sign in)",
+                    "Go to 'API keys' in your account",
+                    "Copy the default key or generate a new one",
+                    "Paste it here and tap Save"
+                )
+            ),
+            ServiceKeyInfo(
+                id = "openrouteservice",
+                displayName = "OpenRouteService",
+                description = "Route and commute time data",
+                helpText = "Create a free API key to get travel time and distance in your workflows.",
+                signUpUrl = "https://api.openrouteservice.org/",
+                steps = listOf(
+                    "Open the link below and create a free account",
+                    "Go to your dashboard and create a new token/key",
+                    "Copy the generated API key",
+                    "Paste it here and tap Save"
+                )
+            )
         )
     }
 
-    data class ServiceKeyInfo(val id: String, val displayName: String, val description: String)
+    data class ServiceKeyInfo(
+        val id: String,
+        val displayName: String,
+        val description: String,
+        val helpText: String = "",
+        val signUpUrl: String = "",
+        val steps: List<String> = emptyList()
+    )
 
     private val _state = MutableStateFlow(VaultUiState())
     val state = _state.asStateFlow()

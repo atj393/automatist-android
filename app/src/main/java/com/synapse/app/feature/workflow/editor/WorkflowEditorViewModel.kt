@@ -1,26 +1,23 @@
 package com.synapse.app.feature.workflow.editor
 
-import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.*
 import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.models.*
 import com.synapse.app.domain.readiness.ReadinessEvaluator
 import com.synapse.app.domain.readiness.WorkflowReadiness
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.domain.templates.BuiltInTemplates
-import com.synapse.app.platform.automation.WorkflowWorker
+import com.synapse.app.platform.notifications.NotificationHelper
+import com.synapse.app.platform.scheduling.ScheduleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 data class EditorUiState(
@@ -33,6 +30,7 @@ data class EditorUiState(
     val globalInstruction: String = "",
     val outputConfig: WorkflowOutputConfig = WorkflowOutputConfig(),
     val notifyOnCompletion: Boolean = false,
+    val notifyOnStart: Boolean = false,
     val isSaving: Boolean = false,
     val savedTemplateId: Long? = null,
     val validationErrors: List<String> = emptyList(),
@@ -41,14 +39,28 @@ data class EditorUiState(
     val sourceTemplateName: String = "",
     val category: String = "",
     val defaultProfileId: String = "",
-    val workflowReadiness: WorkflowReadiness? = null
+    val workflowReadiness: WorkflowReadiness? = null,
+    // Schedule confirmation — shown as dialog before navigating away
+    val saveConfirmation: SaveConfirmation? = null,
+    val needsNotificationPermission: Boolean = false
+)
+
+data class SaveConfirmation(
+    val savedId: Long,
+    val workflowName: String,
+    val isScheduled: Boolean,
+    val scheduleMessage: String,
+    val nextRunLabel: String,
+    val notifyOnStart: Boolean,
+    val notifyOnCompletion: Boolean
 )
 
 @HiltViewModel
 class WorkflowEditorViewModel @Inject constructor(
     private val repository: WorkflowRepository,
     val readinessEvaluator: ReadinessEvaluator,
-    @ApplicationContext private val context: Context,
+    private val scheduleManager: ScheduleManager,
+    private val notificationHelper: NotificationHelper,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -84,6 +96,7 @@ class WorkflowEditorViewModel @Inject constructor(
                             globalInstruction = template.globalInstruction,
                             outputConfig = template.outputConfig,
                             notifyOnCompletion = template.notifyOnCompletion,
+                            notifyOnStart = template.notifyOnStart,
                             sourceTemplateId = template.sourceTemplateId,
                             sourceTemplateName = sourceName,
                             category = template.category,
@@ -109,6 +122,7 @@ class WorkflowEditorViewModel @Inject constructor(
                             globalInstruction = bp.globalInstruction,
                             outputConfig = bp.outputConfig,
                             notifyOnCompletion = bp.notifyOnCompletion,
+                            notifyOnStart = bp.notifyOnStart,
                             sourceTemplateId = builtIn.id,
                             sourceTemplateName = builtIn.name,
                             category = builtIn.category
@@ -130,10 +144,12 @@ class WorkflowEditorViewModel @Inject constructor(
                         actions = emptyList(),
                         globalInstruction = "",
                         outputConfig = WorkflowOutputConfig(),
-                        notifyOnCompletion = false
+                        notifyOnCompletion = false,
+                        notifyOnStart = false
                     )
                 }
             }
+            checkNotificationPermission()
             refreshReadiness()
         }
     }
@@ -148,7 +164,12 @@ class WorkflowEditorViewModel @Inject constructor(
     }
     fun updateGlobalInstruction(text: String) = _state.update { it.copy(globalInstruction = text) }
     fun updateNotifyOnCompletion(enabled: Boolean) = _state.update { it.copy(notifyOnCompletion = enabled) }
+    fun updateNotifyOnStart(enabled: Boolean) = _state.update { it.copy(notifyOnStart = enabled) }
     fun updateOutputConfig(config: WorkflowOutputConfig) = _state.update { it.copy(outputConfig = config) }
+
+    fun checkNotificationPermission() {
+        _state.update { it.copy(needsNotificationPermission = notificationHelper.needsNotificationPermissionRequest()) }
+    }
 
     fun refreshReadiness() {
         viewModelScope.launch {
@@ -185,6 +206,7 @@ class WorkflowEditorViewModel @Inject constructor(
                 globalInstruction = current.globalInstruction.trim(),
                 outputConfig = current.outputConfig,
                 notifyOnCompletion = current.notifyOnCompletion,
+                notifyOnStart = current.notifyOnStart,
                 createdAtMillis = if (templateId != null) {
                     repository.getTemplateById(templateId)?.createdAtMillis ?: now
                 } else now,
@@ -201,36 +223,75 @@ class WorkflowEditorViewModel @Inject constructor(
                 repository.saveTemplate(template)
             }
 
-            scheduleWorkflow(savedId, current.trigger)
-            _state.update { it.copy(isSaving = false, savedTemplateId = savedId) }
+            // Schedule via centralized ScheduleManager
+            val scheduleMessage = scheduleManager.scheduleWorkflow(savedId, current.trigger)
+            val isScheduled = current.trigger !is WorkflowTrigger.Manual
+
+            // Send schedule confirmation notification for non-manual triggers
+            if (isScheduled) {
+                notificationHelper.notifyScheduleCreated(current.name.trim(), scheduleMessage)
+            }
+
+            val nextRun = if (isScheduled) computeNextRunPreview(current.trigger) else ""
+
+            _state.update {
+                it.copy(
+                    isSaving = false,
+                    saveConfirmation = SaveConfirmation(
+                        savedId = savedId,
+                        workflowName = current.name.trim(),
+                        isScheduled = isScheduled,
+                        scheduleMessage = scheduleMessage,
+                        nextRunLabel = nextRun,
+                        notifyOnStart = current.notifyOnStart,
+                        notifyOnCompletion = current.notifyOnCompletion
+                    )
+                )
+            }
         }
     }
 
-    private fun scheduleWorkflow(templateId: Long, trigger: WorkflowTrigger) {
-        val workManager = WorkManager.getInstance(context)
-        val uniqueName = "WorkflowWorker_$templateId"
+    fun dismissConfirmation() {
+        val conf = _state.value.saveConfirmation ?: return
+        _state.update { it.copy(saveConfirmation = null, savedTemplateId = conf.savedId) }
+    }
 
-        when (trigger) {
-            is WorkflowTrigger.Manual -> workManager.cancelUniqueWork(uniqueName)
+    private fun computeNextRunPreview(trigger: WorkflowTrigger): String {
+        val dateFormat = java.text.SimpleDateFormat("EEE, MMM d 'at' HH:mm", java.util.Locale.getDefault())
+        val now = java.util.Calendar.getInstance()
+        return when (trigger) {
             is WorkflowTrigger.Daily -> {
-                val request = PeriodicWorkRequestBuilder<WorkflowWorker>(
-                    24, TimeUnit.HOURS
-                ).setInputData(workDataOf(
-                    WorkflowWorker.KEY_TEMPLATE_ID to templateId,
-                    WorkflowWorker.KEY_TRIGGER_TYPE to "scheduled"
-                )).build()
-                workManager.enqueueUniquePeriodicWork(uniqueName, ExistingPeriodicWorkPolicy.UPDATE, request)
+                val target = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, trigger.hour)
+                    set(java.util.Calendar.MINUTE, trigger.minute)
+                    set(java.util.Calendar.SECOND, 0)
+                }
+                if (target.timeInMillis <= now.timeInMillis) target.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                dateFormat.format(target.time)
             }
             is WorkflowTrigger.Weekly -> {
-                val request = PeriodicWorkRequestBuilder<WorkflowWorker>(
-                    7, TimeUnit.DAYS
-                ).setInputData(workDataOf(
-                    WorkflowWorker.KEY_TEMPLATE_ID to templateId,
-                    WorkflowWorker.KEY_TRIGGER_TYPE to "scheduled"
-                )).build()
-                workManager.enqueueUniquePeriodicWork(uniqueName, ExistingPeriodicWorkPolicy.UPDATE, request)
+                val todayIso = when (now.get(java.util.Calendar.DAY_OF_WEEK)) {
+                    java.util.Calendar.MONDAY -> 1; java.util.Calendar.TUESDAY -> 2
+                    java.util.Calendar.WEDNESDAY -> 3; java.util.Calendar.THURSDAY -> 4
+                    java.util.Calendar.FRIDAY -> 5; java.util.Calendar.SATURDAY -> 6
+                    java.util.Calendar.SUNDAY -> 7; else -> 1
+                }
+                var bestTarget: java.util.Calendar? = null
+                for (day in trigger.daysOfWeek) {
+                    var daysAhead = day - todayIso
+                    if (daysAhead < 0) daysAhead += 7
+                    val t = java.util.Calendar.getInstance().apply {
+                        add(java.util.Calendar.DAY_OF_YEAR, daysAhead)
+                        set(java.util.Calendar.HOUR_OF_DAY, trigger.hour)
+                        set(java.util.Calendar.MINUTE, trigger.minute)
+                        set(java.util.Calendar.SECOND, 0)
+                    }
+                    if (t.timeInMillis <= now.timeInMillis) t.add(java.util.Calendar.DAY_OF_YEAR, 7)
+                    if (bestTarget == null || t.timeInMillis < bestTarget.timeInMillis) bestTarget = t
+                }
+                bestTarget?.let { dateFormat.format(it.time) } ?: "Unknown"
             }
-            is WorkflowTrigger.NotificationKeyword -> { /* Future */ }
+            else -> ""
         }
     }
 

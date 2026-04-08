@@ -1,5 +1,9 @@
 package com.synapse.app.feature.workflow.editor
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,21 +37,93 @@ fun WorkflowEditorScreen(
     val availableNotes by viewModel.availableNotes.collectAsState()
     val availableWorkflows by viewModel.availableWorkflows.collectAsState()
 
+    // Notification permission launcher (Android 13+)
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        viewModel.checkNotificationPermission()
+    }
+
     // Refresh readiness when returning from Settings
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.refreshReadiness()
+                viewModel.checkNotificationPermission()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Navigate on save
+    // Navigate after user dismisses confirmation dialog
     LaunchedEffect(state.savedTemplateId) {
         state.savedTemplateId?.let { onSaved(it) }
+    }
+
+    // ── Save confirmation dialog ──
+    state.saveConfirmation?.let { conf ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissConfirmation() },
+            icon = {
+                Icon(
+                    if (conf.isScheduled) Icons.Default.CheckCircle else Icons.Default.Save,
+                    null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(if (conf.isScheduled) "Schedule Active" else "Workflow Saved")
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "\"${conf.workflowName}\"",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (conf.isScheduled) {
+                        Text(conf.scheduleMessage, style = MaterialTheme.typography.bodyMedium)
+                        if (conf.nextRunLabel.isNotBlank()) {
+                            Text(
+                                "Next run: ${conf.nextRunLabel}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Column {
+                                Text("Start alert", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    if (conf.notifyOnStart) "On" else "Off",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Column {
+                                Text("Completion alert", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    if (conf.notifyOnCompletion) "On" else "Off",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    } else {
+                        Text("Saved successfully. Run it manually anytime from My Workflows.", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.dismissConfirmation() }) {
+                    Text("Done")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -66,7 +142,8 @@ fun WorkflowEditorScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = {}
     ) { padding ->
         if (state.isLoading) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -164,17 +241,89 @@ fun WorkflowEditorScreen(
                 onConfigChanged = viewModel::updateOutputConfig
             )
 
-            // Notification toggle
+            // ── Section 6: Notifications ──
+            SectionHeader("6", "Notifications")
+
+            // Permission banner
+            if (state.needsNotificationPermission) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            "Notification permission needed",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "To receive alerts when your scheduled workflows start, complete, or fail, Synapse needs notification permission.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.tertiary
+                            )
+                        ) {
+                            Text("Allow Notifications")
+                        }
+                    }
+                }
+            }
+
+            // Notify on start toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Notify on completion", modifier = Modifier.weight(1f))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Notify when run starts")
+                    Text(
+                        "Get an alert when a scheduled run begins",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = state.notifyOnStart,
+                    onCheckedChange = viewModel::updateNotifyOnStart
+                )
+            }
+
+            // Notify on completion toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Notify on completion")
+                    Text(
+                        "Get an alert when a run finishes successfully",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Switch(
                     checked = state.notifyOnCompletion,
                     onCheckedChange = viewModel::updateNotifyOnCompletion
                 )
             }
+
+            Text(
+                "Failure notifications are always sent so you know when something goes wrong.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
 
             // ── Validation Errors ──
             if (state.validationErrors.isNotEmpty()) {
@@ -205,7 +354,15 @@ fun WorkflowEditorScreen(
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
                 }
-                Text(if (state.isEditing) "Update Workflow" else "Save Workflow")
+                val isScheduled = state.trigger !is WorkflowTrigger.Manual
+                Text(
+                    when {
+                        state.isEditing && isScheduled -> "Update & Activate Schedule"
+                        state.isEditing -> "Update Workflow"
+                        isScheduled -> "Save & Activate Schedule"
+                        else -> "Save Workflow"
+                    }
+                )
             }
 
             Spacer(Modifier.height(32.dp))
@@ -273,36 +430,39 @@ private fun TriggerSection(
             }
         }
 
-        if (trigger is WorkflowTrigger.Daily) {
-            Row(
-                modifier = Modifier.padding(start = 48.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("Run at")
-                OutlinedTextField(
-                    value = trigger.hour.toString().padStart(2, '0'),
-                    onValueChange = { v ->
-                        val h = v.filter { it.isDigit() }.take(2).toIntOrNull() ?: 0
-                        onTriggerChanged(trigger.copy(hour = h.coerceIn(0, 23)))
-                    },
-                    label = { Text("Hour") }, singleLine = true, modifier = Modifier.width(80.dp)
-                )
-                Text(":")
-                OutlinedTextField(
-                    value = trigger.minute.toString().padStart(2, '0'),
-                    onValueChange = { v ->
-                        val m = v.filter { it.isDigit() }.take(2).toIntOrNull() ?: 0
-                        onTriggerChanged(trigger.copy(minute = m.coerceIn(0, 59)))
-                    },
-                    label = { Text("Min") }, singleLine = true, modifier = Modifier.width(80.dp)
-                )
+        // Time picker for Daily/Weekly
+        if (trigger is WorkflowTrigger.Daily || trigger is WorkflowTrigger.Weekly) {
+            val currentHour = when (trigger) {
+                is WorkflowTrigger.Daily -> trigger.hour
+                is WorkflowTrigger.Weekly -> trigger.hour
+                else -> 8
             }
+            val currentMinute = when (trigger) {
+                is WorkflowTrigger.Daily -> trigger.minute
+                is WorkflowTrigger.Weekly -> trigger.minute
+                else -> 0
+            }
+
+            TimePickerButton(
+                hour = currentHour,
+                minute = currentMinute,
+                onTimeSelected = { h, m ->
+                    when (trigger) {
+                        is WorkflowTrigger.Daily -> onTriggerChanged(trigger.copy(hour = h, minute = m))
+                        is WorkflowTrigger.Weekly -> onTriggerChanged(trigger.copy(hour = h, minute = m))
+                        else -> {}
+                    }
+                },
+                modifier = Modifier.padding(start = 48.dp)
+            )
         }
 
+        // Day selector for Weekly
         if (trigger is WorkflowTrigger.Weekly) {
             val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
             Column(modifier = Modifier.padding(start = 48.dp)) {
+                Text("Days:", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     dayNames.forEachIndexed { i, name ->
                         val dayNum = i + 1
@@ -317,29 +477,116 @@ private fun TriggerSection(
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("at")
-                    OutlinedTextField(
-                        value = trigger.hour.toString().padStart(2, '0'),
-                        onValueChange = { v ->
-                            val h = v.filter { it.isDigit() }.take(2).toIntOrNull() ?: 0
-                            onTriggerChanged(trigger.copy(hour = h.coerceIn(0, 23)))
-                        },
-                        label = { Text("Hour") }, singleLine = true, modifier = Modifier.width(80.dp)
-                    )
-                    Text(":")
-                    OutlinedTextField(
-                        value = trigger.minute.toString().padStart(2, '0'),
-                        onValueChange = { v ->
-                            val m = v.filter { it.isDigit() }.take(2).toIntOrNull() ?: 0
-                            onTriggerChanged(trigger.copy(minute = m.coerceIn(0, 59)))
-                        },
-                        label = { Text("Min") }, singleLine = true, modifier = Modifier.width(80.dp)
-                    )
-                }
             }
         }
+
+        // Show computed next run
+        if (trigger is WorkflowTrigger.Daily || trigger is WorkflowTrigger.Weekly) {
+            val nextRun = computeNextRunPreview(trigger)
+            Text(
+                "Next run: $nextRun",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 48.dp, top = 4.dp)
+            )
+            Text(
+                "Android may adjust the actual run time by a few minutes to save battery.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.padding(start = 48.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickerButton(
+    hour: Int,
+    minute: Int,
+    onTimeSelected: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showPicker by remember { mutableStateOf(false) }
+
+    OutlinedButton(onClick = { showPicker = true }, modifier = modifier) {
+        Icon(Icons.Default.Schedule, null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "Run at ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
+        )
+    }
+
+    if (showPicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = hour,
+            initialMinute = minute,
+            is24Hour = true
+        )
+
+        AlertDialog(
+            onDismissRequest = { showPicker = false },
+            title = { Text("Select Time") },
+            text = {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TimePicker(state = timePickerState)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onTimeSelected(timePickerState.hour, timePickerState.minute)
+                    showPicker = false
+                }) { Text("Set Time") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+private fun computeNextRunPreview(trigger: WorkflowTrigger): String {
+    val dateFormat = java.text.SimpleDateFormat("EEE, MMM d 'at' HH:mm", java.util.Locale.getDefault())
+    val now = java.util.Calendar.getInstance()
+
+    return when (trigger) {
+        is WorkflowTrigger.Daily -> {
+            val target = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, trigger.hour)
+                set(java.util.Calendar.MINUTE, trigger.minute)
+                set(java.util.Calendar.SECOND, 0)
+            }
+            if (target.timeInMillis <= now.timeInMillis) target.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            dateFormat.format(target.time)
+        }
+        is WorkflowTrigger.Weekly -> {
+            val todayIso = when (now.get(java.util.Calendar.DAY_OF_WEEK)) {
+                java.util.Calendar.MONDAY -> 1; java.util.Calendar.TUESDAY -> 2
+                java.util.Calendar.WEDNESDAY -> 3; java.util.Calendar.THURSDAY -> 4
+                java.util.Calendar.FRIDAY -> 5; java.util.Calendar.SATURDAY -> 6
+                java.util.Calendar.SUNDAY -> 7; else -> 1
+            }
+            var bestTarget: java.util.Calendar? = null
+            for (day in trigger.daysOfWeek) {
+                var daysAhead = day - todayIso
+                if (daysAhead < 0) daysAhead += 7
+                val t = java.util.Calendar.getInstance().apply {
+                    add(java.util.Calendar.DAY_OF_YEAR, daysAhead)
+                    set(java.util.Calendar.HOUR_OF_DAY, trigger.hour)
+                    set(java.util.Calendar.MINUTE, trigger.minute)
+                    set(java.util.Calendar.SECOND, 0)
+                }
+                if (t.timeInMillis <= now.timeInMillis) t.add(java.util.Calendar.DAY_OF_YEAR, 7)
+                if (bestTarget == null || t.timeInMillis < bestTarget.timeInMillis) bestTarget = t
+            }
+            bestTarget?.let { dateFormat.format(it.time) } ?: "Unknown"
+        }
+        else -> "Not scheduled"
     }
 }
 

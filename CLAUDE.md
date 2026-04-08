@@ -483,6 +483,10 @@ Users can create workflows from curated templates OR from scratch. Templates are
 4. Add UI option in the relevant screen (Article or Meeting)
 
 ### Worker Scheduling
-- Periodic: `PeriodicWorkRequestBuilder` with `ExistingPeriodicWorkPolicy.UPDATE`
+- Periodic: `PeriodicWorkRequestBuilder` with `ExistingPeriodicWorkPolicy.UPDATE` and `setInitialDelay()` computed from target time-of-day
 - One-time: `OneTimeWorkRequestBuilder` for manual "Run Now"
-- Unique work names: `SynthesizerWorker_Periodic`, `SynthesizerWorker_OneTime`
+- Unique work names: `SynthesizerWorker_Periodic`, `SynthesizerWorker_OneTime`, `WorkflowWorker_{templateId}`
+- Time-of-day scheduling: `computeDelayToNextTime()` calculates milliseconds from now until the next occurrence of the target hour:minute
+- Schedule visibility: workflow cards show computed "Next run" time and "Last run" timestamp
+- Time input: slider-based picker with 24-hour format, shows computed next run preview in editor
+- Platform note: WorkManager may adjust timing by a few minutes for battery optimization

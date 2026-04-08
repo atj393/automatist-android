@@ -11,7 +11,7 @@ import androidx.room.RoomDatabase
         SavedNoteEntity::class,
         ProviderProfileEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class SynapseDatabase : RoomDatabase() {

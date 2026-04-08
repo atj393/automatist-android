@@ -15,6 +15,7 @@ data class WorkflowTemplate(
     val globalInstruction: String = "",
     val outputConfig: WorkflowOutputConfig = WorkflowOutputConfig(),
     val notifyOnCompletion: Boolean = false,
+    val notifyOnStart: Boolean = false,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
     val lastRunAtMillis: Long? = null,
