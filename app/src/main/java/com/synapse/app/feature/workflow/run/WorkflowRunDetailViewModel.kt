@@ -6,9 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.synapse.app.domain.models.WorkflowRun
 import com.synapse.app.domain.repositories.WorkflowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
 @HiltViewModel
@@ -19,12 +19,8 @@ class WorkflowRunDetailViewModel @Inject constructor(
 
     private val runId: Long = savedStateHandle.get<Long>("runId") ?: -1L
 
-    private val _run = MutableStateFlow<WorkflowRun?>(null)
-    val run = _run.asStateFlow()
-
-    init {
-        viewModelScope.launch {
-            _run.value = repository.getRunById(runId)
-        }
-    }
+    // Observe live updates so the detail screen refreshes when a RUNNING record
+    // gets updated to COMPLETED/FAILED by the worker.
+    val run: StateFlow<WorkflowRun?> = repository.observeRunById(runId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 }

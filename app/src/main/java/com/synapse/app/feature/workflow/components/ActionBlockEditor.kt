@@ -180,6 +180,9 @@ private fun RssFeedEditor(action: WorkflowAction, onUpdate: (WorkflowAction) -> 
         isError = action.sourceData.isNotBlank() && !action.sourceData.startsWith("http")
     )
 
+    // RSS examples
+    RssExamplesSection(onSelect = { url -> onUpdate(action.copy(sourceData = url)) })
+
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Max items:", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(
@@ -458,6 +461,11 @@ private fun MultiFeedRssEditor(action: WorkflowAction, onUpdate: (WorkflowAction
         Text("Add Feed URL")
     }
 
+    // RSS examples — insert into feed list
+    RssExamplesSection(onSelect = { url ->
+        updateConfig(config.copy(feedUrls = config.feedUrls + url))
+    })
+
     // Config options
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Max items total:", style = MaterialTheme.typography.bodySmall)
@@ -528,7 +536,7 @@ private fun WeatherEditor(action: WorkflowAction, onUpdate: (WorkflowAction) -> 
     }
 
     Text(
-        "Requires OpenWeatherMap API key (free tier). Configure in Settings.",
+        "Uses OpenWeatherMap (free). Add your API key in Settings \u2192 Service Keys.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     )
@@ -579,10 +587,64 @@ private fun RouteTimeEditor(action: WorkflowAction, onUpdate: (WorkflowAction) -
     }
 
     Text(
-        "Requires OpenRouteService API key (free tier). Configure in Settings.",
+        "Uses OpenRouteService (free). Add your API key in Settings \u2192 Service Keys.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     )
+}
+
+// ── RSS Feed Examples ──
+
+private data class RssExample(val name: String, val url: String, val category: String)
+
+private val RSS_EXAMPLES = listOf(
+    RssExample("NY Times", "https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml", "World News"),
+    RssExample("CBS News", "https://www.cbsnews.com/latest/rss/main", "World News"),
+    RssExample("The Hindu", "https://www.thehindu.com/news/national/?service=rss", "India News"),
+    RssExample("TechCrunch", "https://techcrunch.com/feed/", "Technology"),
+    RssExample("Hacker News", "https://hnrss.org/frontpage", "Technology"),
+    RssExample("BBC News", "https://feeds.bbci.co.uk/news/rss.xml", "World News")
+)
+
+@Composable
+private fun RssExamplesSection(onSelect: (String) -> Unit) {
+    var showExamples by remember { mutableStateOf(false) }
+
+    Column {
+        TextButton(onClick = { showExamples = !showExamples }, contentPadding = PaddingValues(0.dp)) {
+            Icon(
+                if (showExamples) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                null, modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(if (showExamples) "Hide examples" else "Try example RSS feeds", style = MaterialTheme.typography.labelMedium)
+        }
+
+        if (showExamples) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                RSS_EXAMPLES.forEach { example ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(example.name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+                            Text(example.category, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick = { onSelect(example.url) }, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            Text("Use", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "To find more feeds, search online for the site name + \"RSS\" (e.g. \"BBC RSS\", \"AI news RSS\").",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
 }
 
 // ── Collapsed summary — delegates to registry ──

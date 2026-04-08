@@ -38,6 +38,9 @@ interface WorkflowDao {
     @Query("SELECT * FROM workflow_runs WHERE id = :id")
     suspend fun getRunById(id: Long): WorkflowRunEntity?
 
+    @Query("SELECT * FROM workflow_runs WHERE id = :id")
+    fun observeRunById(id: Long): Flow<WorkflowRunEntity?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRun(entity: WorkflowRunEntity): Long
 
@@ -70,6 +73,12 @@ interface WorkflowDao {
 
     @Query("SELECT * FROM workflow_runs WHERE templateId = :templateId AND status = 'COMPLETED' ORDER BY startedAtMillis DESC LIMIT 1")
     suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRunEntity?
+
+    @Query("SELECT * FROM workflow_runs WHERE templateId = :templateId ORDER BY startedAtMillis DESC LIMIT 1")
+    suspend fun getLatestRun(templateId: Long): WorkflowRunEntity?
+
+    @Query("UPDATE workflow_runs SET status = 'FAILED', errorMessage = :message, completedAtMillis = :atMillis WHERE templateId = :templateId AND status = 'RUNNING'")
+    suspend fun failStaleRunningRecords(templateId: Long, message: String, atMillis: Long)
 
     // ── Provider Profiles ──
 

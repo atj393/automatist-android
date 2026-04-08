@@ -23,6 +23,7 @@ data class WorkflowTemplateEntity(
     val globalInstruction: String,
     val outputConfigJson: String,      // JSON: WorkflowOutputConfig
     val notifyOnCompletion: Boolean,
+    val notifyOnStart: Boolean = false,
     val createdAtMillis: Long,
     val updatedAtMillis: Long,
     val lastRunAtMillis: Long?,
@@ -143,6 +144,7 @@ fun WorkflowTemplateEntity.toDomain() = WorkflowTemplate(
     globalInstruction = globalInstruction,
     outputConfig = json.decodeFromString<WorkflowOutputConfig>(outputConfigJson),
     notifyOnCompletion = notifyOnCompletion,
+    notifyOnStart = notifyOnStart,
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis,
     lastRunAtMillis = lastRunAtMillis,
@@ -166,6 +168,7 @@ fun WorkflowTemplate.toEntity() = WorkflowTemplateEntity(
     globalInstruction = globalInstruction,
     outputConfigJson = json.encodeToString(outputConfig),
     notifyOnCompletion = notifyOnCompletion,
+    notifyOnStart = notifyOnStart,
     createdAtMillis = createdAtMillis,
     updatedAtMillis = updatedAtMillis,
     lastRunAtMillis = lastRunAtMillis,

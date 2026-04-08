@@ -1,46 +1,50 @@
 package com.synapse.app.feature.workflow.list
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.*
 import com.synapse.app.domain.models.WorkflowTemplate
 import com.synapse.app.domain.repositories.WorkflowRepository
-import com.synapse.app.platform.automation.WorkflowWorker
+import com.synapse.app.platform.scheduling.ScheduleInfo
+import com.synapse.app.platform.scheduling.ScheduleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
 class WorkflowListViewModel @Inject constructor(
     private val repository: WorkflowRepository,
-    @ApplicationContext private val context: Context
+    private val scheduleManager: ScheduleManager
 ) : ViewModel() {
 
     val workflows = repository.getAllTemplates()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun deleteWorkflow(id: Long) {
+    private val _scheduleStatuses = MutableStateFlow<Map<Long, ScheduleInfo>>(emptyMap())
+    val scheduleStatuses = _scheduleStatuses.asStateFlow()
+
+    fun refreshScheduleStatuses(templates: List<WorkflowTemplate>) {
         viewModelScope.launch {
-            // Cancel any scheduled work
-            WorkManager.getInstance(context).cancelUniqueWork("WorkflowWorker_$id")
-            repository.deleteTemplate(id)
+            val statuses = withContext(Dispatchers.IO) {
+                val map = mutableMapOf<Long, ScheduleInfo>()
+                for (template in templates) {
+                    map[template.id] = scheduleManager.getScheduleStatusSync(template.id)
+                }
+                map
+            }
+            _scheduleStatuses.value = statuses
         }
     }
 
-    fun runNow(template: WorkflowTemplate) {
-        val request = OneTimeWorkRequestBuilder<WorkflowWorker>()
-            .setInputData(
-                workDataOf(
-                    WorkflowWorker.KEY_TEMPLATE_ID to template.id,
-                    WorkflowWorker.KEY_TRIGGER_TYPE to "manual"
-                )
-            )
-            .build()
-        WorkManager.getInstance(context)
-            .enqueueUniqueWork("WorkflowWorker_${template.id}_OneTime", ExistingWorkPolicy.REPLACE, request)
+    fun deleteWorkflow(id: Long) {
+        viewModelScope.launch {
+            scheduleManager.cancelSchedule(id)
+            repository.deleteTemplate(id)
+        }
     }
 }

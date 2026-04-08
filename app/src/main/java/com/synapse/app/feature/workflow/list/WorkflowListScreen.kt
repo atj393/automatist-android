@@ -1,6 +1,5 @@
 package com.synapse.app.feature.workflow.list
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,7 +14,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.synapse.app.domain.models.*
-import com.synapse.app.domain.templates.BuiltInTemplates
+import com.synapse.app.platform.scheduling.ScheduleInfo
+import com.synapse.app.platform.scheduling.ScheduleState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,9 +26,18 @@ fun WorkflowListScreen(
     onEdit: (Long) -> Unit,
     onRun: (Long) -> Unit,
     onViewRunDetail: (Long) -> Unit,
+    onViewSchedules: () -> Unit = {},
     viewModel: WorkflowListViewModel = hiltViewModel()
 ) {
     val workflows by viewModel.workflows.collectAsState()
+    val scheduleStatuses by viewModel.scheduleStatuses.collectAsState()
+
+    // Refresh schedule statuses when workflows change
+    LaunchedEffect(workflows) {
+        if (workflows.isNotEmpty()) {
+            viewModel.refreshScheduleStatuses(workflows)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -37,6 +46,11 @@ fun WorkflowListScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onViewSchedules) {
+                        Icon(Icons.Default.Schedule, "Schedules")
                     }
                 }
             )
@@ -100,6 +114,7 @@ fun WorkflowListScreen(
                 items(workflows, key = { it.id }) { template ->
                     MyWorkflowCard(
                         template = template,
+                        scheduleInfo = scheduleStatuses[template.id],
                         onEdit = { onEdit(template.id) },
                         onRun = { onRun(template.id) },
                         onDelete = { viewModel.deleteWorkflow(template.id) }
@@ -113,18 +128,14 @@ fun WorkflowListScreen(
 @Composable
 private fun MyWorkflowCard(
     template: WorkflowTemplate,
+    scheduleInfo: ScheduleInfo?,
     onEdit: () -> Unit,
     onRun: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
-    // Look up source template name
-    val sourceTemplateName = remember(template.sourceTemplateId) {
-        if (template.sourceTemplateId.isNotBlank()) {
-            BuiltInTemplates.findById(template.sourceTemplateId)?.name ?: "Custom"
-        } else "Legacy"
-    }
+    val isScheduled = template.trigger !is WorkflowTrigger.Manual
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -159,15 +170,6 @@ private fun MyWorkflowCard(
 
             // Metadata chips
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                // Source template badge
-                AssistChip(
-                    onClick = {},
-                    label = { Text(sourceTemplateName, style = MaterialTheme.typography.labelSmall) },
-                    modifier = Modifier.height(28.dp),
-                    leadingIcon = {
-                        Icon(Icons.Default.Dashboard, null, modifier = Modifier.size(14.dp))
-                    }
-                )
                 AssistChip(
                     onClick = {},
                     label = { Text(triggerLabel(template.trigger), style = MaterialTheme.typography.labelSmall) },
@@ -196,6 +198,39 @@ private fun MyWorkflowCard(
                 }
             }
 
+            // Schedule info with real WorkManager status
+            if (isScheduled) {
+                val nextRunText = computeNextRunLabel(template.trigger)
+                val lastRunText = template.lastRunAtMillis?.let { formatTimestamp(it) }
+
+                Column(modifier = Modifier.padding(top = 6.dp)) {
+                    // Real schedule status from WorkManager
+                    if (scheduleInfo != null) {
+                        ScheduleStatusChip(scheduleInfo)
+                    }
+
+                    Text(
+                        "Next run: $nextRunText",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    if (lastRunText != null) {
+                        Text(
+                            "Last run: $lastRunText",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Text(
+                        "Schedule is active. Runs automatically at the set time.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+
             Spacer(Modifier.height(8.dp))
 
             Row(
@@ -211,7 +246,7 @@ private fun MyWorkflowCard(
                 TextButton(onClick = onRun) {
                     Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Run")
+                    Text("Test Run")
                 }
                 IconButton(onClick = { showDeleteDialog = true }) {
                     Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
@@ -224,7 +259,7 @@ private fun MyWorkflowCard(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Delete Workflow") },
-            text = { Text("Delete \"${template.name}\"? This will also remove all run history.") },
+            text = { Text("Delete \"${template.name}\"? This will also remove all run history and cancel any scheduled runs.") },
             confirmButton = {
                 TextButton(onClick = { onDelete(); showDeleteDialog = false }) {
                     Text("Delete", color = MaterialTheme.colorScheme.error)
@@ -237,9 +272,90 @@ private fun MyWorkflowCard(
     }
 }
 
+@Composable
+private fun ScheduleStatusChip(info: ScheduleInfo) {
+    val (color, icon) = when (info.state) {
+        ScheduleState.ENQUEUED -> MaterialTheme.colorScheme.primary to Icons.Default.Schedule
+        ScheduleState.RUNNING -> MaterialTheme.colorScheme.tertiary to Icons.Default.Sync
+        ScheduleState.SUCCEEDED -> MaterialTheme.colorScheme.primary to Icons.Default.CheckCircle
+        ScheduleState.FAILED -> MaterialTheme.colorScheme.error to Icons.Default.Error
+        ScheduleState.CANCELLED -> MaterialTheme.colorScheme.outline to Icons.Default.Cancel
+        ScheduleState.BLOCKED -> MaterialTheme.colorScheme.error to Icons.Default.Block
+        ScheduleState.NOT_SCHEDULED -> MaterialTheme.colorScheme.outline to Icons.Default.EventBusy
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(bottom = 4.dp)
+    ) {
+        Icon(icon, null, modifier = Modifier.size(14.dp), tint = color)
+        Spacer(Modifier.width(4.dp))
+        Text(
+            info.state.displayLabel,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            fontWeight = FontWeight.Medium
+        )
+        if (info.runAttemptCount > 0) {
+            Text(
+                " (attempt ${info.runAttemptCount})",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
 private fun triggerLabel(trigger: WorkflowTrigger): String = when (trigger) {
     is WorkflowTrigger.Manual -> "Manual"
     is WorkflowTrigger.Daily -> "Daily at ${trigger.hour.toString().padStart(2, '0')}:${trigger.minute.toString().padStart(2, '0')}"
     is WorkflowTrigger.Weekly -> "Weekly"
     is WorkflowTrigger.NotificationKeyword -> "Notification"
+}
+
+private fun computeNextRunLabel(trigger: WorkflowTrigger): String {
+    val dateFormat = java.text.SimpleDateFormat("EEE, MMM d 'at' HH:mm", java.util.Locale.getDefault())
+    val now = java.util.Calendar.getInstance()
+
+    return when (trigger) {
+        is WorkflowTrigger.Daily -> {
+            val target = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, trigger.hour)
+                set(java.util.Calendar.MINUTE, trigger.minute)
+                set(java.util.Calendar.SECOND, 0)
+            }
+            if (target.timeInMillis <= now.timeInMillis) {
+                target.add(java.util.Calendar.DAY_OF_YEAR, 1)
+            }
+            dateFormat.format(target.time)
+        }
+        is WorkflowTrigger.Weekly -> {
+            val todayIso = when (now.get(java.util.Calendar.DAY_OF_WEEK)) {
+                java.util.Calendar.MONDAY -> 1; java.util.Calendar.TUESDAY -> 2
+                java.util.Calendar.WEDNESDAY -> 3; java.util.Calendar.THURSDAY -> 4
+                java.util.Calendar.FRIDAY -> 5; java.util.Calendar.SATURDAY -> 6
+                java.util.Calendar.SUNDAY -> 7; else -> 1
+            }
+            var bestTarget: java.util.Calendar? = null
+            for (day in trigger.daysOfWeek) {
+                var daysAhead = day - todayIso
+                if (daysAhead < 0) daysAhead += 7
+                val t = java.util.Calendar.getInstance().apply {
+                    add(java.util.Calendar.DAY_OF_YEAR, daysAhead)
+                    set(java.util.Calendar.HOUR_OF_DAY, trigger.hour)
+                    set(java.util.Calendar.MINUTE, trigger.minute)
+                    set(java.util.Calendar.SECOND, 0)
+                }
+                if (t.timeInMillis <= now.timeInMillis) t.add(java.util.Calendar.DAY_OF_YEAR, 7)
+                if (bestTarget == null || t.timeInMillis < bestTarget.timeInMillis) bestTarget = t
+            }
+            bestTarget?.let { dateFormat.format(it.time) } ?: "Unknown"
+        }
+        else -> "Not scheduled"
+    }
+}
+
+private fun formatTimestamp(millis: Long): String {
+    val sdf = java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault())
+    return sdf.format(java.util.Date(millis))
 }
