@@ -19,9 +19,12 @@ interface WorkflowRepository {
     fun getRunsForTemplate(templateId: Long): Flow<List<WorkflowRun>>
     fun getRecentRuns(limit: Int = 20): Flow<List<WorkflowRun>>
     suspend fun getRunById(id: Long): WorkflowRun?
+    fun observeRunById(id: Long): Flow<WorkflowRun?>
     suspend fun insertRun(run: WorkflowRun): Long
     suspend fun updateRun(run: WorkflowRun)
     suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun?
+    suspend fun getLatestRun(templateId: Long): WorkflowRun?
+    suspend fun failStaleRunningRecords(templateId: Long)
 
     // Provider Profiles
     fun getAllProfiles(): Flow<List<ProviderProfile>>

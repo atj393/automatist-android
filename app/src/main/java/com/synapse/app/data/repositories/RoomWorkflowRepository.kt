@@ -44,6 +44,9 @@ class RoomWorkflowRepository @Inject constructor(
     override suspend fun getRunById(id: Long): WorkflowRun? =
         dao.getRunById(id)?.toDomain()
 
+    override fun observeRunById(id: Long): Flow<WorkflowRun?> =
+        dao.observeRunById(id).map { it?.toDomain() }
+
     override suspend fun insertRun(run: WorkflowRun): Long =
         dao.insertRun(run.toEntity())
 
@@ -52,6 +55,12 @@ class RoomWorkflowRepository @Inject constructor(
 
     override suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun? =
         dao.getLatestSuccessfulRun(templateId)?.toDomain()
+
+    override suspend fun getLatestRun(templateId: Long): WorkflowRun? =
+        dao.getLatestRun(templateId)?.toDomain()
+
+    override suspend fun failStaleRunningRecords(templateId: Long) =
+        dao.failStaleRunningRecords(templateId, "Worker terminated unexpectedly", System.currentTimeMillis())
 
     // ── Provider Profiles ──
 

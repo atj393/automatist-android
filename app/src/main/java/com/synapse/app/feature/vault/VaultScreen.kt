@@ -1,5 +1,7 @@
 package com.synapse.app.feature.vault
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +11,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -150,9 +153,8 @@ fun VaultScreen(
 
                 VaultViewModel.SERVICE_KEYS.forEach { info ->
                     item(key = "svc_${info.id}") {
-                        ApiKeyCard(
-                            label = info.displayName,
-                            subtitle = info.description,
+                        ServiceKeyCard(
+                            info = info,
                             isConfigured = state.serviceKeyStatus[info.id] == true,
                             onSave = { key -> viewModel.saveServiceKey(info.id, key) },
                             onRemove = { viewModel.removeServiceKey(info.id) }
@@ -248,6 +250,99 @@ private fun ProfileCard(
                 }
                 TextButton(onClick = onDelete) {
                     Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServiceKeyCard(
+    info: VaultViewModel.ServiceKeyInfo,
+    isConfigured: Boolean,
+    onSave: (String) -> Unit,
+    onRemove: () -> Unit
+) {
+    var keyInput by remember { mutableStateOf("") }
+    var showInput by remember { mutableStateOf(false) }
+    var showHelp by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(info.displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+                    Text(info.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (isConfigured) {
+                    AssistChip(onClick = {}, label = { Text("Configured", style = MaterialTheme.typography.labelSmall) },
+                        leadingIcon = { Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.height(26.dp))
+                } else {
+                    AssistChip(onClick = {}, label = { Text("Not Set", style = MaterialTheme.typography.labelSmall) },
+                        leadingIcon = { Icon(Icons.Default.Warning, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error) },
+                        modifier = Modifier.height(26.dp))
+                }
+            }
+
+            // Help text
+            if (info.helpText.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(info.helpText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f))
+            }
+
+            // Expandable setup instructions
+            if (info.steps.isNotEmpty()) {
+                TextButton(onClick = { showHelp = !showHelp }, contentPadding = PaddingValues(0.dp)) {
+                    Text(if (showHelp) "Hide setup steps" else "How to get this key", style = MaterialTheme.typography.labelMedium)
+                    Icon(if (showHelp) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, modifier = Modifier.size(16.dp))
+                }
+                if (showHelp) {
+                    Column(modifier = Modifier.padding(start = 4.dp)) {
+                        info.steps.forEachIndexed { i, step ->
+                            Text("${i + 1}. $step", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (info.signUpUrl.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.signUpUrl))
+                                    context.startActivity(intent)
+                                },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.OpenInNew, null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Open ${info.displayName}", style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Key input / configured actions
+            if (isConfigured) {
+                TextButton(onClick = onRemove) {
+                    Text("Remove Key", color = MaterialTheme.colorScheme.error)
+                }
+            } else if (showInput) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = keyInput, onValueChange = { keyInput = it },
+                    label = { Text("API Key") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { showInput = false; keyInput = "" }) { Text("Cancel") }
+                    Button(onClick = {
+                        if (keyInput.isNotBlank()) { onSave(keyInput); keyInput = ""; showInput = false }
+                    }) { Text("Save") }
+                }
+            } else {
+                TextButton(onClick = { showInput = true }) {
+                    Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Add Key")
                 }
             }
         }

@@ -3,7 +3,13 @@
     "allow": [
       "Bash(./gradlew assembleDebug)",
       "Bash(ls \"C:/Alexis/Test/mobile-app/gradlew\"*)",
-      "Bash(where gradle:*)"
+      "Bash(where gradle:*)",
+      "Bash(xargs grep:*)",
+      "Bash(./gradlew compileDebugKotlin)",
+      "Bash(ls \"c:\\\\Alexis\\\\Test\\\\mobile-app\\\\gradlew\"*)",
+      "Bash(ls \"c:\\\\Alexis\\\\Test\\\\mobile-app\\\\gradle\"*)",
+      "Bash(grep -n \"notifyOnCompletion\" /c/Alexis/Test/mobile-app/app/src/main/java/com/synapse/app/data/local/*.kt)",
+      "Bash(grep -E \"\\\\.kt$\")"
     ]
   }
 }

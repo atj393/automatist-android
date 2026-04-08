@@ -19,6 +19,7 @@ import com.synapse.app.feature.workflow.list.WorkflowListScreen
 import com.synapse.app.feature.workflow.editor.WorkflowEditorScreen
 import com.synapse.app.feature.workflow.run.WorkflowRunScreen
 import com.synapse.app.feature.workflow.run.WorkflowRunDetailScreen
+import com.synapse.app.feature.workflow.schedule.ScheduleStatusScreen
 import com.synapse.app.feature.workflow.templates.WorkflowTemplatesScreen
 import com.synapse.app.feature.vault.SettingsSection
 import com.synapse.app.feature.notes.NotesScreen
@@ -39,17 +40,32 @@ object Routes {
     const val WORKFLOW_RUN = "workflow_run"
     const val WORKFLOW_RUN_DETAIL = "workflow_run_detail"
     const val SAVED_NOTES = "saved_notes"
+    const val SCHEDULE_STATUS = "schedule_status"
 }
 
 @Composable
 fun SynapseNavGraph(
     navController: NavHostController = rememberNavController(),
-    initialSharedText: String? = null
+    initialSharedText: String? = null,
+    pendingDeepLink: String? = null,
+    onDeepLinkConsumed: () -> Unit = {}
 ) {
     LaunchedEffect(initialSharedText) {
         if (!initialSharedText.isNullOrBlank()) {
             val encodedText = URLEncoder.encode(initialSharedText, StandardCharsets.UTF_8.toString())
             navController.navigate("${Routes.ARTICLE_TRANSFORMER}?sharedText=$encodedText")
+        }
+    }
+
+    // Handle notification deep links: "workflow_run_detail/123" etc.
+    // pendingDeepLink changes both on initial launch AND on onNewIntent (singleTop),
+    // so this LaunchedEffect re-fires whenever a new notification tap arrives.
+    LaunchedEffect(pendingDeepLink) {
+        if (!pendingDeepLink.isNullOrBlank()) {
+            navController.navigate(pendingDeepLink) {
+                launchSingleTop = true
+            }
+            onDeepLinkConsumed()
         }
     }
 
@@ -123,7 +139,8 @@ fun SynapseNavGraph(
                 onCreateBlank = { navController.navigate(Routes.WORKFLOW_EDITOR) },
                 onEdit = { id -> navController.navigate("${Routes.WORKFLOW_EDITOR}?templateId=$id") },
                 onRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
-                onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") }
+                onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") },
+                onViewSchedules = { navController.navigate(Routes.SCHEDULE_STATUS) }
             )
         }
 
@@ -157,6 +174,17 @@ fun SynapseNavGraph(
         composable("${Routes.WORKFLOW_RUN_DETAIL}/{runId}", arguments = listOf(navArgument("runId") { type = NavType.LongType })) { backStackEntry ->
             val runId = backStackEntry.arguments?.getLong("runId") ?: return@composable
             WorkflowRunDetailScreen(runId = runId, onBack = { navController.popBackStack() })
+        }
+
+        // ── Schedule Status (inspect scheduled workflows) ──
+
+        composable(Routes.SCHEDULE_STATUS) {
+            ScheduleStatusScreen(
+                onBack = { navController.popBackStack() },
+                onEditWorkflow = { id -> navController.navigate("${Routes.WORKFLOW_EDITOR}?templateId=$id") },
+                onViewRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
+                onCreateWorkflow = { navController.navigate(Routes.WORKFLOW_EDITOR) }
+            )
         }
 
         // ── Saved Notes ──
