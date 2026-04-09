@@ -122,6 +122,9 @@ class WorkflowExecutionEngine @Inject constructor(
             modelId = modelId
         ))
 
+        // Detect social output mode
+        val isSocialMode = isSocialOutputMode(template)
+
         // Call AI provider with resolved profile
         val input = ArticleInput(
             text = combinedInput,
@@ -146,7 +149,8 @@ class WorkflowExecutionEngine @Inject constructor(
                     tokenUsage = tokenUsage,
                     durationMs = durationMs,
                     profileName = profileName,
-                    modelId = modelId
+                    modelId = modelId,
+                    isSocialOutput = isSocialMode
                 )
             )
         }.onFailure { error ->
@@ -761,37 +765,25 @@ class WorkflowExecutionEngine @Inject constructor(
         return builder.toString().take(MAX_TOTAL_CHARS)
     }
 
+    /** Returns true when the workflow should produce structured multi-platform social outputs. */
+    private fun isSocialOutputMode(template: WorkflowTemplate): Boolean {
+        val cfg = template.outputConfig
+        if (cfg.outputType != WorkflowOutputType.SOCIAL_POST && cfg.outputType != WorkflowOutputType.BOTH) return false
+        val allPlatforms = cfg.socialPlatforms.map { it.displayName } + cfg.customPlatforms
+        return allPlatforms.isNotEmpty()
+    }
+
     private fun buildSystemPrompt(template: WorkflowTemplate): String {
+        val cfg = template.outputConfig
+        val socialMode = isSocialOutputMode(template)
+
         return buildString {
             append("You are a professional AI assistant executing a custom workflow. ")
 
-            when (template.outputConfig.outputType) {
-                WorkflowOutputType.BRIEFING -> append("Generate a structured, scannable briefing from the provided sources. ")
-                WorkflowOutputType.SOCIAL_POST -> {
-                    append("Generate social media posts from the provided sources. ")
-                    if (template.outputConfig.socialPlatforms.isNotEmpty()) {
-                        append("Target platforms: ${template.outputConfig.socialPlatforms.joinToString { it.displayName }}. Match tone for each platform. ")
-                    }
-                }
-                WorkflowOutputType.BOTH -> {
-                    append("Generate both a structured briefing AND social media posts. ")
-                    if (template.outputConfig.socialPlatforms.isNotEmpty()) {
-                        append("Target platforms for social: ${template.outputConfig.socialPlatforms.joinToString { it.displayName }}. ")
-                    }
-                }
-                WorkflowOutputType.CUSTOM -> {
-                    if (template.outputConfig.customInstruction.isNotBlank()) {
-                        append("Custom output instructions: ${template.outputConfig.customInstruction}. ")
-                    }
-                }
-            }
-
-            // Output format instruction
-            when (template.outputConfig.outputFormat) {
-                OutputFormat.MARKDOWN -> append("\n\nFormat your response using Markdown. Use headings (##, ###), bullet lists, **bold** for emphasis, and --- for section separators. Do not wrap the entire response in a code block. Structure the output for easy scanning.")
-                OutputFormat.PLAIN_TEXT -> append("\n\nFormat your response as plain readable text. Do not use Markdown syntax like #, *, or ```. Use simple paragraphs and line breaks for structure.")
-                OutputFormat.JSON -> append("\n\nReturn your response as valid JSON only. No explanation, no commentary, no Markdown code fences. Output must be parseable JSON.")
-                OutputFormat.AUTO -> { /* no format constraint — let the AI decide */ }
+            if (socialMode) {
+                buildSocialSystemPrompt(this, template)
+            } else {
+                buildStandardSystemPrompt(this, template)
             }
 
             if (template.globalInstruction.isNotBlank()) {
@@ -800,6 +792,92 @@ class WorkflowExecutionEngine @Inject constructor(
 
             append("\n\nProcess the following source data:\n")
         }
+    }
+
+    private fun buildStandardSystemPrompt(sb: StringBuilder, template: WorkflowTemplate) {
+        val cfg = template.outputConfig
+        when (cfg.outputType) {
+            WorkflowOutputType.BRIEFING -> sb.append("Generate a structured, scannable briefing from the provided sources. ")
+            WorkflowOutputType.SOCIAL_POST -> {
+                sb.append("Generate social media posts from the provided sources. ")
+                if (cfg.socialPlatforms.isNotEmpty()) {
+                    sb.append("Target platforms: ${cfg.socialPlatforms.joinToString { it.displayName }}. Match tone for each platform. ")
+                }
+            }
+            WorkflowOutputType.BOTH -> {
+                sb.append("Generate both a structured briefing AND social media posts. ")
+                if (cfg.socialPlatforms.isNotEmpty()) {
+                    sb.append("Target platforms for social: ${cfg.socialPlatforms.joinToString { it.displayName }}. ")
+                }
+            }
+            WorkflowOutputType.CUSTOM -> {
+                if (cfg.customInstruction.isNotBlank()) {
+                    sb.append("Custom output instructions: ${cfg.customInstruction}. ")
+                }
+            }
+        }
+
+        // Output format instruction
+        when (cfg.outputFormat) {
+            OutputFormat.MARKDOWN -> sb.append("\n\nFormat your response using Markdown. Use headings (##, ###), bullet lists, **bold** for emphasis, and --- for section separators. Do not wrap the entire response in a code block. Structure the output for easy scanning.")
+            OutputFormat.PLAIN_TEXT -> sb.append("\n\nFormat your response as plain readable text. Do not use Markdown syntax like #, *, or ```. Use simple paragraphs and line breaks for structure.")
+            OutputFormat.JSON -> sb.append("\n\nReturn your response as valid JSON only. No explanation, no commentary, no Markdown code fences. Output must be parseable JSON.")
+            OutputFormat.AUTO -> { /* no format constraint */ }
+        }
+    }
+
+    /** Build structured JSON prompt for multi-platform social output generation. */
+    private fun buildSocialSystemPrompt(sb: StringBuilder, template: WorkflowTemplate) {
+        val cfg = template.outputConfig
+        val allPlatforms = cfg.socialPlatforms.map { it.displayName } + cfg.customPlatforms
+
+        sb.append("Generate distinct social media content for multiple platforms from the provided sources.")
+
+        // Global social instruction
+        if (cfg.socialGlobalInstruction.isNotBlank()) {
+            sb.append("\n\nGlobal social content instruction: ${cfg.socialGlobalInstruction}")
+        }
+
+        // Per-platform instructions
+        sb.append("\n\nTarget platforms and style guidance:")
+        for (platform in allPlatforms) {
+            val instruction = cfg.platformInstructions[platform]
+            sb.append("\n- $platform")
+            if (!instruction.isNullOrBlank()) {
+                sb.append(": $instruction")
+            } else {
+                // Default style hints for built-in platforms
+                when (platform) {
+                    "X" -> sb.append(": Short, punchy, under 280 characters. Use hashtags sparingly.")
+                    "LinkedIn" -> sb.append(": Professional tone with a hook and call-to-action. 1-3 short paragraphs.")
+                    "Facebook" -> sb.append(": Conversational and community-friendly. Encourage engagement.")
+                    "Medium" -> sb.append(": Longer teaser paragraph with article-style tone. Thoughtful and insightful.")
+                    "Instagram" -> sb.append(": Caption-style. Visual, aspirational, with relevant hashtags.")
+                    "Threads" -> sb.append(": Narrative, conversational thread style.")
+                }
+            }
+        }
+
+        // Include briefing section for BOTH mode
+        if (cfg.outputType == WorkflowOutputType.BOTH) {
+            sb.append("\n\nAlso include a briefing section. Add it as an additional output entry with platform name \"Briefing\".")
+        }
+
+        // Structured JSON output instruction
+        sb.append("\n\nIMPORTANT: Return your response as valid JSON only. No explanation, no commentary, no Markdown code fences.")
+        sb.append("\nUse exactly this JSON schema:")
+        sb.append("\n{")
+        sb.append("\n  \"outputs\": [")
+        sb.append("\n    {")
+        sb.append("\n      \"platform\": \"Platform Name\",")
+        sb.append("\n      \"content\": \"The generated content for this platform\",")
+        sb.append("\n      \"title\": \"Optional short title or hook\",")
+        sb.append("\n      \"notes\": \"Optional notes like suggested hashtags or posting tips\"")
+        sb.append("\n    }")
+        sb.append("\n  ]")
+        sb.append("\n}")
+        sb.append("\n\nGenerate one entry per platform. Each platform's content must be distinct and tailored — do not simply rewrite the same text.")
+        sb.append("\nPlatforms to generate for: ${allPlatforms.joinToString(", ")}")
     }
 
     private data class ActionResult(

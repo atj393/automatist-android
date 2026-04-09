@@ -39,7 +39,9 @@ data class RunUiState(
     val setupIssues: List<String> = emptyList(),
     // Profile diagnostics
     val profileName: String = "",
-    val modelId: String = ""
+    val modelId: String = "",
+    // Social output
+    val isSocialOutput: Boolean = false
 )
 
 data class StageInfo(
@@ -227,9 +229,14 @@ class WorkflowRunViewModel @Inject constructor(
                         tokenUsage = executionState.tokenUsage,
                         durationMs = executionState.durationMs,
                         profileName = executionState.profileName,
-                        modelId = executionState.modelId
+                        modelId = executionState.modelId,
+                        isSocialOutput = executionState.isSocialOutput
                     )
                 }
+
+                // Determine output format: social mode uses JSON internally
+                val effectiveFormat = if (executionState.isSocialOutput) OutputFormat.JSON
+                    else template.outputConfig.outputFormat
 
                 // Update run record
                 repository.updateRun(
@@ -241,7 +248,7 @@ class WorkflowRunViewModel @Inject constructor(
                         status = WorkflowRunStatus.COMPLETED,
                         currentStage = "Completed",
                         outputText = executionState.outputText,
-                        outputFormat = template.outputConfig.outputFormat,
+                        outputFormat = effectiveFormat,
                         providerType = executionState.providerType,
                         promptTokens = executionState.tokenUsage.promptTokens,
                         completionTokens = executionState.tokenUsage.completionTokens,
@@ -249,7 +256,8 @@ class WorkflowRunViewModel @Inject constructor(
                         durationMs = executionState.durationMs,
                         completedAtMillis = System.currentTimeMillis(),
                         profileName = executionState.profileName,
-                        modelId = executionState.modelId
+                        modelId = executionState.modelId,
+                        isSocialOutput = executionState.isSocialOutput
                     )
                 )
 

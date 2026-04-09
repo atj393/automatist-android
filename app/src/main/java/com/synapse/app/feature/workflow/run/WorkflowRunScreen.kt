@@ -243,12 +243,13 @@ fun WorkflowRunScreen(
                 }
             }
 
-            // Output — format-aware rendering
+            // Output — format-aware rendering (social outputs render as per-platform cards)
             if (state.outputText.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
                 OutputDisplay(
                     outputText = state.outputText,
-                    outputFormat = state.outputFormat
+                    outputFormat = state.outputFormat,
+                    isSocialOutput = state.isSocialOutput
                 )
             }
 

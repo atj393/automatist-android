@@ -25,6 +25,7 @@ object BuiltInTemplates {
 
     val ALL: List<BuiltInTemplate> = listOf(
         morningBrief(),
+        newsToSocial(),
         articleSummarizer(),
         stockTracker(),
         flightTracker()
@@ -32,7 +33,7 @@ object BuiltInTemplates {
 
     fun findById(id: String): BuiltInTemplate? = ALL.find { it.id == id }
 
-    val CATEGORIES = listOf("Daily Routines", "Communication", "Finance", "Travel")
+    val CATEGORIES = listOf("Daily Routines", "Social Media", "Communication", "Finance", "Travel")
 
     // ── Template Definitions ──
 
@@ -90,6 +91,63 @@ object BuiltInTemplates {
                 outputFormat = OutputFormat.MARKDOWN
             ),
             notifyOnCompletion = true
+        )
+    )
+
+    private fun newsToSocial() = BuiltInTemplate(
+        id = "news_to_social",
+        name = "News to Social",
+        description = "Fetch daily news from RSS feeds and generate ready-to-share social media posts for X, LinkedIn, and more. Perfect for content creators and marketers.",
+        category = "Social Media",
+        useCases = listOf("Daily social content", "Content repurposing", "Multi-platform publishing"),
+        setupNotes = listOf(
+            "Add one or more RSS feed URLs for your preferred news sources",
+            "Select which social platforms to generate content for",
+            "Optionally add per-platform style instructions",
+            "An AI provider API key is required for content generation"
+        ),
+        blueprint = WorkflowTemplate(
+            name = "News to Social",
+            description = "Generate daily social media posts from curated news",
+            category = "Social Media",
+            sourceTemplateId = "news_to_social",
+            trigger = WorkflowTrigger.Daily(hour = 10, minute = 0),
+            actions = listOf(
+                WorkflowAction(
+                    id = "news_feed",
+                    type = WorkflowActionType.FETCH_RSS_FEED,
+                    label = "News Feed",
+                    sourceData = "",
+                    instruction = "Select the most interesting and shareable items from today's feed.",
+                    order = 0,
+                    extraConfig = Json.encodeToString(
+                        RssFeedConfig(maxItems = 5, includeTitle = true, includeSummary = true)
+                    )
+                )
+            ),
+            globalInstruction = "Focus on the most newsworthy and engaging items. Each platform output should feel native to that platform, not like a copy-paste. Highlight different angles for different audiences.",
+            outputConfig = WorkflowOutputConfig(
+                outputType = WorkflowOutputType.SOCIAL_POST,
+                outputFormat = OutputFormat.MARKDOWN, // overridden internally to JSON for social mode
+                socialPlatforms = setOf(SocialPlatform.X, SocialPlatform.LINKEDIN),
+                socialGlobalInstruction = "Focus on tech and business trends. Keep tone professional but approachable.",
+                platformInstructions = mapOf(
+                    "X" to "Short, punchy, under 280 chars. Include 1-2 relevant hashtags.",
+                    "LinkedIn" to "Professional insight with a hook. 2-3 short paragraphs. End with a question or CTA."
+                )
+            ),
+            notifyOnCompletion = true,
+            customization = TemplateCustomization(
+                editableSections = setOf(
+                    EditableSection.TRIGGER,
+                    EditableSection.ACTIONS,
+                    EditableSection.INSTRUCTIONS,
+                    EditableSection.OUTPUT,
+                    EditableSection.NOTIFICATIONS
+                ),
+                canAddActions = true,
+                canRemoveActions = true
+            )
         )
     )
 

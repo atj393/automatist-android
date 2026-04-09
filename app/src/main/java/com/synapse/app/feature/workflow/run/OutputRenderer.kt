@@ -24,18 +24,36 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.synapse.app.domain.models.OutputFormat
+import com.synapse.app.domain.models.SocialOutput
+import com.synapse.app.domain.models.SocialOutputParser
 import kotlinx.coroutines.launch
 
 /**
  * Format-aware output display with rendered/raw toggle and copy/share actions.
  * Used by both WorkflowRunScreen and WorkflowRunDetailScreen.
+ * When isSocialOutput is true, renders per-platform cards with individual copy/share.
  */
 @Composable
 fun OutputDisplay(
     outputText: String,
     outputFormat: OutputFormat,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSocialOutput: Boolean = false
 ) {
+    // Social output mode → render platform cards
+    if (isSocialOutput) {
+        val socialOutputs = remember(outputText) { SocialOutputParser.parse(outputText) }
+        if (socialOutputs.isNotEmpty()) {
+            SocialOutputDisplay(
+                socialOutputs = socialOutputs,
+                rawJson = outputText,
+                modifier = modifier
+            )
+            return
+        }
+        // Fallback: if parsing fails, render as standard output
+    }
+
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -135,6 +153,235 @@ fun OutputDisplay(
 
         // Inline snackbar host for copy feedback
         SnackbarHost(snackbarHostState)
+    }
+}
+
+// ── Social Output Display ──
+
+/**
+ * Renders per-platform social output cards with individual copy/share actions.
+ */
+@Composable
+fun SocialOutputDisplay(
+    socialOutputs: List<SocialOutput>,
+    rawJson: String,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var showRaw by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Header
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                "Social Outputs",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            AssistChip(
+                onClick = {},
+                label = { Text("${socialOutputs.size} platforms", style = MaterialTheme.typography.labelSmall) },
+                modifier = Modifier.height(26.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            FilterChip(
+                selected = showRaw,
+                onClick = { showRaw = !showRaw },
+                label = { Text(if (showRaw) "Raw JSON" else "Cards", style = MaterialTheme.typography.labelSmall) },
+                leadingIcon = {
+                    Icon(
+                        if (showRaw) Icons.Default.Code else Icons.Default.Visibility,
+                        null, modifier = Modifier.size(14.dp)
+                    )
+                },
+                modifier = Modifier.height(26.dp)
+            )
+        }
+
+        if (showRaw) {
+            // Raw JSON view
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                JsonRendered(rawJson)
+            }
+        } else {
+            // Per-platform cards
+            socialOutputs.forEach { output ->
+                SocialOutputCard(
+                    output = output,
+                    onCopied = { msg -> scope.launch { snackbarHostState.showSnackbar(msg) } }
+                )
+            }
+        }
+
+        // Copy All button
+        OutlinedButton(
+            onClick = {
+                val allText = socialOutputs.joinToString("\n\n---\n\n") { output ->
+                    buildString {
+                        appendLine("[${output.platform}]")
+                        if (output.title.isNotBlank()) appendLine(output.title)
+                        append(output.content)
+                        if (output.notes.isNotBlank()) {
+                            appendLine()
+                            append("Notes: ${output.notes}")
+                        }
+                    }
+                }
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("All Social Outputs", allText))
+                scope.launch { snackbarHostState.showSnackbar("All outputs copied") }
+            }
+        ) {
+            Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Copy All Outputs")
+        }
+
+        SnackbarHost(snackbarHostState)
+    }
+}
+
+@Composable
+private fun SocialOutputCard(
+    output: SocialOutput,
+    onCopied: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val platformIcon = when (output.platform.lowercase()) {
+        "x" -> Icons.Default.Tag
+        "linkedin" -> Icons.Default.Work
+        "facebook" -> Icons.Default.People
+        "medium" -> Icons.Default.Article
+        "instagram" -> Icons.Default.CameraAlt
+        "threads" -> Icons.Default.Forum
+        "briefing" -> Icons.Default.Summarize
+        else -> Icons.Default.Share
+    }
+
+    // Character limit warning for X
+    val charWarning = if (output.platform.equals("X", ignoreCase = true) && output.charCount > 280) {
+        "${output.charCount}/280 — over limit"
+    } else if (output.platform.equals("X", ignoreCase = true)) {
+        "${output.charCount}/280"
+    } else null
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp).fillMaxWidth()) {
+            // Platform header
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    platformIcon, null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    output.platform,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                // Character count badge
+                if (charWarning != null) {
+                    val isOverLimit = output.platform.equals("X", ignoreCase = true) && output.charCount > 280
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            Text(
+                                charWarning,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isOverLimit) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        modifier = Modifier.height(24.dp)
+                    )
+                }
+            }
+
+            // Title
+            if (output.title.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    output.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            // Content
+            Spacer(Modifier.height(8.dp))
+            Text(
+                output.content,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            // Notes
+            if (output.notes.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    output.notes,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontStyle = FontStyle.Italic
+                )
+            }
+
+            // Action buttons
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("${output.platform} Output", output.content))
+                        onCopied("${output.platform} output copied")
+                    },
+                    modifier = Modifier.height(34.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Copy", style = MaterialTheme.typography.labelMedium)
+                }
+                OutlinedButton(
+                    onClick = {
+                        val shareText = output.content
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                            if (output.title.isNotBlank()) {
+                                putExtra(Intent.EXTRA_SUBJECT, output.title)
+                            }
+                        }
+                        context.startActivity(
+                            Intent.createChooser(intent, "Share to ${output.platform}")
+                        )
+                    },
+                    modifier = Modifier.height(34.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Icon(Icons.Default.Share, null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Share", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
     }
 }
 

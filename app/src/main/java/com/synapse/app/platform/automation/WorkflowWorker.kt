@@ -153,7 +153,10 @@ class WorkflowWorker(
         // ── Handle terminal state ──
         val result = when (val terminal = finalState) {
             is ExecutionState.Completed -> {
-                Log.i(TAG, "=== COMPLETED === duration=${terminal.durationMs}ms, tokens=${terminal.tokenUsage.totalTokens}, profile=${terminal.profileName}, model=${terminal.modelId}")
+                Log.i(TAG, "=== COMPLETED === duration=${terminal.durationMs}ms, tokens=${terminal.tokenUsage.totalTokens}, profile=${terminal.profileName}, model=${terminal.modelId}, social=${terminal.isSocialOutput}")
+
+                val effectiveFormat = if (terminal.isSocialOutput) com.synapse.app.domain.models.OutputFormat.JSON
+                    else template.outputConfig.outputFormat
 
                 repo.updateRun(
                     WorkflowRun(
@@ -164,7 +167,7 @@ class WorkflowWorker(
                         status = WorkflowRunStatus.COMPLETED,
                         currentStage = "Completed",
                         outputText = terminal.outputText,
-                        outputFormat = template.outputConfig.outputFormat,
+                        outputFormat = effectiveFormat,
                         providerType = terminal.providerType,
                         promptTokens = terminal.tokenUsage.promptTokens,
                         completionTokens = terminal.tokenUsage.completionTokens,
@@ -172,7 +175,8 @@ class WorkflowWorker(
                         durationMs = terminal.durationMs,
                         completedAtMillis = System.currentTimeMillis(),
                         profileName = terminal.profileName,
-                        modelId = terminal.modelId
+                        modelId = terminal.modelId,
+                        isSocialOutput = terminal.isSocialOutput
                     )
                 )
 

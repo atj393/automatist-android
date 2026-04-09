@@ -252,8 +252,67 @@ data class WorkflowOutputConfig(
     val customInstruction: String = "",
     val socialPlatforms: Set<SocialPlatform> = emptySet(),
     val saveToHistory: Boolean = true,
-    val outputProfileId: String = "" // profile override for final output generation ("" = inherit workflow default)
+    val outputProfileId: String = "", // profile override for final output generation ("" = inherit workflow default)
+    // ── Social media output config ──
+    val socialGlobalInstruction: String = "", // shared instruction for all social outputs
+    val platformInstructions: Map<String, String> = emptyMap(), // per-platform instructions (key = platform name)
+    val customPlatforms: List<String> = emptyList() // user-defined custom platform names
 )
+
+// ── Social Output (parsed from structured JSON response) ──
+
+@Serializable
+data class SocialOutput(
+    val platform: String,
+    val content: String,
+    val title: String = "",
+    val notes: String = ""
+) {
+    val charCount: Int get() = content.length
+}
+
+/**
+ * Utility to parse social output JSON from AI response.
+ * Expected schema: {"outputs": [{"platform": "X", "content": "...", "title": "...", "notes": "..."}]}
+ */
+object SocialOutputParser {
+    private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    fun parse(rawJson: String): List<SocialOutput> {
+        return try {
+            val trimmed = rawJson.trim()
+            // Try parsing as wrapped object first
+            val element = json.parseToJsonElement(trimmed)
+            val obj = element as? kotlinx.serialization.json.JsonObject
+            val outputsArray = obj?.get("outputs") as? kotlinx.serialization.json.JsonArray
+            if (outputsArray != null) {
+                outputsArray.map { item ->
+                    val itemObj = item as kotlinx.serialization.json.JsonObject
+                    SocialOutput(
+                        platform = itemObj["platform"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "Unknown",
+                        content = itemObj["content"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "",
+                        title = itemObj["title"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "",
+                        notes = itemObj["notes"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: ""
+                    )
+                }
+            } else emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun isSocialJson(text: String): Boolean {
+        return try {
+            val trimmed = text.trim()
+            if (!trimmed.startsWith("{")) return false
+            val element = json.parseToJsonElement(trimmed)
+            val obj = element as? kotlinx.serialization.json.JsonObject ?: return false
+            obj.containsKey("outputs")
+        } catch (_: Exception) {
+            false
+        }
+    }
+}
 
 // ── Run ──
 
@@ -282,8 +341,13 @@ data class WorkflowRun(
     val startedAtMillis: Long = System.currentTimeMillis(),
     val completedAtMillis: Long? = null,
     val profileName: String = "",
-    val modelId: String = ""
-)
+    val modelId: String = "",
+    val isSocialOutput: Boolean = false
+) {
+    /** Parse social outputs from outputText when isSocialOutput is true. */
+    val socialOutputs: List<SocialOutput>
+        get() = if (isSocialOutput) SocialOutputParser.parse(outputText) else emptyList()
+}
 
 data class TokenUsage(
     val promptTokens: Int? = null,

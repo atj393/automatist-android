@@ -21,7 +21,10 @@ class FakeArticleTransformProvider @Inject constructor() : ArticleTransformProvi
             return Result.failure(IllegalArgumentException("Input text cannot be empty."))
         }
 
-        val output = if (input.systemPromptOverride != null) {
+        val output = if (input.systemPromptOverride != null && input.systemPromptOverride.contains("\"outputs\"")) {
+            // Social output mode — return structured JSON matching the schema
+            buildFakeSocialOutput(input.systemPromptOverride)
+        } else if (input.systemPromptOverride != null) {
             "Simulated response to custom automation configuration:\n\nFormat matching user request:\n${input.systemPromptOverride}"
         } else when (type) {
             TransformType.SUMMARY -> {
@@ -83,5 +86,58 @@ class FakeArticleTransformProvider @Inject constructor() : ArticleTransformProvi
                 completionTokens = output.length / 4
             )
         )
+    }
+
+    private fun buildFakeSocialOutput(systemPrompt: String): String {
+        // Extract platform names from the prompt
+        val platformsLine = systemPrompt.lines().find { it.startsWith("Platforms to generate for:") }
+        val platforms = platformsLine
+            ?.removePrefix("Platforms to generate for:")
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: listOf("X", "LinkedIn")
+
+        val entries = platforms.map { platform ->
+            val (content, title, notes) = when (platform) {
+                "X" -> Triple(
+                    "Breaking: AI-powered workflow automation is changing how professionals consume content. Less noise, more signal. #AI #Productivity",
+                    "AI Workflow Update",
+                    "Under 280 chars. Consider posting during morning hours for best engagement."
+                )
+                "LinkedIn" -> Triple(
+                    "I've been rethinking how I consume daily content.\n\nInstead of scrolling through dozens of articles, I now use automated workflows to surface what matters and generate ready-to-share insights.\n\nThe result? 30 minutes saved every morning and better-informed decisions.\n\nWhat does your content workflow look like?",
+                    "Rethinking Content Consumption",
+                    "Professional tone with CTA. Add a relevant image for better reach."
+                )
+                "Facebook" -> Triple(
+                    "Hey everyone! Just discovered a game-changing way to stay on top of daily news without the overwhelm. Automated content workflows pull in what matters and organize it beautifully. Anyone else tired of endless scrolling? What are your favorite news sources?",
+                    "Daily News Workflow",
+                    "Conversational tone. Good for community engagement."
+                )
+                "Medium" -> Triple(
+                    "The modern professional faces an unprecedented challenge: information overload. Every morning, we're bombarded with hundreds of articles, updates, and notifications competing for our attention. But what if there was a smarter way to filter the signal from the noise?\n\nAutomated content workflows represent a paradigm shift in how we consume and share information...",
+                    "The Case for Automated Content Workflows",
+                    "Consider expanding into a full article. Teaser length is good for cross-posting."
+                )
+                else -> Triple(
+                    "Here's today's curated content update, tailored for $platform. The top stories focus on technology, productivity, and innovation trends that matter to your audience.",
+                    "Daily Content Update",
+                    "Custom platform output for $platform."
+                )
+            }
+            """    {"platform": "$platform", "content": ${escapeJson(content)}, "title": ${escapeJson(title)}, "notes": ${escapeJson(notes)}}"""
+        }
+
+        return "{\n  \"outputs\": [\n${entries.joinToString(",\n")}\n  ]\n}"
+    }
+
+    private fun escapeJson(text: String): String {
+        val escaped = text
+            .replace("\\", "\\\\")
+            .replace("\"", "\\\"")
+            .replace("\n", "\\n")
+            .replace("\t", "\\t")
+        return "\"$escaped\""
     }
 }
