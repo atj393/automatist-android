@@ -413,17 +413,18 @@ private fun TriggerSection(
     trigger: WorkflowTrigger,
     onTriggerChanged: (WorkflowTrigger) -> Unit
 ) {
-    val triggerOptions = listOf("Manual", "Daily", "Weekly", "Notification (Coming Soon)")
+    val triggerOptions = listOf("Manual", "Daily", "Weekly", "Interval", "Notification (Coming Soon)")
     val selectedIndex = when (trigger) {
         is WorkflowTrigger.Manual -> 0
         is WorkflowTrigger.Daily -> 1
         is WorkflowTrigger.Weekly -> 2
-        is WorkflowTrigger.NotificationKeyword -> 3
+        is WorkflowTrigger.Interval -> 3
+        is WorkflowTrigger.NotificationKeyword -> 4
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         triggerOptions.forEachIndexed { index, label ->
-            val isNotification = index == 3
+            val isNotification = index == 4
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 RadioButton(
                     selected = selectedIndex == index,
@@ -433,6 +434,7 @@ private fun TriggerSection(
                                 0 -> onTriggerChanged(WorkflowTrigger.Manual)
                                 1 -> onTriggerChanged(WorkflowTrigger.Daily())
                                 2 -> onTriggerChanged(WorkflowTrigger.Weekly())
+                                3 -> onTriggerChanged(WorkflowTrigger.Interval())
                             }
                         }
                     },
@@ -496,8 +498,34 @@ private fun TriggerSection(
             }
         }
 
+        // Interval presets
+        if (trigger is WorkflowTrigger.Interval) {
+            val presets = listOf(15, 30, 60, 120, 240, 480)
+            Column(modifier = Modifier.padding(start = 48.dp)) {
+                Text("Run every:", style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    presets.forEach { mins ->
+                        val label = when {
+                            mins < 60 -> "${mins}m"
+                            mins == 60 -> "1h"
+                            else -> "${mins / 60}h"
+                        }
+                        FilterChip(
+                            selected = trigger.intervalMinutes == mins,
+                            onClick = { onTriggerChanged(trigger.copy(intervalMinutes = mins)) },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+            }
+        }
+
         // Show computed next run
-        if (trigger is WorkflowTrigger.Daily || trigger is WorkflowTrigger.Weekly) {
+        if (trigger is WorkflowTrigger.Daily || trigger is WorkflowTrigger.Weekly || trigger is WorkflowTrigger.Interval) {
             val nextRun = computeNextRunPreview(trigger)
             Text(
                 "Next run: $nextRun",
@@ -505,8 +533,13 @@ private fun TriggerSection(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(start = 48.dp, top = 4.dp)
             )
+            val timingNote = if (trigger is WorkflowTrigger.Interval) {
+                "Runs again after each interval, not at fixed clock times. Android may adjust timing by a few minutes."
+            } else {
+                "Android may adjust the actual run time by a few minutes to save battery."
+            }
             Text(
-                "Android may adjust the actual run time by a few minutes to save battery.",
+                timingNote,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                 modifier = Modifier.padding(start = 48.dp)
@@ -601,6 +634,12 @@ private fun computeNextRunPreview(trigger: WorkflowTrigger): String {
                 if (bestTarget == null || t.timeInMillis < bestTarget.timeInMillis) bestTarget = t
             }
             bestTarget?.let { dateFormat.format(it.time) } ?: "Unknown"
+        }
+        is WorkflowTrigger.Interval -> {
+            val target = java.util.Calendar.getInstance().apply {
+                add(java.util.Calendar.MINUTE, trigger.intervalMinutes)
+            }
+            dateFormat.format(target.time)
         }
         else -> "Not scheduled"
     }

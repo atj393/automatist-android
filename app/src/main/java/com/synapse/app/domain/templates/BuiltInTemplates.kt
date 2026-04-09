@@ -19,33 +19,37 @@ object BuiltInTemplates {
         val description: String,
         val category: String,
         val useCases: List<String>,
+        val setupNotes: List<String> = emptyList(),
         val blueprint: WorkflowTemplate
     )
 
     val ALL: List<BuiltInTemplate> = listOf(
-        morningCommuteBrief(),
         morningBrief(),
         articleSummarizer(),
-        meetingPrep(),
-        contentRepurposer(),
-        competitorMonitor(),
-        researchDigest()
+        stockTracker(),
+        flightTracker()
     )
 
     fun findById(id: String): BuiltInTemplate? = ALL.find { it.id == id }
 
-    val CATEGORIES = listOf("Daily Routines", "News & Content", "Communication", "Research", "Social Media")
+    val CATEGORIES = listOf("Daily Routines", "Communication", "Finance", "Travel")
 
     // ── Template Definitions ──
 
-    private fun morningCommuteBrief() = BuiltInTemplate(
+    private fun morningBrief() = BuiltInTemplate(
         id = "morning_commute",
-        name = "Morning Commute Brief",
+        name = "Morning Brief",
         description = "Get weather, commute time, and top headlines before you leave. Your personal morning briefing.",
         category = "Daily Routines",
         useCases = listOf("Morning routine", "Commute planning", "Daily weather + news"),
+        setupNotes = listOf(
+            "Add your OpenWeatherMap API key in Settings (free)",
+            "Add your OpenRouteService API key in Settings (free)",
+            "Enter your home and office addresses after creating the workflow",
+            "Add an RSS feed URL for your preferred news source"
+        ),
         blueprint = WorkflowTemplate(
-            name = "Morning Commute Brief",
+            name = "Morning Brief",
             description = "Weather, commute time, and top headlines for your morning",
             category = "Daily Routines",
             sourceTemplateId = "morning_commute",
@@ -81,47 +85,11 @@ object BuiltInTemplates {
                 )
             ),
             globalInstruction = "Create a concise, friendly morning briefing. Start with weather, then commute info, then headlines. Keep it scannable so I can read it in 30 seconds.",
-            outputConfig = WorkflowOutputConfig(outputType = WorkflowOutputType.BRIEFING),
-            notifyOnCompletion = true
-        )
-    )
-
-    private fun morningBrief() = BuiltInTemplate(
-        id = "morning_brief",
-        name = "Morning Brief",
-        description = "Monitor RSS feeds and get a daily AI-generated executive summary of what matters.",
-        category = "News & Content",
-        useCases = listOf("Daily news digest", "Industry monitoring", "Team updates"),
-        blueprint = WorkflowTemplate(
-            name = "Morning Brief",
-            description = "Daily executive brief from your RSS feeds",
-            category = "News & Content",
-            sourceTemplateId = "morning_brief",
-            trigger = WorkflowTrigger.Daily(hour = 8, minute = 0),
-            actions = listOf(
-                WorkflowAction(
-                    id = "rss_main",
-                    type = WorkflowActionType.FETCH_RSS_FEED,
-                    label = "News Feed",
-                    sourceData = "",
-                    instruction = "Extract the most relevant headlines and insights",
-                    order = 0
-                )
+            outputConfig = WorkflowOutputConfig(
+                outputType = WorkflowOutputType.BRIEFING,
+                outputFormat = OutputFormat.MARKDOWN
             ),
-            globalInstruction = "Produce a scannable executive morning brief. Highlight only what truly matters today. Be concise.",
-            outputConfig = WorkflowOutputConfig(outputType = WorkflowOutputType.BRIEFING),
-            notifyOnCompletion = true,
-            customization = TemplateCustomization(
-                editableSections = setOf(
-                    EditableSection.TRIGGER,
-                    EditableSection.ACTIONS,
-                    EditableSection.INSTRUCTIONS,
-                    EditableSection.OUTPUT,
-                    EditableSection.NOTIFICATIONS
-                ),
-                canAddActions = true,
-                canRemoveActions = true
-            )
+            notifyOnCompletion = true
         )
     )
 
@@ -131,6 +99,10 @@ object BuiltInTemplates {
         description = "Transform articles and text into summaries, social threads, or professional posts.",
         category = "Communication",
         useCases = listOf("Article summaries", "Social media threads", "LinkedIn posts"),
+        setupNotes = listOf(
+            "Paste or share text into the workflow before running",
+            "Choose your output style (briefing, social post, etc.) in Output settings"
+        ),
         blueprint = WorkflowTemplate(
             name = "Article Transformer",
             description = "Transform pasted text into structured outputs",
@@ -148,7 +120,10 @@ object BuiltInTemplates {
                 )
             ),
             globalInstruction = "Transform this text into a concise, well-structured output.",
-            outputConfig = WorkflowOutputConfig(outputType = WorkflowOutputType.BRIEFING),
+            outputConfig = WorkflowOutputConfig(
+                outputType = WorkflowOutputType.BRIEFING,
+                outputFormat = OutputFormat.MARKDOWN
+            ),
             customization = TemplateCustomization(
                 editableSections = setOf(
                     EditableSection.ACTIONS,
@@ -162,107 +137,60 @@ object BuiltInTemplates {
         )
     )
 
-    private fun meetingPrep() = BuiltInTemplate(
-        id = "meeting_prep",
-        name = "Meeting Strategist",
-        description = "Prepare briefs and strategic questions from meeting notes.",
-        category = "Communication",
-        useCases = listOf("Meeting briefs", "Strategic questions", "Action item extraction"),
+    private fun stockTracker() = BuiltInTemplate(
+        id = "stock_tracker",
+        name = "Stock Tracker",
+        description = "Monitor stock prices and financial news. Uses RSS feeds for market news and a public API for price data. You provide the API endpoint and an optional personal watchlist.",
+        category = "Finance",
+        useCases = listOf("Stock price monitoring", "Market news digest", "Portfolio watch"),
+        setupNotes = listOf(
+            "Stock Prices action: enter a free stock API endpoint (see examples in the editor)",
+            "Market News action: add a financial RSS feed URL",
+            "My Watchlist: create a Saved Note with your ticker symbols (e.g. AAPL, MSFT, TSLA)",
+            "An AI provider API key is required for the final summary"
+        ),
         blueprint = WorkflowTemplate(
-            name = "Meeting Strategist",
-            description = "Generate briefs and questions from meeting notes",
-            category = "Communication",
-            sourceTemplateId = "meeting_prep",
-            trigger = WorkflowTrigger.Manual,
+            name = "Stock Tracker",
+            description = "Financial news and stock data brief",
+            category = "Finance",
+            sourceTemplateId = "stock_tracker",
+            trigger = WorkflowTrigger.Interval(intervalMinutes = 240),
             actions = listOf(
                 WorkflowAction(
-                    id = "meeting_notes",
-                    type = WorkflowActionType.PASTE_TEXT,
-                    label = "Meeting Notes",
+                    id = "market_news",
+                    type = WorkflowActionType.FETCH_RSS_FEED,
+                    label = "Market News",
                     sourceData = "",
-                    instruction = "These are raw meeting notes. Extract key decisions, action items, and open questions.",
+                    instruction = "Extract headlines about major market moves, earnings, and notable stock changes.",
                     order = 0
-                )
-            ),
-            globalInstruction = "Generate an executive meeting brief with clear action items and strategic follow-up questions.",
-            outputConfig = WorkflowOutputConfig(outputType = WorkflowOutputType.BRIEFING),
-            customization = TemplateCustomization(
-                editableSections = setOf(
-                    EditableSection.ACTIONS,
-                    EditableSection.INSTRUCTIONS,
-                    EditableSection.OUTPUT
                 ),
-                lockedActionIds = setOf("meeting_notes"),
-                canAddActions = true,
-                canRemoveActions = false
-            )
-        )
-    )
-
-    private fun contentRepurposer() = BuiltInTemplate(
-        id = "content_repurposer",
-        name = "Content Repurposer",
-        description = "Turn existing content into social media posts for multiple platforms.",
-        category = "Social Media",
-        useCases = listOf("Cross-platform posting", "Content recycling", "Social media management"),
-        blueprint = WorkflowTemplate(
-            name = "Content Repurposer",
-            description = "Repurpose content into platform-specific social posts",
-            category = "Social Media",
-            sourceTemplateId = "content_repurposer",
-            trigger = WorkflowTrigger.Manual,
-            actions = listOf(
                 WorkflowAction(
-                    id = "source_content",
-                    type = WorkflowActionType.PASTE_TEXT,
-                    label = "Source Content",
+                    id = "stock_data",
+                    type = WorkflowActionType.FETCH_API_GET,
+                    label = "Stock Prices",
                     sourceData = "",
-                    instruction = "This is the source content to repurpose.",
-                    order = 0
+                    instruction = "Summarize current prices, daily change, and trend direction for each ticker.",
+                    order = 1,
+                    extraConfig = Json.encodeToString(
+                        ApiGetConfig(
+                            extractionHint = "Extract ticker symbols, prices, daily change percentage, and volume if available."
+                        )
+                    )
+                ),
+                WorkflowAction(
+                    id = "watchlist_notes",
+                    type = WorkflowActionType.USE_SAVED_NOTE,
+                    label = "My Watchlist",
+                    sourceData = "",
+                    instruction = "Use this watchlist to focus the analysis on tickers and sectors I care about.",
+                    order = 2
                 )
             ),
-            globalInstruction = "Create distinct, platform-appropriate social media posts from this content. Each post should feel native to its platform, not just a rewrite.",
+            globalInstruction = "Create a concise financial brief. Lead with the biggest movers, then summarize market sentiment, then cover my watchlist items. Flag anything that needs attention.",
             outputConfig = WorkflowOutputConfig(
-                outputType = WorkflowOutputType.SOCIAL_POST,
-                socialPlatforms = setOf(SocialPlatform.LINKEDIN, SocialPlatform.X, SocialPlatform.THREADS)
+                outputType = WorkflowOutputType.BRIEFING,
+                outputFormat = OutputFormat.MARKDOWN
             ),
-            customization = TemplateCustomization(
-                editableSections = setOf(
-                    EditableSection.ACTIONS,
-                    EditableSection.INSTRUCTIONS,
-                    EditableSection.OUTPUT,
-                    EditableSection.NOTIFICATIONS
-                ),
-                canAddActions = true,
-                canRemoveActions = true
-            )
-        )
-    )
-
-    private fun competitorMonitor() = BuiltInTemplate(
-        id = "competitor_monitor",
-        name = "Competitor Monitor",
-        description = "Track multiple RSS feeds for competitor news and industry movements.",
-        category = "Research",
-        useCases = listOf("Competitive intelligence", "Market monitoring", "Industry trends"),
-        blueprint = WorkflowTemplate(
-            name = "Competitor Monitor",
-            description = "Multi-feed competitive intelligence brief",
-            category = "Research",
-            sourceTemplateId = "competitor_monitor",
-            trigger = WorkflowTrigger.Daily(hour = 9, minute = 0),
-            actions = listOf(
-                WorkflowAction(
-                    id = "multi_rss",
-                    type = WorkflowActionType.FETCH_RSS_MULTI,
-                    label = "Industry Feeds",
-                    sourceData = "",
-                    instruction = "Focus on competitor product launches, partnerships, and strategic moves.",
-                    order = 0
-                )
-            ),
-            globalInstruction = "Produce a structured competitive intelligence brief. Group by competitor or theme. Highlight threats and opportunities.",
-            outputConfig = WorkflowOutputConfig(outputType = WorkflowOutputType.BRIEFING),
             notifyOnCompletion = true,
             customization = TemplateCustomization(
                 editableSections = setOf(
@@ -278,32 +206,71 @@ object BuiltInTemplates {
         )
     )
 
-    private fun researchDigest() = BuiltInTemplate(
-        id = "research_digest",
-        name = "Research Digest",
-        description = "Combine multiple sources — URLs, APIs, notes — into a research summary.",
-        category = "Research",
-        useCases = listOf("Market research", "Topic deep-dives", "Due diligence"),
+    private fun flightTracker() = BuiltInTemplate(
+        id = "flight_tracker",
+        name = "Flight Tracker",
+        description = "Track flight status and destination weather before your trip. Uses a public flight API for status data and OpenWeatherMap for destination conditions. You provide the API endpoint and trip details.",
+        category = "Travel",
+        useCases = listOf("Flight status checks", "Airport weather", "Travel day briefing"),
+        setupNotes = listOf(
+            "Flight Status action: enter a flight status API endpoint (see examples in the editor)",
+            "Destination Weather: enter the destination city and add your OpenWeatherMap key in Settings",
+            "Trip Details: create a Saved Note with your booking info, hotel, and transport details",
+            "An AI provider API key is required for the final summary"
+        ),
         blueprint = WorkflowTemplate(
-            name = "Research Digest",
-            description = "Multi-source research compilation and summary",
-            category = "Research",
-            sourceTemplateId = "research_digest",
-            trigger = WorkflowTrigger.Manual,
+            name = "Flight Tracker",
+            description = "Flight status, weather at destination, and travel updates",
+            category = "Travel",
+            sourceTemplateId = "flight_tracker",
+            trigger = WorkflowTrigger.Interval(intervalMinutes = 60),
             actions = listOf(
                 WorkflowAction(
-                    id = "research_url",
-                    type = WorkflowActionType.FETCH_URL,
-                    label = "Research Source",
+                    id = "flight_status",
+                    type = WorkflowActionType.FETCH_API_GET,
+                    label = "Flight Status",
                     sourceData = "",
-                    instruction = "Extract key facts, data points, and insights.",
-                    order = 0
+                    instruction = "Report flight number, departure/arrival times, gate, terminal, and any delays or cancellations.",
+                    order = 0,
+                    extraConfig = Json.encodeToString(
+                        ApiGetConfig(
+                            extractionHint = "Extract flight number, status, departure time, arrival time, gate, terminal, and delay info."
+                        )
+                    )
+                ),
+                WorkflowAction(
+                    id = "destination_weather",
+                    type = WorkflowActionType.FETCH_WEATHER,
+                    label = "Destination Weather",
+                    instruction = "Summarize the weather at the destination city. Mention what to pack or expect on arrival.",
+                    order = 1,
+                    extraConfig = Json.encodeToString(
+                        WeatherConfig(location = "", units = WeatherUnits.METRIC)
+                    )
+                ),
+                WorkflowAction(
+                    id = "travel_notes",
+                    type = WorkflowActionType.USE_SAVED_NOTE,
+                    label = "Trip Details",
+                    sourceData = "",
+                    instruction = "Use these trip details (booking references, hotel, transport) to contextualize the briefing.",
+                    order = 2
                 )
             ),
-            globalInstruction = "Synthesize all research sources into a structured summary with key findings, data points, and recommended next steps.",
-            outputConfig = WorkflowOutputConfig(outputType = WorkflowOutputType.BRIEFING),
+            globalInstruction = "Create a travel briefing. Start with flight status and any delays, then destination weather, then any relevant trip details. Keep it actionable — tell me what I need to do next.",
+            outputConfig = WorkflowOutputConfig(
+                outputType = WorkflowOutputType.BRIEFING,
+                outputFormat = OutputFormat.MARKDOWN
+            ),
+            notifyOnCompletion = true,
             customization = TemplateCustomization(
-                editableSections = EditableSection.entries.toSet(),
+                editableSections = setOf(
+                    EditableSection.TRIGGER,
+                    EditableSection.ACTIONS,
+                    EditableSection.INSTRUCTIONS,
+                    EditableSection.OUTPUT,
+                    EditableSection.NOTIFICATIONS
+                ),
                 canAddActions = true,
                 canRemoveActions = true
             )

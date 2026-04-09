@@ -176,6 +176,7 @@ class ScheduleStatusViewModel @Inject constructor(
             val days = trigger.daysOfWeek.sorted().mapNotNull { dayNames[it] }.joinToString(", ")
             "Weekly ($days) at ${trigger.hour.toString().padStart(2, '0')}:${trigger.minute.toString().padStart(2, '0')}"
         }
+        is WorkflowTrigger.Interval -> trigger.displayLabel
         is WorkflowTrigger.NotificationKeyword -> "Notification"
     }
 
@@ -214,6 +215,12 @@ class ScheduleStatusViewModel @Inject constructor(
                     if (bestTarget == null || t.timeInMillis < bestTarget.timeInMillis) bestTarget = t
                 }
                 bestTarget?.let { dateFormat.format(it.time) } ?: "Unknown"
+            }
+            is WorkflowTrigger.Interval -> {
+                val target = java.util.Calendar.getInstance().apply {
+                    add(java.util.Calendar.MINUTE, trigger.intervalMinutes)
+                }
+                dateFormat.format(target.time)
             }
             else -> "Not scheduled"
         }

@@ -72,6 +72,19 @@ sealed interface WorkflowTrigger {
     ) : WorkflowTrigger
 
     @Serializable
+    @SerialName("interval")
+    data class Interval(
+        val intervalMinutes: Int = 60
+    ) : WorkflowTrigger {
+        val displayLabel: String get() = when {
+            intervalMinutes < 60 -> "Every ${intervalMinutes}m"
+            intervalMinutes == 60 -> "Every hour"
+            intervalMinutes % 60 == 0 -> "Every ${intervalMinutes / 60}h"
+            else -> "Every ${intervalMinutes / 60}h ${intervalMinutes % 60}m"
+        }
+    }
+
+    @Serializable
     @SerialName("notification")
     data class NotificationKeyword(
         val keywords: List<String> = emptyList()
