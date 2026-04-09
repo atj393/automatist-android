@@ -237,11 +237,22 @@ private fun ApiGetEditor(action: WorkflowAction, onUpdate: (WorkflowAction) -> U
         value = action.sourceData,
         onValueChange = { onUpdate(action.copy(sourceData = it)) },
         label = { Text("API Endpoint URL") },
-        placeholder = { Text("https://api.example.com/data") },
+        placeholder = { Text("https://api.example.com/v1/data?symbol=AAPL") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
         isError = action.sourceData.isNotBlank() && !action.sourceData.startsWith("http")
     )
+
+    if (action.sourceData.isBlank()) {
+        Text(
+            "Enter the full URL including query parameters. The app will make a GET request and pass the response to the AI.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
+    }
+
+    // Example APIs section
+    ApiExamplesSection(onSelect = { url -> onUpdate(action.copy(sourceData = url)) })
 
     // Headers as comma-separated key:value pairs (simple V1 approach)
     val headersText = remember(config.headers) {
@@ -257,7 +268,7 @@ private fun ApiGetEditor(action: WorkflowAction, onUpdate: (WorkflowAction) -> U
             updateConfig(config.copy(headers = map))
         },
         label = { Text("Headers (optional, key: value, comma-separated)") },
-        placeholder = { Text("Accept: application/json, X-Api-Key: abc") },
+        placeholder = { Text("Accept: application/json, X-Api-Key: YOUR_KEY") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
@@ -270,6 +281,112 @@ private fun ApiGetEditor(action: WorkflowAction, onUpdate: (WorkflowAction) -> U
         singleLine = true,
         modifier = Modifier.fillMaxWidth()
     )
+}
+
+// ── API Examples ──
+
+private data class ApiExample(val name: String, val url: String, val category: String, val note: String)
+
+private val API_EXAMPLES = listOf(
+    ApiExample(
+        "Alpha Vantage — Stock Quote",
+        "https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=YOUR_KEY",
+        "Stocks",
+        "Free tier: 25 requests/day. Get key at alphavantage.co"
+    ),
+    ApiExample(
+        "Finnhub — Stock Quote",
+        "https://finnhub.io/api/v1/quote?symbol=AAPL&token=YOUR_KEY",
+        "Stocks",
+        "Free tier: 60 calls/min. Get key at finnhub.io"
+    ),
+    ApiExample(
+        "AviationStack — Flight Status",
+        "https://api.aviationstack.com/v1/flights?access_key=YOUR_KEY&flight_iata=LH123",
+        "Flights",
+        "Free tier: 100 requests/month. Get key at aviationstack.com"
+    ),
+    ApiExample(
+        "Exchange Rates",
+        "https://open.er-api.com/v6/latest/USD",
+        "Finance",
+        "Free, no key required"
+    ),
+    ApiExample(
+        "JSONPlaceholder (Test)",
+        "https://jsonplaceholder.typicode.com/posts/1",
+        "Testing",
+        "Free test API — use to verify your workflow works"
+    )
+)
+
+@Composable
+private fun ApiExamplesSection(onSelect: (String) -> Unit) {
+    var showExamples by remember { mutableStateOf(false) }
+
+    Column {
+        TextButton(onClick = { showExamples = !showExamples }, contentPadding = PaddingValues(0.dp)) {
+            Icon(
+                if (showExamples) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                null, modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                if (showExamples) "Hide API examples" else "See example APIs you can use",
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+
+        if (showExamples) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                API_EXAMPLES.forEach { example ->
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        example.name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        example.category,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                TextButton(
+                                    onClick = { onSelect(example.url) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Text("Use", style = MaterialTheme.typography.labelMedium)
+                                }
+                            }
+                            Text(
+                                example.note,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Replace YOUR_KEY with your actual API key. Most services offer a free tier.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
+        }
+    }
 }
 
 @Composable

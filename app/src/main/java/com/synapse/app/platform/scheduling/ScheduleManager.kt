@@ -94,6 +94,14 @@ class ScheduleManager @Inject constructor(
                 "Scheduled weekly at $timeStr (first run in ~${delayHours}h)"
             }
 
+            is WorkflowTrigger.Interval -> {
+                val delayMs = trigger.intervalMinutes.toLong() * 60_000L
+                enqueueScheduledOneShot(templateId, uniqueName, delayMs)
+
+                Log.i(TAG, "Scheduled INTERVAL workflow $templateId: every ${trigger.intervalMinutes}m, delayMs=$delayMs, uniqueName=$uniqueName")
+                "Scheduled ${trigger.displayLabel} (next run in ~${trigger.intervalMinutes}m)"
+            }
+
             is WorkflowTrigger.NotificationKeyword -> {
                 Log.d(TAG, "NotificationKeyword trigger not yet supported for workflow $templateId")
                 "Notification triggers coming soon"
@@ -110,6 +118,7 @@ class ScheduleManager @Inject constructor(
         val delayMs = when (trigger) {
             is WorkflowTrigger.Daily -> computeDelayToNextTime(trigger.hour, trigger.minute)
             is WorkflowTrigger.Weekly -> computeDelayToNextWeeklyTime(trigger.daysOfWeek, trigger.hour, trigger.minute)
+            is WorkflowTrigger.Interval -> trigger.intervalMinutes.toLong() * 60_000L
             else -> {
                 Log.d(TAG, "rescheduleNext: trigger is ${trigger::class.simpleName}, not rescheduling")
                 return
@@ -186,6 +195,7 @@ class ScheduleManager @Inject constructor(
                     val delayMs = when (val trigger = template.trigger) {
                         is WorkflowTrigger.Daily -> computeDelayToNextTime(trigger.hour, trigger.minute)
                         is WorkflowTrigger.Weekly -> computeDelayToNextWeeklyTime(trigger.daysOfWeek, trigger.hour, trigger.minute)
+                        is WorkflowTrigger.Interval -> trigger.intervalMinutes.toLong() * 60_000L
                         else -> continue
                     }
                     enqueueScheduledOneShot(template.id, scheduledWorkName(template.id), delayMs)

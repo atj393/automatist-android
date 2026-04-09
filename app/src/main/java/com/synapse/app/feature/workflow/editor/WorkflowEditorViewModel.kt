@@ -295,6 +295,12 @@ class WorkflowEditorViewModel @Inject constructor(
                 }
                 bestTarget?.let { dateFormat.format(it.time) } ?: "Unknown"
             }
+            is WorkflowTrigger.Interval -> {
+                val target = java.util.Calendar.getInstance().apply {
+                    add(java.util.Calendar.MINUTE, trigger.intervalMinutes)
+                }
+                dateFormat.format(target.time)
+            }
             else -> ""
         }
     }
@@ -313,6 +319,9 @@ class WorkflowEditorViewModel @Inject constructor(
         }
         if (state.trigger is WorkflowTrigger.Weekly) {
             if (state.trigger.daysOfWeek.isEmpty()) errors.add("Select at least one day of the week.")
+        }
+        if (state.trigger is WorkflowTrigger.Interval) {
+            if (state.trigger.intervalMinutes < 15) errors.add("Interval must be at least 15 minutes.")
         }
         return errors
     }
