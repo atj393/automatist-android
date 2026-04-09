@@ -49,7 +49,8 @@ sealed interface ExecutionState {
         val tokenUsage: TokenUsage,
         val durationMs: Long,
         val profileName: String = "",
-        val modelId: String = ""
+        val modelId: String = "",
+        val isSocialOutput: Boolean = false
     ) : ExecutionState
 
     data class Failed(
