@@ -651,6 +651,9 @@ private fun OutputSection(
     onConfigChanged: (WorkflowOutputConfig) -> Unit,
     profiles: List<ProviderProfile> = emptyList()
 ) {
+    val isSocialMode = config.outputType == WorkflowOutputType.SOCIAL_POST ||
+            config.outputType == WorkflowOutputType.BOTH
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Output type
         Text("Output Type", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
@@ -664,30 +667,52 @@ private fun OutputSection(
             }
         }
 
-        // Output format
-        Spacer(Modifier.height(4.dp))
-        Text("Output Format", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
-        Text(
-            "Controls how the AI structures its response and how the result is displayed.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(2.dp))
-        OutputFormat.entries.forEach { format ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                RadioButton(
-                    selected = config.outputFormat == format,
-                    onClick = { onConfigChanged(config.copy(outputFormat = format)) }
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(format.displayName, style = MaterialTheme.typography.bodyMedium)
+        // ── Social Platform Selection (shown when Social Post or Both) ──
+        if (isSocialMode) {
+            Spacer(Modifier.height(4.dp))
+            SocialPlatformSection(config = config, onConfigChanged = onConfigChanged)
+        }
+
+        // Output format (hidden for social mode — uses structured JSON internally)
+        if (!isSocialMode) {
+            Spacer(Modifier.height(4.dp))
+            Text("Output Format", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+            Text(
+                "Controls how the AI structures its response and how the result is displayed.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(2.dp))
+            OutputFormat.entries.forEach { format ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    RadioButton(
+                        selected = config.outputFormat == format,
+                        onClick = { onConfigChanged(config.copy(outputFormat = format)) }
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(format.displayName, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            format.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        } else {
+            // Info note for social mode
+            Spacer(Modifier.height(4.dp))
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        format.description,
+                        "Social output uses structured generation internally. Results display as per-platform cards with individual copy and share actions.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 }
             }
@@ -705,6 +730,182 @@ private fun OutputSection(
                 inheritLabel = "Use workflow default"
             )
         }
+    }
+}
+
+// ── Social Platform Selection UI ──
+
+@Composable
+private fun SocialPlatformSection(
+    config: WorkflowOutputConfig,
+    onConfigChanged: (WorkflowOutputConfig) -> Unit
+) {
+    var showAddCustom by remember { mutableStateOf(false) }
+    var customPlatformName by remember { mutableStateOf("") }
+    var expandedPlatform by remember { mutableStateOf<String?>(null) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Target Platforms", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+        Text(
+            "Select platforms to generate tailored content for. Each gets its own output card.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        // Built-in platforms
+        SocialPlatform.entries.forEach { platform ->
+            val isSelected = config.socialPlatforms.contains(platform)
+            val platformName = platform.displayName
+            val instruction = config.platformInstructions[platformName] ?: ""
+
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Checkbox(
+                        checked = isSelected,
+                        onCheckedChange = { checked ->
+                            val updated = if (checked) config.socialPlatforms + platform
+                            else config.socialPlatforms - platform
+                            onConfigChanged(config.copy(socialPlatforms = updated))
+                        }
+                    )
+                    Text(platformName, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    if (isSelected) {
+                        IconButton(
+                            onClick = { expandedPlatform = if (expandedPlatform == platformName) null else platformName },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                if (expandedPlatform == platformName) Icons.Default.ExpandLess else Icons.Default.Tune,
+                                "Instructions",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+                // Per-platform instruction
+                if (isSelected && expandedPlatform == platformName) {
+                    OutlinedTextField(
+                        value = instruction,
+                        onValueChange = { newInst ->
+                            val updated = config.platformInstructions.toMutableMap()
+                            if (newInst.isBlank()) updated.remove(platformName)
+                            else updated[platformName] = newInst
+                            onConfigChanged(config.copy(platformInstructions = updated))
+                        },
+                        label = { Text("$platformName style instructions") },
+                        placeholder = { Text("e.g. Keep it under 280 chars, use hashtags...") },
+                        modifier = Modifier.fillMaxWidth().padding(start = 40.dp),
+                        minLines = 2,
+                        maxLines = 4,
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
+        // Custom platforms
+        config.customPlatforms.forEachIndexed { index, customName ->
+            val instruction = config.platformInstructions[customName] ?: ""
+
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Checkbox(checked = true, onCheckedChange = null, enabled = false) // always checked — remove to deselect
+                    Text(customName, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    IconButton(
+                        onClick = { expandedPlatform = if (expandedPlatform == customName) null else customName },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            if (expandedPlatform == customName) Icons.Default.ExpandLess else Icons.Default.Tune,
+                            "Instructions",
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            val updatedCustom = config.customPlatforms.toMutableList().apply { removeAt(index) }
+                            val updatedInstructions = config.platformInstructions.toMutableMap().apply { remove(customName) }
+                            onConfigChanged(config.copy(customPlatforms = updatedCustom, platformInstructions = updatedInstructions))
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.Close, "Remove", modifier = Modifier.size(18.dp))
+                    }
+                }
+                if (expandedPlatform == customName) {
+                    OutlinedTextField(
+                        value = instruction,
+                        onValueChange = { newInst ->
+                            val updated = config.platformInstructions.toMutableMap()
+                            if (newInst.isBlank()) updated.remove(customName)
+                            else updated[customName] = newInst
+                            onConfigChanged(config.copy(platformInstructions = updated))
+                        },
+                        label = { Text("$customName style instructions") },
+                        placeholder = { Text("Describe the tone and style for this platform...") },
+                        modifier = Modifier.fillMaxWidth().padding(start = 40.dp),
+                        minLines = 2,
+                        maxLines = 4,
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+
+        // Add custom platform
+        if (showAddCustom) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(start = 40.dp)
+            ) {
+                OutlinedTextField(
+                    value = customPlatformName,
+                    onValueChange = { customPlatformName = it },
+                    label = { Text("Platform name") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = {
+                    if (customPlatformName.isNotBlank()) {
+                        val updatedCustom = config.customPlatforms + customPlatformName.trim()
+                        onConfigChanged(config.copy(customPlatforms = updatedCustom))
+                        customPlatformName = ""
+                        showAddCustom = false
+                    }
+                }) {
+                    Icon(Icons.Default.Check, "Add")
+                }
+                IconButton(onClick = { showAddCustom = false; customPlatformName = "" }) {
+                    Icon(Icons.Default.Close, "Cancel")
+                }
+            }
+        } else {
+            TextButton(onClick = { showAddCustom = true }) {
+                Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Add Custom Platform")
+            }
+        }
+
+        // Global social instruction
+        Spacer(Modifier.height(4.dp))
+        Text("Global Social Instruction", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+        Text(
+            "Shared instruction applied to all platform outputs.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedTextField(
+            value = config.socialGlobalInstruction,
+            onValueChange = { onConfigChanged(config.copy(socialGlobalInstruction = it)) },
+            placeholder = { Text("e.g. Focus on AI and tech trends. Keep a professional but approachable tone.") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 2,
+            maxLines = 4,
+            textStyle = MaterialTheme.typography.bodySmall
+        )
     }
 }
 

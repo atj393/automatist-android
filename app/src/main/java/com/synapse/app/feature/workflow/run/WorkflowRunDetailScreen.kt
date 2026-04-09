@@ -121,11 +121,12 @@ fun WorkflowRunDetailScreen(
                 }
             }
 
-            // Output — format-aware rendering
+            // Output — format-aware rendering (social outputs render as per-platform cards)
             if (r.outputText.isNotBlank()) {
                 OutputDisplay(
                     outputText = r.outputText,
-                    outputFormat = r.outputFormat
+                    outputFormat = r.outputFormat,
+                    isSocialOutput = r.isSocialOutput
                 )
             }
 

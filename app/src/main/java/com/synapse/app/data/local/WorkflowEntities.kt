@@ -68,7 +68,8 @@ data class WorkflowRunEntity(
     val startedAtMillis: Long,
     val completedAtMillis: Long?,
     val profileName: String = "",
-    val modelId: String = ""
+    val modelId: String = "",
+    val isSocialOutput: Boolean = false
 )
 
 // ── Provider Profile Entity ──
@@ -204,7 +205,8 @@ fun WorkflowRunEntity.toDomain() = WorkflowRun(
     startedAtMillis = startedAtMillis,
     completedAtMillis = completedAtMillis,
     profileName = profileName,
-    modelId = modelId
+    modelId = modelId,
+    isSocialOutput = isSocialOutput
 )
 
 fun WorkflowRun.toEntity() = WorkflowRunEntity(
@@ -226,5 +228,6 @@ fun WorkflowRun.toEntity() = WorkflowRunEntity(
     startedAtMillis = startedAtMillis,
     completedAtMillis = completedAtMillis,
     profileName = profileName,
-    modelId = modelId
+    modelId = modelId,
+    isSocialOutput = isSocialOutput
 )
