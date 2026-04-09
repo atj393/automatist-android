@@ -20,10 +20,11 @@ class AnthropicArticleTransformProvider @Inject constructor(
         input: ArticleInput,
         type: TransformType
     ): Result<TransformResult> {
+        val model = input.modelOverride ?: "claude-3-haiku-20240307"
         return try {
             val apiKey = secureStorage.getApiKey(ProviderType.ANTHROPIC)
             if (apiKey.isNullOrBlank()) {
-                return Result.failure(Exception("Anthropic API key is missing. Please add it to the Vault."))
+                return Result.failure(Exception("Anthropic API key is missing. Add it in Settings → Provider API Keys."))
             }
 
             val systemPrompt = input.systemPromptOverride ?: when (type) {
@@ -37,7 +38,7 @@ class AnthropicArticleTransformProvider @Inject constructor(
             }
 
             val request = AnthropicRequest(
-                model = input.modelOverride ?: "claude-3-haiku-20240307",
+                model = model,
                 system = systemPrompt,
                 messages = listOf(
                     AnthropicMessage(role = "user", content = input.text)
@@ -46,7 +47,7 @@ class AnthropicArticleTransformProvider @Inject constructor(
 
             val response = api.createMessage(apiKey = apiKey, request = request)
             val output = response.content?.firstOrNull()?.text
-            
+
             if (output != null) {
                 Result.success(
                     TransformResult(
@@ -58,10 +59,34 @@ class AnthropicArticleTransformProvider @Inject constructor(
                     )
                 )
             } else {
-                Result.failure(Exception("Received empty response from Anthropic."))
+                Result.failure(Exception("Anthropic (model: $model) returned empty response. Check your API limits or try a different model."))
             }
+        } catch (e: retrofit2.HttpException) {
+            val rawBody = try { e.response()?.errorBody()?.string() } catch (_: Exception) { null }
+            val hint = when (e.code()) {
+                401 -> "API key is invalid or expired. Check your Anthropic key in Settings → Provider API Keys."
+                403 -> "Access denied. Your Anthropic key may lack permissions for model '$model'."
+                429 -> "Rate limit or quota exceeded. Wait and retry, or check your Anthropic billing."
+                else -> "HTTP ${e.code()}."
+            }
+            val rawDetail = buildString {
+                appendLine("HTTP ${e.code()} ${e.message()}")
+                appendLine("Provider: Anthropic")
+                appendLine("Model: $model")
+                if (!rawBody.isNullOrBlank()) { appendLine("Response: $rawBody") }
+            }
+            Result.failure(com.synapse.app.domain.engine.DiagnosticException(
+                message = "Anthropic API failed (model: $model): $hint",
+                rawDetail = rawDetail,
+                httpStatus = e.code(),
+                cause = e
+            ))
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(com.synapse.app.domain.engine.DiagnosticException(
+                message = "Anthropic API error (model: $model): ${e.message}",
+                rawDetail = "Exception: ${e.javaClass.simpleName}: ${e.message}\nProvider: Anthropic\nModel: $model",
+                cause = e
+            ))
         }
     }
 }

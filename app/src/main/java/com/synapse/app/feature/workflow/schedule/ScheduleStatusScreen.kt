@@ -521,7 +521,7 @@ private fun ScheduledWorkflowCard(
                 TextButton(onClick = onRun) {
                     Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Test Run")
+                    Text("Run Once Now")
                 }
                 if (info.scheduleInfo.state != ScheduleState.NOT_SCHEDULED &&
                     info.scheduleInfo.state != ScheduleState.CANCELLED) {

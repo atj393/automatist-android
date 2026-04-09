@@ -76,6 +76,9 @@ class WorkflowEditorViewModel @Inject constructor(
     val availableWorkflows = repository.getAllTemplates()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val availableProfiles = repository.getAllProfiles()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
     init {
         viewModelScope.launch {
             when {
@@ -166,6 +169,7 @@ class WorkflowEditorViewModel @Inject constructor(
     fun updateNotifyOnCompletion(enabled: Boolean) = _state.update { it.copy(notifyOnCompletion = enabled) }
     fun updateNotifyOnStart(enabled: Boolean) = _state.update { it.copy(notifyOnStart = enabled) }
     fun updateOutputConfig(config: WorkflowOutputConfig) = _state.update { it.copy(outputConfig = config) }
+    fun updateDefaultProfileId(profileId: String) = _state.update { it.copy(defaultProfileId = profileId) }
 
     fun checkNotificationPermission() {
         _state.update { it.copy(needsNotificationPermission = notificationHelper.needsNotificationPermissionRequest()) }

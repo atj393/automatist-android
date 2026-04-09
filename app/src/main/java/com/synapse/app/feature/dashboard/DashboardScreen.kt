@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.synapse.app.domain.models.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,6 +28,7 @@ fun DashboardScreen(
     onNavigateToHistoryDetail: (Long) -> Unit,
     onNavigateToVault: () -> Unit,
     onNavigateToWorkflowList: () -> Unit = {},
+    onNavigateToWorkflowDetails: (Long) -> Unit = {},
     onNavigateToWorkflowRun: (Long) -> Unit = {},
     onNavigateToNotes: () -> Unit = {},
     onNavigateToTemplates: () -> Unit = {},
@@ -132,28 +134,11 @@ fun DashboardScreen(
                 }
             } else {
                 items(myWorkflows.take(5)) { wf ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().clickable { onNavigateToWorkflowRun(wf.id) },
-                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(wf.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    wf.description.ifBlank { "${wf.actions.size} action(s)" },
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            Icon(Icons.Default.PlayArrow, "Run", tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
+                    DashboardWorkflowCard(
+                        template = wf,
+                        onClick = { onNavigateToWorkflowDetails(wf.id) },
+                        onRun = { onNavigateToWorkflowRun(wf.id) }
+                    )
                 }
             }
 
@@ -201,4 +186,75 @@ fun DashboardScreen(
             item { Spacer(Modifier.height(16.dp)) }
         }
     }
+}
+
+@Composable
+private fun DashboardWorkflowCard(
+    template: WorkflowTemplate,
+    onClick: () -> Unit,
+    onRun: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.AutoAwesome, null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    template.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                // Show trigger and status info
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        triggerLabel(template.trigger),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    template.lastRunStatus?.let { status ->
+                        Text(
+                            when (status) {
+                                WorkflowRunStatus.COMPLETED -> "Last: OK"
+                                WorkflowRunStatus.FAILED -> "Last: Failed"
+                                WorkflowRunStatus.RUNNING -> "Running"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = when (status) {
+                                WorkflowRunStatus.COMPLETED -> MaterialTheme.colorScheme.primary
+                                WorkflowRunStatus.FAILED -> MaterialTheme.colorScheme.error
+                                WorkflowRunStatus.RUNNING -> MaterialTheme.colorScheme.tertiary
+                            }
+                        )
+                    }
+                }
+            }
+            // Play button for quick run
+            IconButton(onClick = onRun) {
+                Icon(
+                    Icons.Default.PlayArrow, "Run Once Now",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+private fun triggerLabel(trigger: WorkflowTrigger): String = when (trigger) {
+    is WorkflowTrigger.Manual -> "Manual"
+    is WorkflowTrigger.Daily -> "Daily ${trigger.hour.toString().padStart(2, '0')}:${trigger.minute.toString().padStart(2, '0')}"
+    is WorkflowTrigger.Weekly -> "Weekly"
+    is WorkflowTrigger.NotificationKeyword -> "Notification"
 }

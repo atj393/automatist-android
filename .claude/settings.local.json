@@ -9,7 +9,17 @@
       "Bash(ls \"c:\\\\Alexis\\\\Test\\\\mobile-app\\\\gradlew\"*)",
       "Bash(ls \"c:\\\\Alexis\\\\Test\\\\mobile-app\\\\gradle\"*)",
       "Bash(grep -n \"notifyOnCompletion\" /c/Alexis/Test/mobile-app/app/src/main/java/com/synapse/app/data/local/*.kt)",
-      "Bash(grep -E \"\\\\.kt$\")"
+      "Bash(grep -E \"\\\\.kt$\")",
+      "Bash(ls gradlew*)",
+      "Bash(adb devices:*)",
+      "Bash(./gradlew installDebug -Pandroid.adb.serial=R3CRA031PCD)",
+      "Bash(gradle --version)",
+      "Read(//c/Users/johnson/AppData/Local/Android/Sdk//**)",
+      "Read(//c/Users/johnson/.gradle/wrapper/dists//**)",
+      "Bash(/c/Users/johnson/.gradle/wrapper/dists/gradle-8.9-bin/90cnw93cvbtalezasaz0blq0a/gradle-8.9/bin/gradle --version)",
+      "Bash(/c/Users/johnson/.gradle/wrapper/dists/gradle-8.9-bin/90cnw93cvbtalezasaz0blq0a/gradle-8.9/bin/gradle installDebug -Pandroid.adb.serial=R3CRA031PCD)",
+      "Bash(/c/Users/johnson/.gradle/wrapper/dists/gradle-9.0.0-bin/d6wjpkvcgsg3oed0qlfss3wgl/gradle-9.0.0/bin/gradle installDebug -Pandroid.adb.serial=R3CRA031PCD)",
+      "Bash(/c/Users/johnson/.gradle/wrapper/dists/gradle-8.9-bin/90cnw93cvbtalezasaz0blq0a/gradle-8.9/bin/gradle wrapper:*)"
     ]
   }
 }

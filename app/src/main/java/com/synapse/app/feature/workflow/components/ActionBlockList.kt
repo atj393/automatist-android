@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.synapse.app.domain.models.ProviderProfile
 import com.synapse.app.domain.models.SavedNote
 import com.synapse.app.domain.models.WorkflowAction
 import com.synapse.app.domain.models.WorkflowActionType
@@ -20,6 +21,7 @@ fun ActionBlockList(
     onActionsChanged: (List<WorkflowAction>) -> Unit,
     availableNotes: List<SavedNote> = emptyList(),
     availableWorkflows: List<WorkflowTemplate> = emptyList(),
+    availableProfiles: List<ProviderProfile> = emptyList(),
     readinessEvaluator: ReadinessEvaluator? = null,
     onNavigateToSettings: () -> Unit = {}
 ) {
@@ -33,6 +35,7 @@ fun ActionBlockList(
                 totalCount = actions.size,
                 availableNotes = availableNotes,
                 availableWorkflows = availableWorkflows,
+                availableProfiles = availableProfiles,
                 onUpdate = { updated ->
                     onActionsChanged(actions.toMutableList().also { it[index] = updated })
                 },

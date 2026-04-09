@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.synapse.app.domain.models.WorkflowRunStatus
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,6 +29,8 @@ fun WorkflowRunDetailScreen(
 ) {
     val run by viewModel.run.collectAsState()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
         topBar = {
@@ -39,7 +42,8 @@ fun WorkflowRunDetailScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         val r = run
         if (r == null) {
@@ -96,6 +100,12 @@ fun WorkflowRunDetailScreen(
                     if (r.providerType != null) {
                         MetadataRow("Provider", r.providerType!!.displayName)
                     }
+                    if (r.profileName.isNotBlank()) {
+                        MetadataRow("Profile", r.profileName)
+                    }
+                    if (r.modelId.isNotBlank()) {
+                        MetadataRow("Model", r.modelId)
+                    }
                 }
             }
 
@@ -144,15 +154,128 @@ fun WorkflowRunDetailScreen(
                 }
             }
 
-            // Error
+            // Error — dual layer: readable + raw technical detail
             if (r.errorMessage != null) {
-                Text("Error", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
-                    Text(
-                        r.errorMessage!!,
-                        modifier = Modifier.padding(12.dp),
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
+                var showRawDetail by remember { mutableStateOf(false) }
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp).fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Error, null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Error",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            r.errorMessage!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+
+                        if (!r.errorDetail.isNullOrBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.2f)
+                            )
+                            TextButton(
+                                onClick = { showRawDetail = !showRawDetail },
+                                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    if (showRawDetail) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    null, modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    if (showRawDetail) "Hide technical details" else "Show technical details",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f)
+                                )
+                            }
+
+                            if (showRawDetail) {
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.08f)
+                                    )
+                                ) {
+                                    Text(
+                                        r.errorDetail!!,
+                                        modifier = Modifier.padding(10.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                    )
+                                }
+                            }
+                        }
+
+                        // Copy full error
+                        Spacer(Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = {
+                                val fullText = buildString {
+                                    appendLine("=== Synapse Workflow Error ===")
+                                    appendLine()
+                                    appendLine("Workflow: ${r.templateName}")
+                                    appendLine("Error: ${r.errorMessage}")
+                                    appendLine()
+                                    appendLine("Run ID: ${r.id}")
+                                    appendLine("Trigger: ${r.triggerType}")
+                                    if (r.providerType != null) appendLine("Provider: ${r.providerType!!.displayName}")
+                                    if (r.profileName.isNotBlank()) appendLine("Profile: ${r.profileName}")
+                                    if (r.modelId.isNotBlank()) appendLine("Model: ${r.modelId}")
+                                    appendLine("Stage: ${r.currentStage}")
+                                    appendLine("Started: ${formatTimestamp(r.startedAtMillis)}")
+                                    if (r.completedAtMillis != null) appendLine("Failed at: ${formatTimestamp(r.completedAtMillis!!)}")
+                                    if (!r.errorDetail.isNullOrBlank()) {
+                                        appendLine()
+                                        appendLine("--- Technical Details ---")
+                                        appendLine(r.errorDetail)
+                                    }
+                                }
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Error Details", fullText))
+                                scope.launch { snackbarHostState.showSnackbar("Copied to clipboard") }
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        ) {
+                            Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Copy Error Details", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
+            }
+
+            // Full error report copy — all metadata + technical detail
+            if (r.status == WorkflowRunStatus.FAILED) {
+                OutlinedButton(
+                    onClick = {
+                        val report = FullErrorReportBuilder.fromWorkflowRun(r)
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Full Error Report", report))
+                        scope.launch { snackbarHostState.showSnackbar("Full error report copied") }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Description, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Copy Full Error Report")
                 }
             }
 

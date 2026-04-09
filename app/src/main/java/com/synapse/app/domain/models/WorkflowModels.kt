@@ -104,7 +104,8 @@ data class WorkflowAction(
     val instruction: String = "",
     val order: Int = 0,
     val isEnabled: Boolean = true,
-    val extraConfig: String = ""
+    val extraConfig: String = "",
+    val profileId: String = "" // AI profile override ("" = inherit workflow default)
 )
 
 // ── Per-Action Config Models ──
@@ -254,8 +255,11 @@ data class WorkflowRun(
     val totalTokens: Int? = null,
     val durationMs: Long? = null,
     val errorMessage: String? = null,
+    val errorDetail: String? = null,
     val startedAtMillis: Long = System.currentTimeMillis(),
-    val completedAtMillis: Long? = null
+    val completedAtMillis: Long? = null,
+    val profileName: String = "",
+    val modelId: String = ""
 )
 
 data class TokenUsage(

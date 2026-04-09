@@ -12,6 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.models.*
+import com.synapse.app.domain.models.ProviderProfile
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -24,6 +25,7 @@ fun ActionBlockEditor(
     totalCount: Int,
     availableNotes: List<SavedNote> = emptyList(),
     availableWorkflows: List<WorkflowTemplate> = emptyList(),
+    availableProfiles: List<ProviderProfile> = emptyList(),
     onUpdate: (WorkflowAction) -> Unit,
     onRemove: () -> Unit,
     onMoveUp: (() -> Unit)?,
@@ -121,6 +123,18 @@ fun ActionBlockEditor(
                         minLines = 2, maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    // AI profile override — only show when profiles exist and action has instruction context
+                    if (availableProfiles.isNotEmpty() && action.instruction.isNotBlank()) {
+                        ProfilePicker(
+                            label = "AI Profile for this action",
+                            hint = "Override the workflow default for this action",
+                            selectedProfileId = action.profileId,
+                            profiles = availableProfiles,
+                            onProfileSelected = { onUpdate(action.copy(profileId = it)) },
+                            inheritLabel = "Use workflow default"
+                        )
+                    }
                 }
             }
         }

@@ -3,7 +3,6 @@ package com.synapse.app.domain.readiness
 import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.actions.WorkflowActionRegistry.RequirementType
 import com.synapse.app.domain.actions.WorkflowActionRegistry.SetupRequirement
-import com.synapse.app.domain.models.WorkflowAction
 import com.synapse.app.domain.models.WorkflowActionType
 import com.synapse.app.domain.models.WorkflowTemplate
 import com.synapse.app.domain.repositories.WorkflowRepository
@@ -43,7 +42,8 @@ data class ActionReadiness(
 data class WorkflowReadiness(
     val isFullyReady: Boolean,
     val actionReadiness: List<ActionReadiness>,
-    val hasProviderProfile: Boolean
+    val hasProviderProfile: Boolean,
+    val profileIssues: List<String> = emptyList()
 ) {
     val readyCount: Int get() = actionReadiness.count { it.isReady }
     val totalCount: Int get() = actionReadiness.size
@@ -76,21 +76,59 @@ class ReadinessEvaluator @Inject constructor(
     }
 
     /**
-     * Evaluate readiness for an entire workflow template.
+     * Evaluate readiness for an entire workflow template, including profile chain validation.
      */
     suspend fun evaluateWorkflow(template: WorkflowTemplate): WorkflowReadiness {
         val actionTypes = template.actions.map { it.type }.distinct()
         val actionReadiness = actionTypes.map { evaluateAction(it) }
 
-        // Check if any provider profile or activeProvider exists
         val hasProfile = workflowRepository.getDefaultProfile() != null
+        val profileIssues = mutableListOf<String>()
 
-        val isFullyReady = actionReadiness.all { it.isReady }
+        // ── Validate the AI profile chain that will be used at execution time ──
+        // Resolution order: outputConfig.outputProfileId → template.defaultProfileId → app default profile → legacy fallback
+
+        val outputProfileId = template.outputConfig.outputProfileId.ifBlank { null }
+        val workflowProfileId = template.defaultProfileId.ifBlank { null }
+        val effectiveProfileId = outputProfileId ?: workflowProfileId
+
+        if (effectiveProfileId != null) {
+            // Workflow or output specifies a profile — validate it
+            val profile = workflowRepository.getProfileById(effectiveProfileId)
+            if (profile == null) {
+                val label = if (outputProfileId != null) "Output profile" else "Workflow default profile"
+                profileIssues.add("$label is set but the profile no longer exists. Edit the workflow or choose a different profile.")
+            } else {
+                if (!profile.isEnabled) {
+                    profileIssues.add("Profile '${profile.name}' is disabled. Enable it in Settings or choose a different profile.")
+                }
+                val key = secureStorage.getApiKey(profile.providerType)
+                if (key.isNullOrBlank()) {
+                    profileIssues.add("Profile '${profile.name}' uses ${profile.providerType.displayName}, but no API key is configured. Add one in Settings → Provider API Keys.")
+                }
+            }
+        } else {
+            // No explicit profile — validate the app default
+            val defaultProfile = workflowRepository.getDefaultProfile()
+            if (defaultProfile != null) {
+                if (!defaultProfile.isEnabled) {
+                    profileIssues.add("App default profile '${defaultProfile.name}' is disabled. Enable it in Settings or set a different default.")
+                }
+                val key = secureStorage.getApiKey(defaultProfile.providerType)
+                if (key.isNullOrBlank()) {
+                    profileIssues.add("App default profile '${defaultProfile.name}' uses ${defaultProfile.providerType.displayName}, but no API key is configured. Add one in Settings → Provider API Keys.")
+                }
+            }
+            // If no default profile exists, the legacy fallback (FAKE) will be used — that's okay
+        }
+
+        val isFullyReady = actionReadiness.all { it.isReady } && profileIssues.isEmpty()
 
         return WorkflowReadiness(
             isFullyReady = isFullyReady,
             actionReadiness = actionReadiness,
-            hasProviderProfile = hasProfile
+            hasProviderProfile = hasProfile,
+            profileIssues = profileIssues
         )
     }
 
@@ -117,7 +155,7 @@ class ReadinessEvaluator @Inject constructor(
                     if (!key.isNullOrBlank()) {
                         RequirementStatus(req, ReadinessStatus.READY)
                     } else {
-                        RequirementStatus(req, ReadinessStatus.NEEDS_SETUP, "Add API key in Settings")
+                        RequirementStatus(req, ReadinessStatus.NEEDS_SETUP, "Add ${defaultProfile.providerType.displayName} API key in Settings")
                     }
                 } else {
                     RequirementStatus(req, ReadinessStatus.NEEDS_SETUP, "Set up a provider profile in Settings")
