@@ -25,6 +25,7 @@ data class RunUiState(
     val stages: List<StageInfo> = emptyList(),
     val currentStageLabel: String = "",
     val outputText: String = "",
+    val outputFormat: OutputFormat = OutputFormat.MARKDOWN,
     val providerType: ProviderType? = null,
     val tokenUsage: TokenUsage? = null,
     val durationMs: Long? = null,
@@ -110,7 +111,7 @@ class WorkflowRunViewModel @Inject constructor(
 
     private fun startRun(template: WorkflowTemplate) {
         viewModelScope.launch {
-            _state.update { it.copy(isRunning = true) }
+            _state.update { it.copy(isRunning = true, outputFormat = template.outputConfig.outputFormat) }
 
             // Create run record
             val runId = repository.insertRun(
@@ -119,7 +120,8 @@ class WorkflowRunViewModel @Inject constructor(
                     templateName = template.name,
                     triggerType = "manual",
                     status = WorkflowRunStatus.RUNNING,
-                    currentStage = "Preparing"
+                    currentStage = "Preparing",
+                    outputFormat = template.outputConfig.outputFormat
                 )
             )
             _state.update { it.copy(runId = runId) }
@@ -239,6 +241,7 @@ class WorkflowRunViewModel @Inject constructor(
                         status = WorkflowRunStatus.COMPLETED,
                         currentStage = "Completed",
                         outputText = executionState.outputText,
+                        outputFormat = template.outputConfig.outputFormat,
                         providerType = executionState.providerType,
                         promptTokens = executionState.tokenUsage.promptTokens,
                         completionTokens = executionState.tokenUsage.completionTokens,

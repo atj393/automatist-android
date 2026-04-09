@@ -243,39 +243,13 @@ fun WorkflowRunScreen(
                 }
             }
 
-            // Output
+            // Output — format-aware rendering
             if (state.outputText.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
-                Text("Output", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Card {
-                    Text(
-                        state.outputText,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("Workflow Output", state.outputText))
-                    }) {
-                        Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Copy")
-                    }
-                    OutlinedButton(onClick = {
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, state.outputText)
-                        }
-                        context.startActivity(Intent.createChooser(intent, "Share Output"))
-                    }) {
-                        Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Share")
-                    }
-                }
+                OutputDisplay(
+                    outputText = state.outputText,
+                    outputFormat = state.outputFormat
+                )
             }
 
             // Error section — dual layer: readable summary + expandable raw detail
