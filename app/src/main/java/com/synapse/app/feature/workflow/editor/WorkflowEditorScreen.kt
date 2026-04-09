@@ -23,6 +23,7 @@ import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.models.*
 import com.synapse.app.domain.readiness.WorkflowReadiness
 import com.synapse.app.feature.workflow.components.ActionBlockList
+import com.synapse.app.feature.workflow.components.ProfilePicker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,6 +37,7 @@ fun WorkflowEditorScreen(
     val state by viewModel.state.collectAsState()
     val availableNotes by viewModel.availableNotes.collectAsState()
     val availableWorkflows by viewModel.availableWorkflows.collectAsState()
+    val availableProfiles by viewModel.availableProfiles.collectAsState()
 
     // Notification permission launcher (Android 13+)
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -198,6 +200,18 @@ fun WorkflowEditorScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // Workflow default profile
+            if (availableProfiles.isNotEmpty()) {
+                ProfilePicker(
+                    label = "Default AI Profile",
+                    hint = "Used for all AI steps unless overridden",
+                    selectedProfileId = state.defaultProfileId,
+                    profiles = availableProfiles,
+                    onProfileSelected = viewModel::updateDefaultProfileId,
+                    inheritLabel = "Use app default"
+                )
+            }
+
             // ── Section 2: Trigger ──
             SectionHeader("2", "Trigger")
             TriggerSection(
@@ -217,6 +231,7 @@ fun WorkflowEditorScreen(
                 onActionsChanged = viewModel::updateActions,
                 availableNotes = availableNotes,
                 availableWorkflows = availableWorkflows,
+                availableProfiles = availableProfiles,
                 readinessEvaluator = viewModel.readinessEvaluator,
                 onNavigateToSettings = onNavigateToSettings
             )
@@ -238,7 +253,8 @@ fun WorkflowEditorScreen(
             SectionHeader("5", "Output")
             OutputSection(
                 config = state.outputConfig,
-                onConfigChanged = viewModel::updateOutputConfig
+                onConfigChanged = viewModel::updateOutputConfig,
+                profiles = availableProfiles
             )
 
             // ── Section 6: Notifications ──
@@ -593,7 +609,8 @@ private fun computeNextRunPreview(trigger: WorkflowTrigger): String {
 @Composable
 private fun OutputSection(
     config: WorkflowOutputConfig,
-    onConfigChanged: (WorkflowOutputConfig) -> Unit
+    onConfigChanged: (WorkflowOutputConfig) -> Unit,
+    profiles: List<ProviderProfile> = emptyList()
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         WorkflowOutputType.entries.forEach { type ->
@@ -604,6 +621,19 @@ private fun OutputSection(
                 )
                 Text(type.displayName)
             }
+        }
+
+        // Output profile override
+        if (profiles.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            ProfilePicker(
+                label = "Output AI Profile",
+                hint = "Override the AI profile for final output generation",
+                selectedProfileId = config.outputProfileId,
+                profiles = profiles,
+                onProfileSelected = { onConfigChanged(config.copy(outputProfileId = it)) },
+                inheritLabel = "Use workflow default"
+            )
         }
     }
 }

@@ -70,10 +70,16 @@ class WorkflowExecutionEngine @Inject constructor(
                     )
                 )
             } else {
+                val ex = result.exceptionOrNull()
+                val rawDetail = when (ex) {
+                    is DiagnosticException -> ex.rawDetail
+                    else -> ex?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: ""
+                }
                 emit(
                     ExecutionState.ActionFailed(
                         index, enabledActions.size, label,
-                        result.exceptionOrNull()?.message ?: "Unknown error"
+                        ex?.message ?: "Unknown error",
+                        rawError = ErrorRedactor.redact(rawDetail)
                     )
                 )
                 // Continue with other actions — don't abort
@@ -99,7 +105,22 @@ class WorkflowExecutionEngine @Inject constructor(
         val outputProfileId = template.outputConfig.outputProfileId.ifBlank {
             template.defaultProfileId.ifBlank { null }
         }
-        emit(ExecutionState.GeneratingOutput(outputProfileId ?: "default"))
+
+        // Resolve profile details for diagnostics
+        val resolvedProfile = if (outputProfileId != null) {
+            workflowRepository.getProfileById(outputProfileId)
+        } else {
+            workflowRepository.getDefaultProfile()
+        }
+        val profileName = resolvedProfile?.name ?: "App default"
+        val providerName = resolvedProfile?.providerType?.displayName ?: "Fallback"
+        val modelId = resolvedProfile?.modelId ?: ""
+
+        emit(ExecutionState.GeneratingOutput(
+            profileName = profileName,
+            providerName = providerName,
+            modelId = modelId
+        ))
 
         // Call AI provider with resolved profile
         val input = ArticleInput(
@@ -123,11 +144,30 @@ class WorkflowExecutionEngine @Inject constructor(
                     outputText = result.outputText,
                     providerType = result.providerType,
                     tokenUsage = tokenUsage,
-                    durationMs = durationMs
+                    durationMs = durationMs,
+                    profileName = profileName,
+                    modelId = modelId
                 )
             )
         }.onFailure { error ->
-            emit(ExecutionState.Failed(error.message ?: "AI processing failed", "processing"))
+            val rawDetail = when (error) {
+                is DiagnosticException -> error.rawDetail
+                else -> "${error.javaClass.simpleName}: ${error.message}"
+            }
+            val rawWithContext = buildString {
+                append(ErrorRedactor.redact(rawDetail))
+                if (!rawDetail.contains("Profile:")) {
+                    appendLine()
+                    appendLine("Profile: $profileName")
+                    appendLine("Provider: $providerName")
+                    appendLine("Model: $modelId")
+                }
+            }
+            emit(ExecutionState.Failed(
+                error.message ?: "AI processing failed (profile: $profileName, provider: $providerName, model: $modelId)",
+                "processing",
+                rawError = rawWithContext.trim()
+            ))
         }
     }.flowOn(Dispatchers.IO)
 
@@ -172,14 +212,28 @@ class WorkflowExecutionEngine @Inject constructor(
 
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
-                return Result.failure(Exception("HTTP ${response.code}: ${response.message}"))
+                val rawBody = try { response.body?.string()?.take(1000) } catch (_: Exception) { null }
+                val rawDetail = buildString {
+                    appendLine("HTTP ${response.code} ${response.message}")
+                    appendLine("URL: $url")
+                    if (!rawBody.isNullOrBlank()) { appendLine("Response: $rawBody") }
+                }
+                return Result.failure(DiagnosticException(
+                    message = "HTTP ${response.code}: ${response.message}",
+                    rawDetail = rawDetail,
+                    httpStatus = response.code
+                ))
             }
 
             val body = response.body?.string() ?: return Result.failure(Exception("Empty response"))
             val cleaned = cleanHtml(body).take(MAX_CHARS_PER_ACTION)
             Result.success(cleaned)
         } catch (e: Exception) {
-            Result.failure(Exception("Failed to fetch URL: ${e.message}"))
+            Result.failure(DiagnosticException(
+                message = "Failed to fetch URL: ${e.message}",
+                rawDetail = "Exception: ${e.javaClass.simpleName}: ${e.message}\nURL: $url",
+                cause = e
+            ))
         }
     }
 
@@ -213,7 +267,11 @@ class WorkflowExecutionEngine @Inject constructor(
 
             Result.success(filteredText.take(MAX_CHARS_PER_ACTION))
         } catch (e: Exception) {
-            Result.failure(Exception("RSS feed error: ${e.message}"))
+            Result.failure(DiagnosticException(
+                message = "RSS feed error: ${e.message}",
+                rawDetail = "Exception: ${e.javaClass.simpleName}: ${e.message}\nFeed URL: ${action.sourceData}",
+                cause = e
+            ))
         }
     }
 
@@ -251,7 +309,17 @@ class WorkflowExecutionEngine @Inject constructor(
 
             val response = httpClient.newCall(requestBuilder.build()).execute()
             if (!response.isSuccessful) {
-                return Result.failure(Exception("API returned HTTP ${response.code}: ${response.message}"))
+                val rawBody = try { response.body?.string()?.take(1000) } catch (_: Exception) { null }
+                val rawDetail = buildString {
+                    appendLine("HTTP ${response.code} ${response.message}")
+                    appendLine("URL: $baseUrl")
+                    if (!rawBody.isNullOrBlank()) { appendLine("Response: $rawBody") }
+                }
+                return Result.failure(DiagnosticException(
+                    message = "API returned HTTP ${response.code}: ${response.message}",
+                    rawDetail = rawDetail,
+                    httpStatus = response.code
+                ))
             }
 
             val body = response.body?.string() ?: return Result.failure(Exception("Empty API response"))
@@ -271,7 +339,11 @@ class WorkflowExecutionEngine @Inject constructor(
 
             Result.success(result.take(MAX_CHARS_PER_ACTION))
         } catch (e: Exception) {
-            Result.failure(Exception("API GET error: ${e.message}"))
+            Result.failure(DiagnosticException(
+                message = "API GET error: ${e.message}",
+                rawDetail = "Exception: ${e.javaClass.simpleName}: ${e.message}\nURL: ${action.sourceData}",
+                cause = e
+            ))
         }
     }
 
@@ -449,7 +521,25 @@ class WorkflowExecutionEngine @Inject constructor(
 
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) {
-                return Result.failure(Exception("Weather API returned HTTP ${response.code}: ${response.message}"))
+                val rawBody = try { response.body?.string() } catch (_: Exception) { null }
+                val hint = when (response.code) {
+                    401 -> "Your OpenWeatherMap API key may be invalid or expired. Check it in Settings → Service Keys."
+                    403 -> "Your OpenWeatherMap API key does not have access. Check your plan or regenerate the key."
+                    404 -> "Location '${config.location}' was not found by OpenWeatherMap. Try a different city name or use 'City,CountryCode' format (e.g. 'Berlin,DE')."
+                    429 -> "OpenWeatherMap rate limit exceeded. Wait a moment and try again."
+                    else -> "Check your OpenWeatherMap API key and network connection."
+                }
+                val rawDetail = buildString {
+                    appendLine("HTTP ${response.code} ${response.message}")
+                    appendLine("Service: OpenWeatherMap")
+                    appendLine("Location: ${config.location}")
+                    if (!rawBody.isNullOrBlank()) { appendLine("Response: $rawBody") }
+                }
+                return Result.failure(DiagnosticException(
+                    message = "Weather API returned HTTP ${response.code}. $hint",
+                    rawDetail = rawDetail,
+                    httpStatus = response.code
+                ))
             }
 
             val body = response.body?.string() ?: return Result.failure(Exception("Empty weather response"))
@@ -517,9 +607,15 @@ class WorkflowExecutionEngine @Inject constructor(
 
             // ORS geocode search for origin
             val originCoords = geocodeLocation(config.origin, apiKey)
-                ?: return Result.failure(Exception("Could not geocode origin: ${config.origin}"))
+                ?: return Result.failure(Exception(
+                    "Could not geocode origin '${config.origin}'. " +
+                    "Try a more complete address with city and country (e.g. '123 Main St, Berlin, Germany') or use coordinates (e.g. '52.52,13.405')."
+                ))
             val destCoords = geocodeLocation(config.destination, apiKey)
-                ?: return Result.failure(Exception("Could not geocode destination: ${config.destination}"))
+                ?: return Result.failure(Exception(
+                    "Could not geocode destination '${config.destination}'. " +
+                    "Try a more complete address with city and country (e.g. '456 Elm St, Berlin, Germany') or use coordinates (e.g. '52.52,13.405')."
+                ))
 
             // ORS directions
             val dirUrl = "${RouteService.BASE_URL}/v2/directions/$profile".toHttpUrlOrNull()?.newBuilder()
@@ -535,7 +631,25 @@ class WorkflowExecutionEngine @Inject constructor(
 
             val dirResponse = httpClient.newCall(dirRequest).execute()
             if (!dirResponse.isSuccessful) {
-                return Result.failure(Exception("Route API returned HTTP ${dirResponse.code}"))
+                val rawBody = try { dirResponse.body?.string() } catch (_: Exception) { null }
+                val hint = when (dirResponse.code) {
+                    401, 403 -> "Your OpenRouteService API key may be invalid. Check it in Settings → Service Keys."
+                    404 -> "No route found between the given locations. Check the addresses."
+                    429 -> "OpenRouteService rate limit exceeded. Wait a moment and try again."
+                    else -> "Check your OpenRouteService API key and network connection."
+                }
+                val rawDetail = buildString {
+                    appendLine("HTTP ${dirResponse.code} ${dirResponse.message}")
+                    appendLine("Service: OpenRouteService")
+                    appendLine("Origin: ${config.origin}")
+                    appendLine("Destination: ${config.destination}")
+                    if (!rawBody.isNullOrBlank()) { appendLine("Response: $rawBody") }
+                }
+                return Result.failure(DiagnosticException(
+                    message = "Route API returned HTTP ${dirResponse.code}. $hint",
+                    rawDetail = rawDetail,
+                    httpStatus = dirResponse.code
+                ))
             }
 
             val dirBody = dirResponse.body?.string() ?: return Result.failure(Exception("Empty route response"))
@@ -578,14 +692,20 @@ class WorkflowExecutionEngine @Inject constructor(
             if (parts.size == 2) {
                 val lat = parts[0].toDoubleOrNull()
                 val lon = parts[1].toDoubleOrNull()
-                if (lat != null && lon != null) return lon to lat // ORS uses lon,lat order
+                if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
+                    return lon to lat // ORS uses lon,lat order
+                }
             }
+
+            // Normalize address: trim excess whitespace, ensure non-empty
+            val normalized = query.trim().replace(Regex("\\s+"), " ")
+            if (normalized.isBlank()) return null
 
             // Geocode via ORS
             val url = "${RouteService.BASE_URL}/geocode/search".toHttpUrlOrNull()?.newBuilder()
                 ?: return null
             url.addQueryParameter("api_key", apiKey)
-            url.addQueryParameter("text", query)
+            url.addQueryParameter("text", normalized)
             url.addQueryParameter("size", "1")
 
             val request = Request.Builder().url(url.build()).header("User-Agent", "Synapse/1.0").build()

@@ -130,7 +130,7 @@ class WorkflowWorker(
                         is ExecutionState.ActionCompleted -> "Completed: ${state.actionLabel}"
                         is ExecutionState.ActionFailed -> "Failed: ${state.actionLabel}"
                         is ExecutionState.ProcessingStarted -> "Processing combined data..."
-                        is ExecutionState.GeneratingOutput -> "Generating output via AI..."
+                        is ExecutionState.GeneratingOutput -> "Generating output via ${state.providerName.ifBlank { "AI" }}..."
                         is ExecutionState.Completed -> "Completed"
                         is ExecutionState.Failed -> "Failed: ${state.error}"
                     }
@@ -153,7 +153,7 @@ class WorkflowWorker(
         // ── Handle terminal state ──
         val result = when (val terminal = finalState) {
             is ExecutionState.Completed -> {
-                Log.i(TAG, "=== COMPLETED === duration=${terminal.durationMs}ms, tokens=${terminal.tokenUsage.totalTokens}")
+                Log.i(TAG, "=== COMPLETED === duration=${terminal.durationMs}ms, tokens=${terminal.tokenUsage.totalTokens}, profile=${terminal.profileName}, model=${terminal.modelId}")
 
                 repo.updateRun(
                     WorkflowRun(
@@ -169,7 +169,9 @@ class WorkflowWorker(
                         completionTokens = terminal.tokenUsage.completionTokens,
                         totalTokens = terminal.tokenUsage.totalTokens,
                         durationMs = terminal.durationMs,
-                        completedAtMillis = System.currentTimeMillis()
+                        completedAtMillis = System.currentTimeMillis(),
+                        profileName = terminal.profileName,
+                        modelId = terminal.modelId
                     )
                 )
 
@@ -184,6 +186,12 @@ class WorkflowWorker(
 
             is ExecutionState.Failed -> {
                 Log.e(TAG, "=== FAILED === stage=${terminal.stage}, error=${terminal.error}")
+                if (terminal.rawError.isNotBlank()) {
+                    Log.e(TAG, "  Raw error detail: ${terminal.rawError}")
+                }
+
+                val rawForStorage = com.synapse.app.domain.engine.ErrorRedactor
+                    .redactForStorage(terminal.rawError.ifBlank { null })
 
                 repo.updateRun(
                     WorkflowRun(
@@ -194,6 +202,7 @@ class WorkflowWorker(
                         status = WorkflowRunStatus.FAILED,
                         currentStage = terminal.stage,
                         errorMessage = terminal.error,
+                        errorDetail = rawForStorage,
                         completedAtMillis = System.currentTimeMillis()
                     )
                 )

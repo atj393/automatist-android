@@ -63,8 +63,11 @@ data class WorkflowRunEntity(
     val totalTokens: Int?,
     val durationMs: Long?,
     val errorMessage: String?,
+    val errorDetail: String?,
     val startedAtMillis: Long,
-    val completedAtMillis: Long?
+    val completedAtMillis: Long?,
+    val profileName: String = "",
+    val modelId: String = ""
 )
 
 // ── Provider Profile Entity ──
@@ -195,8 +198,11 @@ fun WorkflowRunEntity.toDomain() = WorkflowRun(
     totalTokens = totalTokens,
     durationMs = durationMs,
     errorMessage = errorMessage,
+    errorDetail = errorDetail,
     startedAtMillis = startedAtMillis,
-    completedAtMillis = completedAtMillis
+    completedAtMillis = completedAtMillis,
+    profileName = profileName,
+    modelId = modelId
 )
 
 fun WorkflowRun.toEntity() = WorkflowRunEntity(
@@ -213,6 +219,9 @@ fun WorkflowRun.toEntity() = WorkflowRunEntity(
     totalTokens = totalTokens,
     durationMs = durationMs,
     errorMessage = errorMessage,
+    errorDetail = errorDetail,
     startedAtMillis = startedAtMillis,
-    completedAtMillis = completedAtMillis
+    completedAtMillis = completedAtMillis,
+    profileName = profileName,
+    modelId = modelId
 )

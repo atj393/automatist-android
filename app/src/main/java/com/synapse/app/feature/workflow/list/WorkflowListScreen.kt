@@ -1,5 +1,6 @@
 package com.synapse.app.feature.workflow.list
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,7 +26,9 @@ fun WorkflowListScreen(
     onCreateBlank: () -> Unit,
     onEdit: (Long) -> Unit,
     onRun: (Long) -> Unit,
+    onViewDetails: (Long) -> Unit,
     onViewRunDetail: (Long) -> Unit,
+    onViewHistory: (Long) -> Unit,
     onViewSchedules: () -> Unit = {},
     viewModel: WorkflowListViewModel = hiltViewModel()
 ) {
@@ -115,8 +118,10 @@ fun WorkflowListScreen(
                     MyWorkflowCard(
                         template = template,
                         scheduleInfo = scheduleStatuses[template.id],
+                        onClick = { onViewDetails(template.id) },
                         onEdit = { onEdit(template.id) },
                         onRun = { onRun(template.id) },
+                        onViewHistory = { onViewHistory(template.id) },
                         onDelete = { viewModel.deleteWorkflow(template.id) }
                     )
                 }
@@ -129,8 +134,10 @@ fun WorkflowListScreen(
 private fun MyWorkflowCard(
     template: WorkflowTemplate,
     scheduleInfo: ScheduleInfo?,
+    onClick: () -> Unit,
     onEdit: () -> Unit,
     onRun: () -> Unit,
+    onViewHistory: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -138,10 +145,11 @@ private fun MyWorkflowCard(
     val isScheduled = template.trigger !is WorkflowTrigger.Manual
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Title row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -164,6 +172,11 @@ private fun MyWorkflowCard(
                         )
                     }
                 }
+                Icon(
+                    Icons.Default.ChevronRight, "View details",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
             Spacer(Modifier.height(8.dp))
@@ -221,18 +234,12 @@ private fun MyWorkflowCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-
-                    Text(
-                        "Schedule is active. Runs automatically at the set time.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
                 }
             }
 
             Spacer(Modifier.height(8.dp))
 
+            // Action buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
@@ -246,7 +253,10 @@ private fun MyWorkflowCard(
                 TextButton(onClick = onRun) {
                     Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Test Run")
+                    Text("Run Once Now")
+                }
+                IconButton(onClick = onViewHistory) {
+                    Icon(Icons.Default.History, "History", modifier = Modifier.size(18.dp))
                 }
                 IconButton(onClick = { showDeleteDialog = true }) {
                     Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
