@@ -57,6 +57,7 @@ data class WorkflowRunEntity(
     val status: String,           // WorkflowRunStatus.name
     val currentStage: String,
     val outputText: String,
+    val outputFormat: String = "MARKDOWN", // OutputFormat.name
     val providerType: String?,    // ProviderType.name or null
     val promptTokens: Int?,
     val completionTokens: Int?,
@@ -192,6 +193,7 @@ fun WorkflowRunEntity.toDomain() = WorkflowRun(
     status = WorkflowRunStatus.valueOf(status),
     currentStage = currentStage,
     outputText = outputText,
+    outputFormat = try { OutputFormat.valueOf(outputFormat) } catch (_: Exception) { OutputFormat.MARKDOWN },
     providerType = providerType?.let { ProviderType.valueOf(it) },
     promptTokens = promptTokens,
     completionTokens = completionTokens,
@@ -213,6 +215,7 @@ fun WorkflowRun.toEntity() = WorkflowRunEntity(
     status = status.name,
     currentStage = currentStage,
     outputText = outputText,
+    outputFormat = outputFormat.name,
     providerType = providerType?.name,
     promptTokens = promptTokens,
     completionTokens = completionTokens,

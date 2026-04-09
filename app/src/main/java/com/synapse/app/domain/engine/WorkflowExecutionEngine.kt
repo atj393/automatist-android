@@ -786,6 +786,14 @@ class WorkflowExecutionEngine @Inject constructor(
                 }
             }
 
+            // Output format instruction
+            when (template.outputConfig.outputFormat) {
+                OutputFormat.MARKDOWN -> append("\n\nFormat your response using Markdown. Use headings (##, ###), bullet lists, **bold** for emphasis, and --- for section separators. Do not wrap the entire response in a code block. Structure the output for easy scanning.")
+                OutputFormat.PLAIN_TEXT -> append("\n\nFormat your response as plain readable text. Do not use Markdown syntax like #, *, or ```. Use simple paragraphs and line breaks for structure.")
+                OutputFormat.JSON -> append("\n\nReturn your response as valid JSON only. No explanation, no commentary, no Markdown code fences. Output must be parseable JSON.")
+                OutputFormat.AUTO -> { /* no format constraint — let the AI decide */ }
+            }
+
             if (template.globalInstruction.isNotBlank()) {
                 append("\n\nAdditional instructions: ${template.globalInstruction}")
             }

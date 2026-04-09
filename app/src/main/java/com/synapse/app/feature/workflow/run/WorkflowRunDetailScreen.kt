@@ -121,37 +121,12 @@ fun WorkflowRunDetailScreen(
                 }
             }
 
-            // Output
+            // Output — format-aware rendering
             if (r.outputText.isNotBlank()) {
-                Text("Output", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                Card {
-                    Text(
-                        r.outputText,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("Workflow Output", r.outputText))
-                    }) {
-                        Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Copy")
-                    }
-                    OutlinedButton(onClick = {
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, r.outputText)
-                        }
-                        context.startActivity(Intent.createChooser(intent, "Share Output"))
-                    }) {
-                        Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Share")
-                    }
-                }
+                OutputDisplay(
+                    outputText = r.outputText,
+                    outputFormat = r.outputFormat
+                )
             }
 
             // Error — dual layer: readable + raw technical detail

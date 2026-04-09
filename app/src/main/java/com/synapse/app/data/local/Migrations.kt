@@ -3,6 +3,12 @@ package com.synapse.app.data.local
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE workflow_runs ADD COLUMN outputFormat TEXT NOT NULL DEFAULT 'MARKDOWN'")
+    }
+}
+
 val MIGRATION_7_8 = object : Migration(7, 8) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE workflow_runs ADD COLUMN errorDetail TEXT")
