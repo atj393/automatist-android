@@ -223,6 +223,20 @@ private fun TemplateCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                // Setup notes
+                if (template.setupNotes.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("To get started", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(2.dp))
+                    template.setupNotes.forEachIndexed { i, note ->
+                        Text(
+                            "${i + 1}. $note",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(12.dp))
             }
 
@@ -278,11 +292,9 @@ private fun TemplateCard(
 }
 
 private fun templateIcon(templateId: String) = when (templateId) {
-    "morning_brief" -> Icons.Default.WbSunny
+    "morning_commute" -> Icons.Default.WbSunny
     "article_summarizer" -> Icons.AutoMirrored.Filled.Article
-    "meeting_prep" -> Icons.AutoMirrored.Filled.EventNote
-    "content_repurposer" -> Icons.Default.Share
-    "competitor_monitor" -> Icons.AutoMirrored.Filled.TrendingUp
-    "research_digest" -> Icons.Default.Science
+    "stock_tracker" -> Icons.AutoMirrored.Filled.TrendingUp
+    "flight_tracker" -> Icons.Default.FlightTakeoff
     else -> Icons.Default.AutoAwesome
 }

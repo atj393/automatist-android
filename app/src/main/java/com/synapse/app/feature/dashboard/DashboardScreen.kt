@@ -256,5 +256,6 @@ private fun triggerLabel(trigger: WorkflowTrigger): String = when (trigger) {
     is WorkflowTrigger.Manual -> "Manual"
     is WorkflowTrigger.Daily -> "Daily ${trigger.hour.toString().padStart(2, '0')}:${trigger.minute.toString().padStart(2, '0')}"
     is WorkflowTrigger.Weekly -> "Weekly"
+    is WorkflowTrigger.Interval -> trigger.displayLabel
     is WorkflowTrigger.NotificationKeyword -> "Notification"
 }
