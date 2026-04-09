@@ -164,6 +164,7 @@ class WorkflowWorker(
                         status = WorkflowRunStatus.COMPLETED,
                         currentStage = "Completed",
                         outputText = terminal.outputText,
+                        outputFormat = template.outputConfig.outputFormat,
                         providerType = terminal.providerType,
                         promptTokens = terminal.tokenUsage.promptTokens,
                         completionTokens = terminal.tokenUsage.completionTokens,

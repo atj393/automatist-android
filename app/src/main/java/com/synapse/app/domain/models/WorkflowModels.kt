@@ -225,8 +225,17 @@ enum class WorkflowOutputType(val displayName: String) {
 }
 
 @Serializable
+enum class OutputFormat(val displayName: String, val description: String) {
+    MARKDOWN("Markdown", "Headings, bullets, bold — rendered beautifully"),
+    PLAIN_TEXT("Plain Text", "Simple readable text, no formatting syntax"),
+    JSON("JSON", "Structured JSON data — pretty-printed in the app"),
+    AUTO("Auto", "Let the AI choose the best format")
+}
+
+@Serializable
 data class WorkflowOutputConfig(
     val outputType: WorkflowOutputType = WorkflowOutputType.BRIEFING,
+    val outputFormat: OutputFormat = OutputFormat.MARKDOWN,
     val customInstruction: String = "",
     val socialPlatforms: Set<SocialPlatform> = emptySet(),
     val saveToHistory: Boolean = true,
@@ -249,6 +258,7 @@ data class WorkflowRun(
     val status: WorkflowRunStatus = WorkflowRunStatus.RUNNING,
     val currentStage: String = "",
     val outputText: String = "",
+    val outputFormat: OutputFormat = OutputFormat.MARKDOWN,
     val providerType: ProviderType? = null,
     val promptTokens: Int? = null,
     val completionTokens: Int? = null,

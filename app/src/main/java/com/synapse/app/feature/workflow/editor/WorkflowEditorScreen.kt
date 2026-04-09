@@ -613,6 +613,8 @@ private fun OutputSection(
     profiles: List<ProviderProfile> = emptyList()
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Output type
+        Text("Output Type", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
         WorkflowOutputType.entries.forEach { type ->
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 RadioButton(
@@ -620,6 +622,35 @@ private fun OutputSection(
                     onClick = { onConfigChanged(config.copy(outputType = type)) }
                 )
                 Text(type.displayName)
+            }
+        }
+
+        // Output format
+        Spacer(Modifier.height(4.dp))
+        Text("Output Format", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+        Text(
+            "Controls how the AI structures its response and how the result is displayed.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(2.dp))
+        OutputFormat.entries.forEach { format ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                RadioButton(
+                    selected = config.outputFormat == format,
+                    onClick = { onConfigChanged(config.copy(outputFormat = format)) }
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(format.displayName, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        format.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
 
