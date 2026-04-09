@@ -19,6 +19,8 @@ import com.synapse.app.feature.workflow.list.WorkflowListScreen
 import com.synapse.app.feature.workflow.editor.WorkflowEditorScreen
 import com.synapse.app.feature.workflow.run.WorkflowRunScreen
 import com.synapse.app.feature.workflow.run.WorkflowRunDetailScreen
+import com.synapse.app.feature.workflow.details.WorkflowDetailsScreen
+import com.synapse.app.feature.workflow.history.WorkflowHistoryScreen
 import com.synapse.app.feature.workflow.schedule.ScheduleStatusScreen
 import com.synapse.app.feature.workflow.templates.WorkflowTemplatesScreen
 import com.synapse.app.feature.vault.SettingsSection
@@ -39,6 +41,8 @@ object Routes {
     const val WORKFLOW_EDITOR = "workflow_editor"
     const val WORKFLOW_RUN = "workflow_run"
     const val WORKFLOW_RUN_DETAIL = "workflow_run_detail"
+    const val WORKFLOW_DETAILS = "workflow_details"
+    const val WORKFLOW_HISTORY = "workflow_history"
     const val SAVED_NOTES = "saved_notes"
     const val SCHEDULE_STATUS = "schedule_status"
 }
@@ -79,6 +83,7 @@ fun SynapseNavGraph(
                 onNavigateToHistoryDetail = { id -> navController.navigate("${Routes.HISTORY_DETAIL}/$id") },
                 onNavigateToVault = { navController.navigate(Routes.VAULT) },
                 onNavigateToWorkflowList = { navController.navigate(Routes.WORKFLOW_LIST) },
+                onNavigateToWorkflowDetails = { id -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$id") },
                 onNavigateToWorkflowRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
                 onNavigateToNotes = { navController.navigate(Routes.SAVED_NOTES) },
                 onNavigateToTemplates = { navController.navigate(Routes.WORKFLOW_TEMPLATES) },
@@ -139,8 +144,37 @@ fun SynapseNavGraph(
                 onCreateBlank = { navController.navigate(Routes.WORKFLOW_EDITOR) },
                 onEdit = { id -> navController.navigate("${Routes.WORKFLOW_EDITOR}?templateId=$id") },
                 onRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
+                onViewDetails = { id -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$id") },
                 onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") },
+                onViewHistory = { id -> navController.navigate("${Routes.WORKFLOW_HISTORY}/$id") },
                 onViewSchedules = { navController.navigate(Routes.SCHEDULE_STATUS) }
+            )
+        }
+
+        // ── Workflow Details (read-only overview) ──
+
+        composable(
+            "${Routes.WORKFLOW_DETAILS}/{templateId}",
+            arguments = listOf(navArgument("templateId") { type = NavType.LongType })
+        ) {
+            WorkflowDetailsScreen(
+                onBack = { navController.popBackStack() },
+                onEdit = { id -> navController.navigate("${Routes.WORKFLOW_EDITOR}?templateId=$id") },
+                onRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
+                onViewHistory = { id -> navController.navigate("${Routes.WORKFLOW_HISTORY}/$id") },
+                onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") }
+            )
+        }
+
+        // ── Workflow History (per-workflow run list) ──
+
+        composable(
+            "${Routes.WORKFLOW_HISTORY}/{templateId}",
+            arguments = listOf(navArgument("templateId") { type = NavType.LongType })
+        ) {
+            WorkflowHistoryScreen(
+                onBack = { navController.popBackStack() },
+                onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") }
             )
         }
 
@@ -157,7 +191,7 @@ fun SynapseNavGraph(
                 onBack = { navController.popBackStack() },
                 onSaved = { id ->
                     navController.popBackStack()
-                    navController.navigate(Routes.WORKFLOW_LIST)
+                    navController.navigate("${Routes.WORKFLOW_DETAILS}/$id")
                 },
                 onTestRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
                 onNavigateToSettings = { navController.navigate("${Routes.VAULT}?section=${SettingsSection.SERVICE_KEYS.key}") }

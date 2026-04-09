@@ -20,10 +20,11 @@ class OpenAIArticleTransformProvider @Inject constructor(
         input: ArticleInput,
         type: TransformType
     ): Result<TransformResult> {
+        val model = input.modelOverride ?: "gpt-3.5-turbo"
         return try {
             val apiKey = secureStorage.getApiKey(ProviderType.OPENAI)
             if (apiKey.isNullOrBlank()) {
-                return Result.failure(Exception("OpenAI API key is missing. Please add it to the Vault."))
+                return Result.failure(Exception("OpenAI API key is missing. Add it in Settings → Provider API Keys."))
             }
 
             val systemPrompt = input.systemPromptOverride ?: when (type) {
@@ -37,7 +38,7 @@ class OpenAIArticleTransformProvider @Inject constructor(
             }
 
             val request = ChatRequest(
-                model = input.modelOverride ?: "gpt-3.5-turbo",
+                model = model,
                 messages = listOf(
                     ChatMessage(role = "system", content = systemPrompt),
                     ChatMessage(role = "user", content = input.text)
@@ -46,7 +47,7 @@ class OpenAIArticleTransformProvider @Inject constructor(
 
             val response = api.createChatCompletion("Bearer $apiKey", request)
             val output = response.choices?.firstOrNull()?.message?.content
-            
+
             if (output != null) {
                 Result.success(
                     TransformResult(
@@ -58,10 +59,34 @@ class OpenAIArticleTransformProvider @Inject constructor(
                     )
                 )
             } else {
-                Result.failure(Exception("Received empty response from OpenAI. Check your network constraints or API limits."))
+                Result.failure(Exception("OpenAI (model: $model) returned empty response. Check your API limits or try a different model."))
             }
+        } catch (e: retrofit2.HttpException) {
+            val rawBody = try { e.response()?.errorBody()?.string() } catch (_: Exception) { null }
+            val hint = when (e.code()) {
+                401 -> "API key is invalid or expired. Check your OpenAI key in Settings → Provider API Keys."
+                403 -> "Access denied. Your OpenAI key may lack permissions for model '$model'."
+                429 -> "Rate limit or quota exceeded. Wait and retry, or check your OpenAI billing."
+                else -> "HTTP ${e.code()}."
+            }
+            val rawDetail = buildString {
+                appendLine("HTTP ${e.code()} ${e.message()}")
+                appendLine("Provider: OpenAI")
+                appendLine("Model: $model")
+                if (!rawBody.isNullOrBlank()) { appendLine("Response: $rawBody") }
+            }
+            Result.failure(com.synapse.app.domain.engine.DiagnosticException(
+                message = "OpenAI API failed (model: $model): $hint",
+                rawDetail = rawDetail,
+                httpStatus = e.code(),
+                cause = e
+            ))
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(com.synapse.app.domain.engine.DiagnosticException(
+                message = "OpenAI API error (model: $model): ${e.message}",
+                rawDetail = "Exception: ${e.javaClass.simpleName}: ${e.message}\nProvider: OpenAI\nModel: $model",
+                cause = e
+            ))
         }
     }
 }

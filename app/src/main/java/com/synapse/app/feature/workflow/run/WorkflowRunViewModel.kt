@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.synapse.app.domain.actions.WorkflowActionRegistry
+import com.synapse.app.domain.engine.ErrorRedactor
 import com.synapse.app.domain.engine.ExecutionState
 import com.synapse.app.domain.engine.WorkflowExecutionEngine
 import com.synapse.app.domain.models.*
@@ -28,12 +29,16 @@ data class RunUiState(
     val tokenUsage: TokenUsage? = null,
     val durationMs: Long? = null,
     val errorMessage: String? = null,
+    val errorDetail: String? = null,
     val isCompleted: Boolean = false,
     val isFailed: Boolean = false,
     val runId: Long? = null,
     // Preflight
     val isBlockedBySetup: Boolean = false,
-    val setupIssues: List<String> = emptyList()
+    val setupIssues: List<String> = emptyList(),
+    // Profile diagnostics
+    val profileName: String = "",
+    val modelId: String = ""
 )
 
 data class StageInfo(
@@ -76,12 +81,20 @@ class WorkflowRunViewModel @Inject constructor(
             // Preflight readiness check
             val readiness = readinessEvaluator.evaluateWorkflow(template)
             if (!readiness.isFullyReady) {
-                val issues = readiness.needsSetupActions.map { ar ->
+                val issues = mutableListOf<String>()
+
+                // Action-level issues (missing service keys, etc.)
+                readiness.needsSetupActions.forEach { ar ->
                     val info = WorkflowActionRegistry.getInfo(ar.type)
-                    val missing = ar.requirements.filter { it.status == com.synapse.app.domain.readiness.ReadinessStatus.NEEDS_SETUP }
+                    val missing = ar.requirements
+                        .filter { it.status == com.synapse.app.domain.readiness.ReadinessStatus.NEEDS_SETUP }
                         .joinToString(", ") { it.requirement.label }
-                    "${info.displayName}: $missing"
+                    issues.add("${info.displayName}: $missing")
                 }
+
+                // Profile-level issues (missing key, disabled profile, deleted profile)
+                issues.addAll(readiness.profileIssues)
+
                 _state.value = RunUiState(
                     isLoading = false,
                     templateName = template.name,
@@ -158,9 +171,14 @@ class WorkflowRunViewModel @Inject constructor(
                 _state.update {
                     val stages = it.stages.toMutableList()
                     if (stages.isNotEmpty()) {
+                        val detail = if (executionState.rawError.isNotBlank()) {
+                            "${executionState.error}\n---\n${executionState.rawError}"
+                        } else {
+                            executionState.error
+                        }
                         stages[stages.lastIndex] = stages.last().copy(
                             status = StageStatus.FAILED,
-                            detail = executionState.error
+                            detail = detail
                         )
                     }
                     it.copy(stages = stages)
@@ -177,8 +195,18 @@ class WorkflowRunViewModel @Inject constructor(
             }
 
             is ExecutionState.GeneratingOutput -> {
+                val label = buildString {
+                    append("Generating output")
+                    if (executionState.providerName.isNotBlank()) append(" via ${executionState.providerName}")
+                    if (executionState.modelId.isNotBlank()) append(" (${executionState.modelId})")
+                    append("...")
+                }
                 _state.update {
-                    it.copy(currentStageLabel = "Generating output via ${executionState.providerName}...")
+                    it.copy(
+                        currentStageLabel = label,
+                        profileName = executionState.profileName,
+                        modelId = executionState.modelId
+                    )
                 }
             }
 
@@ -195,7 +223,9 @@ class WorkflowRunViewModel @Inject constructor(
                         outputText = executionState.outputText,
                         providerType = executionState.providerType,
                         tokenUsage = executionState.tokenUsage,
-                        durationMs = executionState.durationMs
+                        durationMs = executionState.durationMs,
+                        profileName = executionState.profileName,
+                        modelId = executionState.modelId
                     )
                 }
 
@@ -214,7 +244,9 @@ class WorkflowRunViewModel @Inject constructor(
                         completionTokens = executionState.tokenUsage.completionTokens,
                         totalTokens = executionState.tokenUsage.totalTokens,
                         durationMs = executionState.durationMs,
-                        completedAtMillis = System.currentTimeMillis()
+                        completedAtMillis = System.currentTimeMillis(),
+                        profileName = executionState.profileName,
+                        modelId = executionState.modelId
                     )
                 )
 
@@ -229,6 +261,8 @@ class WorkflowRunViewModel @Inject constructor(
             }
 
             is ExecutionState.Failed -> {
+                val rawError = executionState.rawError.ifBlank { null }
+                val rawForStorage = ErrorRedactor.redactForStorage(rawError)
                 _state.update {
                     val stages = it.stages.toMutableList()
                     if (stages.isNotEmpty()) {
@@ -243,7 +277,8 @@ class WorkflowRunViewModel @Inject constructor(
                         isFailed = true,
                         currentStageLabel = "Failed: ${executionState.error}",
                         stages = stages,
-                        errorMessage = executionState.error
+                        errorMessage = executionState.error,
+                        errorDetail = rawError
                     )
                 }
 
@@ -257,6 +292,7 @@ class WorkflowRunViewModel @Inject constructor(
                         status = WorkflowRunStatus.FAILED,
                         currentStage = executionState.stage,
                         errorMessage = executionState.error,
+                        errorDetail = rawForStorage,
                         completedAtMillis = System.currentTimeMillis()
                     )
                 )

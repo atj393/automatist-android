@@ -22,10 +22,11 @@ class GeminiArticleTransformProvider @Inject constructor(
         input: ArticleInput,
         type: TransformType
     ): Result<TransformResult> {
+        val model = input.modelOverride ?: "gemini-1.5-flash"
         return try {
             val apiKey = secureStorage.getApiKey(ProviderType.GEMINI)
             if (apiKey.isNullOrBlank()) {
-                return Result.failure(Exception("Gemini API key is missing. Please add it to the Vault."))
+                return Result.failure(Exception("Gemini API key is missing. Add it in Settings → Provider API Keys."))
             }
 
             val systemPrompt = input.systemPromptOverride ?: when (type) {
@@ -51,12 +52,12 @@ class GeminiArticleTransformProvider @Inject constructor(
             )
 
             val response = api.generateContent(
-                model = input.modelOverride ?: "gemini-1.5-flash",
+                model = model,
                 apiKey = apiKey,
                 request = request
             )
             val output = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-            
+
             if (output != null) {
                 Result.success(
                     TransformResult(
@@ -68,10 +69,33 @@ class GeminiArticleTransformProvider @Inject constructor(
                     )
                 )
             } else {
-                Result.failure(Exception("Received empty response from Gemini."))
+                Result.failure(Exception("Gemini (model: $model) returned empty response. Check your API limits or try a different model."))
             }
+        } catch (e: retrofit2.HttpException) {
+            val rawBody = try { e.response()?.errorBody()?.string() } catch (_: Exception) { null }
+            val hint = when (e.code()) {
+                401, 403 -> "API key is invalid or lacks access. Check your Gemini key in Settings → Provider API Keys."
+                429 -> "Rate limit or quota exceeded. Wait and retry, or check your Google AI billing."
+                else -> "HTTP ${e.code()}."
+            }
+            val rawDetail = buildString {
+                appendLine("HTTP ${e.code()} ${e.message()}")
+                appendLine("Provider: Gemini")
+                appendLine("Model: $model")
+                if (!rawBody.isNullOrBlank()) { appendLine("Response: $rawBody") }
+            }
+            Result.failure(com.synapse.app.domain.engine.DiagnosticException(
+                message = "Gemini API failed (model: $model): $hint",
+                rawDetail = rawDetail,
+                httpStatus = e.code(),
+                cause = e
+            ))
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(com.synapse.app.domain.engine.DiagnosticException(
+                message = "Gemini API error (model: $model): ${e.message}",
+                rawDetail = "Exception: ${e.javaClass.simpleName}: ${e.message}\nProvider: Gemini\nModel: $model",
+                cause = e
+            ))
         }
     }
 }

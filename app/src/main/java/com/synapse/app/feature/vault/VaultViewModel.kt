@@ -271,4 +271,15 @@ class VaultViewModel @Inject constructor(
     fun setDefaultProfile(id: String) {
         viewModelScope.launch { workflowRepository.setDefaultProfile(id) }
     }
+
+    fun toggleProfileEnabled(profile: ProviderProfile) {
+        viewModelScope.launch {
+            workflowRepository.saveProfile(
+                profile.copy(
+                    isEnabled = !profile.isEnabled,
+                    updatedAtMillis = System.currentTimeMillis()
+                )
+            )
+        }
+    }
 }
