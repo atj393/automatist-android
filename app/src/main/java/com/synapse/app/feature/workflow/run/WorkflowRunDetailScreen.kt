@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.synapse.app.domain.models.PersistedStage
 import com.synapse.app.domain.models.WorkflowRunStatus
 import kotlinx.coroutines.launch
 
@@ -117,6 +118,19 @@ fun WorkflowRunDetailScreen(
                         MetadataRow("Prompt", r.promptTokens?.toString() ?: "—")
                         MetadataRow("Completion", r.completionTokens?.toString() ?: "—")
                         MetadataRow("Total", r.totalTokens?.toString() ?: "—")
+                    }
+                }
+            }
+
+            // Execution log — persisted step-by-step history
+            val stages = r.persistedStages
+            if (stages.isNotEmpty()) {
+                Text("Execution Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        stages.forEach { stage ->
+                            PersistedStageRow(stage)
+                        }
                     }
                 }
             }
@@ -279,4 +293,45 @@ private fun formatTimestamp(millis: Long): String {
 private fun formatDuration(ms: Long): String {
     val seconds = ms / 1000
     return if (seconds < 60) "${seconds}s" else "${seconds / 60}m ${seconds % 60}s"
+}
+
+@Composable
+private fun PersistedStageRow(stage: PersistedStage) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
+    ) {
+        Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            when (stage.status) {
+                "COMPLETED" -> Icon(
+                    Icons.Default.CheckCircle, null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                "FAILED" -> Icon(
+                    Icons.Default.Cancel, null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
+                else -> Icon(
+                    Icons.Default.RadioButtonUnchecked, null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.outline
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(stage.label, style = MaterialTheme.typography.bodyMedium)
+            if (stage.detail.isNotBlank()) {
+                val parts = stage.detail.split("\n---\n", limit = 2)
+                Text(
+                    parts[0],
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (stage.status == "FAILED") MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
 }

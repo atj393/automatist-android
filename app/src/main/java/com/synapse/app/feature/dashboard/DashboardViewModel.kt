@@ -3,7 +3,6 @@ package com.synapse.app.feature.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.synapse.app.domain.models.*
-import com.synapse.app.domain.repositories.HistoryRepository
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.domain.templates.BuiltInTemplates
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,11 +15,10 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    historyRepository: HistoryRepository,
     private val workflowRepository: WorkflowRepository
 ) : ViewModel() {
 
-    val recentHistory: StateFlow<List<HistoryItem>> = historyRepository.getHistory()
+    val recentRuns: StateFlow<List<WorkflowRun>> = workflowRepository.getRecentRuns(10)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),

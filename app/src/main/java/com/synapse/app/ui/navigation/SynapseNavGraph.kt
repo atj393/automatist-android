@@ -85,6 +85,7 @@ fun SynapseNavGraph(
                 onNavigateToWorkflowList = { navController.navigate(Routes.WORKFLOW_LIST) },
                 onNavigateToWorkflowDetails = { id -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$id") },
                 onNavigateToWorkflowRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
+                onNavigateToRunDetail = { id -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$id") },
                 onNavigateToNotes = { navController.navigate(Routes.SAVED_NOTES) },
                 onNavigateToTemplates = { navController.navigate(Routes.WORKFLOW_TEMPLATES) },
                 onCreateBlankWorkflow = { navController.navigate(Routes.WORKFLOW_EDITOR) }
