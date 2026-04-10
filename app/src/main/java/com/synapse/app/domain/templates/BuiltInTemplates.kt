@@ -88,7 +88,8 @@ object BuiltInTemplates {
             globalInstruction = "Create a concise, friendly morning briefing. Start with weather, then commute info, then headlines. Keep it scannable so I can read it in 30 seconds.",
             outputConfig = WorkflowOutputConfig(
                 outputType = WorkflowOutputType.BRIEFING,
-                outputFormat = OutputFormat.MARKDOWN
+                outputFormat = OutputFormat.MARKDOWN,
+                inputCompaction = InputCompactionMode.LIGHT
             ),
             notifyOnCompletion = true
         )
@@ -134,7 +135,8 @@ object BuiltInTemplates {
                 platformInstructions = mapOf(
                     "X" to "Short, punchy, under 280 chars. Include 1-2 relevant hashtags.",
                     "LinkedIn" to "Professional insight with a hook. 2-3 short paragraphs. End with a question or CTA."
-                )
+                ),
+                inputCompaction = InputCompactionMode.AGGRESSIVE
             ),
             notifyOnCompletion = true,
             customization = TemplateCustomization(
@@ -247,7 +249,8 @@ object BuiltInTemplates {
             globalInstruction = "Create a concise financial brief. Lead with the biggest movers, then summarize market sentiment, then cover my watchlist items. Flag anything that needs attention.",
             outputConfig = WorkflowOutputConfig(
                 outputType = WorkflowOutputType.BRIEFING,
-                outputFormat = OutputFormat.MARKDOWN
+                outputFormat = OutputFormat.MARKDOWN,
+                inputCompaction = InputCompactionMode.LIGHT
             ),
             notifyOnCompletion = true,
             customization = TemplateCustomization(
@@ -318,7 +321,8 @@ object BuiltInTemplates {
             globalInstruction = "Create a travel briefing. Start with flight status and any delays, then destination weather, then any relevant trip details. Keep it actionable — tell me what I need to do next.",
             outputConfig = WorkflowOutputConfig(
                 outputType = WorkflowOutputType.BRIEFING,
-                outputFormat = OutputFormat.MARKDOWN
+                outputFormat = OutputFormat.MARKDOWN,
+                inputCompaction = InputCompactionMode.LIGHT
             ),
             notifyOnCompletion = true,
             customization = TemplateCustomization(
