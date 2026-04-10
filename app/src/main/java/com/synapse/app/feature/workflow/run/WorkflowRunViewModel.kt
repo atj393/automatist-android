@@ -51,7 +51,8 @@ data class RunUiState(
 data class StageInfo(
     val label: String,
     val status: StageStatus,
-    val detail: String = ""
+    val detail: String = "",
+    val actionData: String = "" // full action result text for inspection
 )
 
 enum class StageStatus { PENDING, RUNNING, COMPLETED, FAILED }
@@ -170,7 +171,10 @@ class WorkflowRunViewModel @Inject constructor(
 
             is ExecutionState.ActionCompleted -> {
                 _state.update {
-                    val stages = it.stages.markLastCompleted(executionState.resultPreview)
+                    val stages = it.stages.markLastCompleted(
+                        detail = executionState.resultPreview,
+                        actionData = executionState.fullResultText
+                    )
                     it.copy(stages = stages)
                 }
             }
@@ -388,24 +392,38 @@ class WorkflowRunViewModel @Inject constructor(
         }
     }
 
-    /** Convert in-memory StageInfo list to persisted JSON. */
+    /** Convert in-memory StageInfo list to persisted JSON with redaction/truncation. */
     private fun stagesToJson(stages: List<StageInfo>): String {
         val persisted = stages.map { stage ->
             PersistedStage(
                 label = stage.label,
                 status = stage.status.name,
-                detail = stage.detail
+                detail = stage.detail,
+                actionData = truncateAndRedact(stage.actionData)
             )
         }
         return PersistedStage.toJson(persisted)
     }
 
-    private fun List<StageInfo>.markLastCompleted(detail: String = ""): List<StageInfo> {
+    /** Redact secrets and truncate to safe storage size per action. */
+    private fun truncateAndRedact(data: String): String {
+        if (data.isBlank()) return ""
+        val redacted = ErrorRedactor.redact(data)
+        val maxPerAction = 6000
+        return if (redacted.length <= maxPerAction) redacted
+        else redacted.take(maxPerAction - 40) + "\n\n[truncated — ${redacted.length} chars total]"
+    }
+
+    private fun List<StageInfo>.markLastCompleted(detail: String = "", actionData: String = ""): List<StageInfo> {
         if (isEmpty()) return this
         val list = toMutableList()
         val last = list.last()
         if (last.status == StageStatus.RUNNING) {
-            list[list.lastIndex] = last.copy(status = StageStatus.COMPLETED, detail = detail.ifBlank { last.detail })
+            list[list.lastIndex] = last.copy(
+                status = StageStatus.COMPLETED,
+                detail = detail.ifBlank { last.detail },
+                actionData = actionData.ifBlank { last.actionData }
+            )
         }
         return list
     }

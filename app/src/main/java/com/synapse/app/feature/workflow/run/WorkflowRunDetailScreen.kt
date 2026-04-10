@@ -305,6 +305,11 @@ private fun formatDuration(ms: Long): String {
 
 @Composable
 private fun PersistedStageRow(stage: PersistedStage) {
+    var showData by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     Row(
         verticalAlignment = Alignment.Top,
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
@@ -329,7 +334,7 @@ private fun PersistedStageRow(stage: PersistedStage) {
             }
         }
         Spacer(Modifier.width(8.dp))
-        Column {
+        Column(modifier = Modifier.weight(1f)) {
             Text(stage.label, style = MaterialTheme.typography.bodyMedium)
             if (stage.detail.isNotBlank()) {
                 val parts = stage.detail.split("\n---\n", limit = 2)
@@ -339,6 +344,54 @@ private fun PersistedStageRow(stage: PersistedStage) {
                     color = if (stage.status == "FAILED") MaterialTheme.colorScheme.error
                     else MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            // Expandable action data
+            if (stage.actionData.isNotBlank()) {
+                TextButton(
+                    onClick = { showData = !showData },
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        if (showData) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        null, modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        if (showData) "Hide action data" else "Show action data (${stage.actionData.length} chars)",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+                if (showData) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                stage.actionData,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                lineHeight = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp)
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            TextButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Action Data", stage.actionData))
+                                    scope.launch { snackbarHostState.showSnackbar("Action data copied") }
+                                },
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Copy", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                    SnackbarHost(snackbarHostState)
+                }
             }
         }
     }
