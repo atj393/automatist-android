@@ -34,7 +34,9 @@ sealed interface ExecutionState {
     ) : ExecutionState
 
     data class ProcessingStarted(
-        val combinedInputLength: Int
+        val combinedInputLength: Int,
+        val originalInputLength: Int = combinedInputLength,
+        val compactionMode: String = ""
     ) : ExecutionState
 
     data class GeneratingOutput(

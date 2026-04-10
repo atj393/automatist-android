@@ -91,9 +91,14 @@ class WorkflowExecutionEngine @Inject constructor(
             return@flow
         }
 
-        // Combine action outputs
-        val combinedInput = buildCombinedInput(actionResults, template)
-        emit(ExecutionState.ProcessingStarted(combinedInput.length))
+        // Combine action outputs (with compaction applied to auto-collected text)
+        val compactionMode = template.outputConfig.inputCompaction
+        val (combinedInput, originalLen) = buildCombinedInput(actionResults, template)
+        emit(ExecutionState.ProcessingStarted(
+            combinedInputLength = combinedInput.length,
+            originalInputLength = originalLen,
+            compactionMode = if (compactionMode != InputCompactionMode.NONE) compactionMode.displayName else ""
+        ))
 
         // Build prompt
         val systemPrompt = buildSystemPrompt(template)
@@ -748,21 +753,41 @@ class WorkflowExecutionEngine @Inject constructor(
             .trim()
     }
 
+    /**
+     * Combines action results into a single input string for AI synthesis.
+     * Compaction is applied only to auto-collected action text, never to
+     * labels, per-source instructions, or other user-authored content.
+     *
+     * @return Pair of (compacted combined text, original total text length before compaction)
+     */
     private fun buildCombinedInput(
         results: List<ActionResult>,
         template: WorkflowTemplate
-    ): String {
+    ): Pair<String, Int> {
+        val mode = template.outputConfig.inputCompaction
         val builder = StringBuilder()
+        var originalTextLength = 0
+
         for ((i, ar) in results.withIndex()) {
             val label = ar.action.label.ifBlank { "${ar.action.type.displayName} #${i + 1}" }
             builder.appendLine("=== Source ${i + 1}: $label ===")
             if (ar.action.instruction.isNotBlank()) {
                 builder.appendLine("[Per-source instruction: ${ar.action.instruction}]")
             }
-            builder.appendLine(ar.text)
+
+            // Compact only the auto-collected action text, not labels/instructions
+            originalTextLength += ar.text.length
+            val actionText = if (mode != InputCompactionMode.NONE) {
+                TextCompactor.compact(ar.text, mode).text
+            } else {
+                ar.text
+            }
+            builder.appendLine(actionText)
             builder.appendLine()
         }
-        return builder.toString().take(MAX_TOTAL_CHARS)
+
+        val combined = builder.toString().take(MAX_TOTAL_CHARS)
+        return combined to originalTextLength
     }
 
     /** Returns true when the workflow should produce structured multi-platform social outputs. */

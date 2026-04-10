@@ -730,6 +730,35 @@ private fun OutputSection(
                 inheritLabel = "Use workflow default"
             )
         }
+
+        // ── Input Text Compaction ──
+        Spacer(Modifier.height(4.dp))
+        Text("Input Text Compaction", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+        Text(
+            "Reduce token usage by compacting fetched text before final AI processing. Your instructions are not changed.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(2.dp))
+        InputCompactionMode.entries.forEach { mode ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                RadioButton(
+                    selected = config.inputCompaction == mode,
+                    onClick = { onConfigChanged(config.copy(inputCompaction = mode)) }
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(mode.displayName, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        mode.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
 
