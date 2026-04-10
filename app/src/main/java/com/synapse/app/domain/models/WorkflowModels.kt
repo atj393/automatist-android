@@ -381,7 +381,8 @@ data class WorkflowRun(
 data class PersistedStage(
     val label: String,
     val status: String, // "COMPLETED", "FAILED", "RUNNING", "PENDING"
-    val detail: String = ""
+    val detail: String = "",
+    val actionData: String = "" // full action result text (redacted/truncated)
 ) {
     companion object {
         private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }

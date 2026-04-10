@@ -148,56 +148,7 @@ fun WorkflowRunScreen(
             Text("Execution Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
 
             state.stages.forEach { stage ->
-                Row(
-                    verticalAlignment = Alignment.Top,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                        when (stage.status) {
-                            StageStatus.PENDING -> Icon(
-                                Icons.Default.RadioButtonUnchecked, null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.outline
-                            )
-                            StageStatus.RUNNING -> CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp), strokeWidth = 2.dp
-                            )
-                            StageStatus.COMPLETED -> Icon(
-                                Icons.Default.CheckCircle, null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            StageStatus.FAILED -> Icon(
-                                Icons.Default.Cancel, null,
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Column {
-                        Text(stage.label, style = MaterialTheme.typography.bodyMedium)
-                        if (stage.detail.isNotBlank()) {
-                            // Split friendly message from raw detail (separated by ---)
-                            val parts = stage.detail.split("\n---\n", limit = 2)
-                            Text(
-                                parts[0],
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (stage.status == StageStatus.FAILED)
-                                    MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (parts.size > 1 && parts[1].isNotBlank()) {
-                                Text(
-                                    parts[1],
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                                )
-                            }
-                        }
-                    }
-                }
+                LiveStageRow(stage = stage, context = context, snackbarHostState = snackbarHostState)
             }
 
             // Provider / profile info
@@ -464,4 +415,113 @@ private fun formatDuration(ms: Long): String {
     val seconds = ms / 1000
     return if (seconds < 60) "${seconds}s"
     else "${seconds / 60}m ${seconds % 60}s"
+}
+
+// ── Expandable Stage Row (live run) ──
+
+@Composable
+private fun LiveStageRow(
+    stage: StageInfo,
+    context: Context,
+    snackbarHostState: SnackbarHostState
+) {
+    var showData by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            when (stage.status) {
+                StageStatus.PENDING -> Icon(
+                    Icons.Default.RadioButtonUnchecked, null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.outline
+                )
+                StageStatus.RUNNING -> CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp), strokeWidth = 2.dp
+                )
+                StageStatus.COMPLETED -> Icon(
+                    Icons.Default.CheckCircle, null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                StageStatus.FAILED -> Icon(
+                    Icons.Default.Cancel, null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stage.label, style = MaterialTheme.typography.bodyMedium)
+            if (stage.detail.isNotBlank()) {
+                val parts = stage.detail.split("\n---\n", limit = 2)
+                Text(
+                    parts[0],
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (stage.status == StageStatus.FAILED)
+                        MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (parts.size > 1 && parts[1].isNotBlank()) {
+                    Text(
+                        parts[1],
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                }
+            }
+
+            // Expandable action data
+            if (stage.actionData.isNotBlank()) {
+                TextButton(
+                    onClick = { showData = !showData },
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+                ) {
+                    Icon(
+                        if (showData) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        null, modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        if (showData) "Hide action data" else "Show action data (${stage.actionData.length} chars)",
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+                if (showData) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text(
+                                stage.actionData,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                lineHeight = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp)
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            TextButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("Action Data", stage.actionData))
+                                    scope.launch { snackbarHostState.showSnackbar("Action data copied") }
+                                },
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                            ) {
+                                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Copy", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
