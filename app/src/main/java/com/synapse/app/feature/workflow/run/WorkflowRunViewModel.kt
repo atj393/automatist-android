@@ -190,9 +190,19 @@ class WorkflowRunViewModel @Inject constructor(
             }
 
             is ExecutionState.ProcessingStarted -> {
+                val compactionDetail = if (executionState.compactionMode.isNotBlank() &&
+                    executionState.originalInputLength != executionState.combinedInputLength
+                ) {
+                    val pct = ((executionState.originalInputLength - executionState.combinedInputLength) * 100) /
+                            executionState.originalInputLength.coerceAtLeast(1)
+                    "Input compaction: ${executionState.compactionMode} " +
+                            "(${executionState.originalInputLength} → ${executionState.combinedInputLength} chars, -${pct}%)"
+                } else {
+                    "Combined ${executionState.combinedInputLength} chars"
+                }
                 _state.update {
                     val stages = it.stages.markLastCompleted() + StageInfo(
-                        "Combining ${executionState.combinedInputLength} chars", StageStatus.COMPLETED
+                        compactionDetail, StageStatus.COMPLETED
                     ) + StageInfo("Generating AI output...", StageStatus.RUNNING)
                     it.copy(currentStageLabel = "Generating output via AI...", stages = stages)
                 }

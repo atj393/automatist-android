@@ -246,6 +246,13 @@ enum class OutputFormat(val displayName: String, val description: String) {
 }
 
 @Serializable
+enum class InputCompactionMode(val displayName: String, val description: String) {
+    NONE("None", "Send fetched text as-is"),
+    LIGHT("Light", "Clean whitespace, HTML tags, and boilerplate noise"),
+    AGGRESSIVE("Aggressive", "Deduplicate, trim, and keep only the most information-dense content")
+}
+
+@Serializable
 data class WorkflowOutputConfig(
     val outputType: WorkflowOutputType = WorkflowOutputType.BRIEFING,
     val outputFormat: OutputFormat = OutputFormat.MARKDOWN,
@@ -256,7 +263,9 @@ data class WorkflowOutputConfig(
     // ── Social media output config ──
     val socialGlobalInstruction: String = "", // shared instruction for all social outputs
     val platformInstructions: Map<String, String> = emptyMap(), // per-platform instructions (key = platform name)
-    val customPlatforms: List<String> = emptyList() // user-defined custom platform names
+    val customPlatforms: List<String> = emptyList(), // user-defined custom platform names
+    // ── Input compaction ──
+    val inputCompaction: InputCompactionMode = InputCompactionMode.NONE
 )
 
 // ── Social Output (parsed from structured JSON response) ──

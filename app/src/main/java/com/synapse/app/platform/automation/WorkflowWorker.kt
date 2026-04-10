@@ -129,7 +129,13 @@ class WorkflowWorker(
                         is ExecutionState.ActionStarted -> "Processing: ${state.actionLabel}"
                         is ExecutionState.ActionCompleted -> "Completed: ${state.actionLabel}"
                         is ExecutionState.ActionFailed -> "Failed: ${state.actionLabel}"
-                        is ExecutionState.ProcessingStarted -> "Processing combined data..."
+                        is ExecutionState.ProcessingStarted -> {
+                            if (state.compactionMode.isNotBlank() && state.originalInputLength != state.combinedInputLength) {
+                                "Compacted: ${state.compactionMode} (${state.originalInputLength} → ${state.combinedInputLength} chars)"
+                            } else {
+                                "Processing ${state.combinedInputLength} chars..."
+                            }
+                        }
                         is ExecutionState.GeneratingOutput -> "Generating output via ${state.providerName.ifBlank { "AI" }}..."
                         is ExecutionState.Completed -> "Completed"
                         is ExecutionState.Failed -> "Failed: ${state.error}"
