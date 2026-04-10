@@ -13,6 +13,7 @@ import com.synapse.app.data.local.MIGRATION_7_8
 import com.synapse.app.data.local.MIGRATION_8_9
 import com.synapse.app.data.local.MIGRATION_9_10
 import com.synapse.app.data.local.MIGRATION_10_11
+import com.synapse.app.data.local.MIGRATION_11_12
 import com.synapse.app.data.local.SynapseDatabase
 import com.synapse.app.data.local.WorkflowDao
 import com.synapse.app.data.repositories.RoomHistoryRepository
@@ -39,7 +40,7 @@ object DatabaseModule {
             SynapseDatabase::class.java,
             "synapse.db"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
             .build()
     }
 
