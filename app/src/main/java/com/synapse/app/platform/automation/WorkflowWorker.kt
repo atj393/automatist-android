@@ -149,7 +149,14 @@ class WorkflowWorker(
                         is ExecutionState.Completed -> "COMPLETED"
                         else -> "COMPLETED"
                     }
-                    stageLog.add(com.synapse.app.domain.models.PersistedStage(stageLabel, stageStatus))
+                    // Capture action result data for completed actions
+                    val actionData = if (state is ExecutionState.ActionCompleted) {
+                        val raw = state.fullResultText
+                        val redacted = com.synapse.app.domain.engine.ErrorRedactor.redact(raw)
+                        if (redacted.length <= 6000) redacted
+                        else redacted.take(5960) + "\n\n[truncated — ${redacted.length} chars total]"
+                    } else ""
+                    stageLog.add(com.synapse.app.domain.models.PersistedStage(stageLabel, stageStatus, actionData = actionData))
 
                     Log.d(TAG, "  Stage: $stageLabel")
                     setProgress(workDataOf("status" to stageLabel, "runId" to runId))

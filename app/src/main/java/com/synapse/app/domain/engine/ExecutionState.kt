@@ -23,7 +23,8 @@ sealed interface ExecutionState {
         val actionIndex: Int,
         val totalActions: Int,
         val actionLabel: String,
-        val resultPreview: String
+        val resultPreview: String,
+        val fullResultText: String = "" // full action output for inspection
     ) : ExecutionState
 
     data class ActionFailed(

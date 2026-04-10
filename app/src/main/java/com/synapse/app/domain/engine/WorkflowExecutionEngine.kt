@@ -66,7 +66,8 @@ class WorkflowExecutionEngine @Inject constructor(
                 emit(
                     ExecutionState.ActionCompleted(
                         index, enabledActions.size, label,
-                        text.take(100) + if (text.length > 100) "..." else ""
+                        text.take(100) + if (text.length > 100) "..." else "",
+                        fullResultText = text
                     )
                 )
             } else {
