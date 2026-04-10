@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.synapse.app.domain.models.WorkflowTemplate
 import com.synapse.app.domain.repositories.WorkflowRepository
+import com.synapse.app.domain.workflow.WorkflowPortabilityManager
 import com.synapse.app.platform.scheduling.ScheduleInfo
 import com.synapse.app.platform.scheduling.ScheduleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
