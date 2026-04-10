@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.synapse.app.domain.models.*
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.domain.templates.BuiltInTemplates
+import com.synapse.app.domain.workflow.WorkflowPortabilityManager
 import com.synapse.app.platform.scheduling.ScheduleInfo
 import com.synapse.app.platform.scheduling.ScheduleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,6 +16,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+data class ExportData(
+    val json: String,
+    val suggestedFilename: String,
+    val warnings: List<String>
+)
+
 data class WorkflowDetailsUiState(
     val isLoading: Boolean = true,
     val template: WorkflowTemplate? = null,
@@ -23,13 +30,18 @@ data class WorkflowDetailsUiState(
     val sourceTemplateName: String = "",
     val defaultProfileName: String = "",
     val outputProfileName: String = "",
-    val showDeleteDialog: Boolean = false
+    val showDeleteDialog: Boolean = false,
+    val duplicatedWorkflowId: Long? = null,
+    val exportData: ExportData? = null,
+    val snackbarMessage: String? = null,
+    val isProcessing: Boolean = false
 )
 
 @HiltViewModel
 class WorkflowDetailsViewModel @Inject constructor(
     private val repository: WorkflowRepository,
     private val scheduleManager: ScheduleManager,
+    private val portabilityManager: WorkflowPortabilityManager,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -132,5 +144,60 @@ class WorkflowDetailsViewModel @Inject constructor(
             repository.deleteTemplate(templateId)
             onDeleted()
         }
+    }
+
+    // ── Duplicate ──
+
+    fun duplicateWorkflow() {
+        viewModelScope.launch {
+            _state.update { it.copy(isProcessing = true) }
+            try {
+                val result = portabilityManager.duplicateWorkflow(templateId)
+                _state.update {
+                    it.copy(
+                        isProcessing = false,
+                        duplicatedWorkflowId = result.newWorkflowId,
+                        snackbarMessage = "Duplicated as \"${result.newName}\""
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(isProcessing = false, snackbarMessage = "Duplication failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun clearDuplicatedWorkflowId() {
+        _state.update { it.copy(duplicatedWorkflowId = null) }
+    }
+
+    // ── Export ──
+
+    fun prepareExport() {
+        viewModelScope.launch {
+            _state.update { it.copy(isProcessing = true) }
+            try {
+                val result = portabilityManager.exportWorkflow(templateId)
+                _state.update {
+                    it.copy(
+                        isProcessing = false,
+                        exportData = ExportData(result.json, result.suggestedFilename, result.warnings)
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(isProcessing = false, snackbarMessage = "Export failed: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun clearExportData() {
+        _state.update { it.copy(exportData = null) }
+    }
+
+    fun clearSnackbarMessage() {
+        _state.update { it.copy(snackbarMessage = null) }
     }
 }
