@@ -129,56 +129,117 @@ class WorkflowExecutionEngine @Inject constructor(
 
         // Detect social output mode
         val isSocialMode = isSocialOutputMode(template)
+        val numVersions = template.outputConfig.numberOfOutputs.coerceIn(1, 10)
 
-        // Call AI provider with resolved profile
+        // Generate N versions from the same frozen input
         val input = ArticleInput(
             text = combinedInput,
             systemPromptOverride = systemPrompt,
             profileId = outputProfileId
         )
 
+        val versions = mutableListOf<OutputVersion>()
+        var totalPromptTokens = 0
+        var totalCompletionTokens = 0
+        var lastProviderType: ProviderType = ProviderType.FAKE
+
+        for (v in 1..numVersions) {
+            val transformResult = transformProvider.transform(input, TransformType.CUSTOM_WORKFLOW)
+
+            if (transformResult.isSuccess) {
+                val result = transformResult.getOrThrow()
+                versions.add(OutputVersion(
+                    version = v,
+                    outputText = result.outputText,
+                    isSocialOutput = isSocialMode
+                ))
+                totalPromptTokens += result.promptTokens ?: 0
+                totalCompletionTokens += result.completionTokens ?: 0
+                lastProviderType = result.providerType
+            } else {
+                val error = transformResult.exceptionOrNull()!!
+                val rawDetail = when (error) {
+                    is DiagnosticException -> error.rawDetail
+                    else -> "${error.javaClass.simpleName}: ${error.message}"
+                }
+                val rawWithContext = buildString {
+                    append(ErrorRedactor.redact(rawDetail))
+                    if (!rawDetail.contains("Profile:")) {
+                        appendLine()
+                        appendLine("Profile: $profileName")
+                        appendLine("Provider: $providerName")
+                        appendLine("Model: $modelId")
+                    }
+                }
+                // If first version fails, fail the whole run
+                if (versions.isEmpty()) {
+                    emit(ExecutionState.Failed(
+                        error.message ?: "AI processing failed (profile: $profileName, provider: $providerName, model: $modelId)",
+                        "processing",
+                        rawError = rawWithContext.trim()
+                    ))
+                    return@flow
+                }
+                // If later versions fail, stop generating but keep what we have
+                break
+            }
+        }
+
+        val durationMs = System.currentTimeMillis() - startTime
+        val tokenUsage = TokenUsage(
+            promptTokens = totalPromptTokens,
+            completionTokens = totalCompletionTokens,
+            totalTokens = totalPromptTokens + totalCompletionTokens,
+            isEstimated = lastProviderType == ProviderType.FAKE
+        )
+        // outputText = first version for backward compatibility
+        emit(
+            ExecutionState.Completed(
+                outputText = versions.first().outputText,
+                providerType = lastProviderType,
+                tokenUsage = tokenUsage,
+                durationMs = durationMs,
+                profileName = profileName,
+                modelId = modelId,
+                isSocialOutput = isSocialMode,
+                versions = versions,
+                synthesisInput = combinedInput
+            )
+        )
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Regenerate a single new version from frozen synthesis input.
+     * Does NOT refetch actions — uses the stored combinedInput directly.
+     */
+    suspend fun regenerate(
+        frozenInput: String,
+        template: WorkflowTemplate,
+        nextVersion: Int
+    ): Result<OutputVersion> {
+        val systemPrompt = buildSystemPrompt(template)
+        val isSocialMode = isSocialOutputMode(template)
+
+        val outputProfileId = template.outputConfig.outputProfileId.ifBlank {
+            template.defaultProfileId.ifBlank { null }
+        }
+
+        val input = ArticleInput(
+            text = frozenInput,
+            systemPromptOverride = systemPrompt,
+            profileId = outputProfileId
+        )
+
         val transformResult = transformProvider.transform(input, TransformType.CUSTOM_WORKFLOW)
 
-        transformResult.onSuccess { result ->
-            val durationMs = System.currentTimeMillis() - startTime
-            val tokenUsage = TokenUsage(
-                promptTokens = result.promptTokens,
-                completionTokens = result.completionTokens,
-                totalTokens = (result.promptTokens ?: 0) + (result.completionTokens ?: 0),
-                isEstimated = result.providerType == ProviderType.FAKE
+        return transformResult.map { result ->
+            OutputVersion(
+                version = nextVersion,
+                outputText = result.outputText,
+                isSocialOutput = isSocialMode
             )
-            emit(
-                ExecutionState.Completed(
-                    outputText = result.outputText,
-                    providerType = result.providerType,
-                    tokenUsage = tokenUsage,
-                    durationMs = durationMs,
-                    profileName = profileName,
-                    modelId = modelId,
-                    isSocialOutput = isSocialMode
-                )
-            )
-        }.onFailure { error ->
-            val rawDetail = when (error) {
-                is DiagnosticException -> error.rawDetail
-                else -> "${error.javaClass.simpleName}: ${error.message}"
-            }
-            val rawWithContext = buildString {
-                append(ErrorRedactor.redact(rawDetail))
-                if (!rawDetail.contains("Profile:")) {
-                    appendLine()
-                    appendLine("Profile: $profileName")
-                    appendLine("Provider: $providerName")
-                    appendLine("Model: $modelId")
-                }
-            }
-            emit(ExecutionState.Failed(
-                error.message ?: "AI processing failed (profile: $profileName, provider: $providerName, model: $modelId)",
-                "processing",
-                rawError = rawWithContext.trim()
-            ))
         }
-    }.flowOn(Dispatchers.IO)
+    }
 
     // ── Action Dispatch ──
 

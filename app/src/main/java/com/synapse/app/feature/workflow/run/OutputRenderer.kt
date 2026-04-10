@@ -24,6 +24,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.synapse.app.domain.models.OutputFormat
+import com.synapse.app.domain.models.OutputVersion
 import com.synapse.app.domain.models.SocialOutput
 import com.synapse.app.domain.models.SocialOutputParser
 import kotlinx.coroutines.launch
@@ -379,6 +380,81 @@ private fun SocialOutputCard(
                     Icon(Icons.Default.Share, null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Share", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
+
+// ── Versioned Output Display ──
+
+/**
+ * Renders multiple output versions with tab-style navigation.
+ * Each version has its own copy/share. Works for both normal and social outputs.
+ */
+@Composable
+fun VersionedOutputDisplay(
+    versions: List<OutputVersion>,
+    outputFormat: OutputFormat,
+    modifier: Modifier = Modifier,
+    onRegenerate: (() -> Unit)? = null,
+    isRegenerating: Boolean = false
+) {
+    if (versions.isEmpty()) return
+
+    var selectedVersion by remember { mutableStateOf(0) }
+    // Clamp selected to valid range when versions grow (e.g. after regeneration)
+    val clampedSelected = selectedVersion.coerceIn(0, versions.lastIndex)
+    if (clampedSelected != selectedVersion) selectedVersion = clampedSelected
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Version tabs
+        if (versions.size > 1) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "Versions",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.weight(1f))
+                versions.forEachIndexed { index, v ->
+                    FilterChip(
+                        selected = selectedVersion == index,
+                        onClick = { selectedVersion = index },
+                        label = { Text("V${v.version}", style = MaterialTheme.typography.labelSmall) },
+                        modifier = Modifier.height(28.dp)
+                    )
+                }
+            }
+        }
+
+        // Current version content
+        val current = versions[selectedVersion]
+        OutputDisplay(
+            outputText = current.outputText,
+            outputFormat = outputFormat,
+            isSocialOutput = current.isSocialOutput
+        )
+
+        // Regenerate button
+        if (onRegenerate != null && versions.size < 10) {
+            OutlinedButton(
+                onClick = onRegenerate,
+                enabled = !isRegenerating,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isRegenerating) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Generating...")
+                } else {
+                    Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Generate Another Version")
                 }
             }
         }

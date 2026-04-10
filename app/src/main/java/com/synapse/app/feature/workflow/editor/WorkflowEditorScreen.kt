@@ -759,6 +759,36 @@ private fun OutputSection(
                 }
             }
         }
+
+        // ── Number of Outputs ──
+        Spacer(Modifier.height(4.dp))
+        Text("Number of Outputs", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+        Text(
+            "Generate multiple versions from the same input. Useful for alternative summaries, social posts, and experimenting with different phrasing.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            (1..5).forEach { n ->
+                FilterChip(
+                    selected = config.numberOfOutputs == n,
+                    onClick = { onConfigChanged(config.copy(numberOfOutputs = n)) },
+                    label = { Text("$n") },
+                    modifier = Modifier.height(32.dp)
+                )
+            }
+        }
+        if (config.numberOfOutputs > 3) {
+            Text(
+                "Generating many versions increases token usage and cost.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+            )
+        }
     }
 }
 

@@ -265,7 +265,9 @@ data class WorkflowOutputConfig(
     val platformInstructions: Map<String, String> = emptyMap(), // per-platform instructions (key = platform name)
     val customPlatforms: List<String> = emptyList(), // user-defined custom platform names
     // ── Input compaction ──
-    val inputCompaction: InputCompactionMode = InputCompactionMode.NONE
+    val inputCompaction: InputCompactionMode = InputCompactionMode.NONE,
+    // ── Output versions ──
+    val numberOfOutputs: Int = 1 // 1..10 — generate multiple alternative versions from same input
 )
 
 // ── Social Output (parsed from structured JSON response) ──
@@ -352,7 +354,9 @@ data class WorkflowRun(
     val profileName: String = "",
     val modelId: String = "",
     val isSocialOutput: Boolean = false,
-    val stagesJson: String = ""
+    val stagesJson: String = "",
+    val synthesisInput: String = "",   // frozen combined input for regeneration
+    val versionsJson: String = ""      // JSON: List<OutputVersion>
 ) {
     /** Parse social outputs from outputText when isSocialOutput is true. */
     val socialOutputs: List<SocialOutput>
@@ -361,6 +365,14 @@ data class WorkflowRun(
     /** Parse persisted stage history from stagesJson. */
     val persistedStages: List<PersistedStage>
         get() = PersistedStage.parseList(stagesJson)
+
+    /** Parse output versions from versionsJson. */
+    val outputVersions: List<OutputVersion>
+        get() = OutputVersion.parseList(versionsJson)
+
+    /** Whether this run has enough context for regeneration. */
+    val canRegenerate: Boolean
+        get() = synthesisInput.isNotBlank() && status == WorkflowRunStatus.COMPLETED
 }
 
 // ── Persisted Stage (for run detail history) ──
@@ -385,7 +397,42 @@ data class PersistedStage(
 
         fun toJson(stages: List<PersistedStage>): String {
             return try {
-                json.encodeToString(stages)
+                json.encodeToString(kotlinx.serialization.builtins.ListSerializer(serializer()), stages)
+            } catch (_: Exception) {
+                ""
+            }
+        }
+    }
+}
+
+// ── Output Version (for multi-version and regeneration support) ──
+
+@Serializable
+data class OutputVersion(
+    val version: Int,
+    val outputText: String,
+    val isSocialOutput: Boolean = false,
+    val generatedAtMillis: Long = System.currentTimeMillis()
+) {
+    /** Parse social outputs if this version is social. */
+    val socialOutputs: List<SocialOutput>
+        get() = if (isSocialOutput) SocialOutputParser.parse(outputText) else emptyList()
+
+    companion object {
+        private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+        fun parseList(versionsJson: String): List<OutputVersion> {
+            if (versionsJson.isBlank()) return emptyList()
+            return try {
+                json.decodeFromString<List<OutputVersion>>(versionsJson)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
+        fun toJson(versions: List<OutputVersion>): String {
+            return try {
+                json.encodeToString(kotlinx.serialization.builtins.ListSerializer(serializer()), versions)
             } catch (_: Exception) {
                 ""
             }

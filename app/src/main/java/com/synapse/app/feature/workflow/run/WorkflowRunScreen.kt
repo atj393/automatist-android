@@ -243,14 +243,32 @@ fun WorkflowRunScreen(
                 }
             }
 
-            // Output — format-aware rendering (social outputs render as per-platform cards)
+            // Output — versioned or single output display
             if (state.outputText.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
-                OutputDisplay(
-                    outputText = state.outputText,
-                    outputFormat = state.outputFormat,
-                    isSocialOutput = state.isSocialOutput
-                )
+                if (state.versions.size > 1 || state.synthesisInput.isNotBlank()) {
+                    // Multi-version display with regeneration support
+                    VersionedOutputDisplay(
+                        versions = state.versions.ifEmpty {
+                            // Backward compat: wrap single output as version 1
+                            listOf(com.synapse.app.domain.models.OutputVersion(
+                                version = 1,
+                                outputText = state.outputText,
+                                isSocialOutput = state.isSocialOutput
+                            ))
+                        },
+                        outputFormat = state.outputFormat,
+                        onRegenerate = if (state.synthesisInput.isNotBlank() && state.isCompleted)
+                            { { viewModel.regenerate() } } else null,
+                        isRegenerating = state.isRegenerating
+                    )
+                } else {
+                    OutputDisplay(
+                        outputText = state.outputText,
+                        outputFormat = state.outputFormat,
+                        isSocialOutput = state.isSocialOutput
+                    )
+                }
             }
 
             // Error section — dual layer: readable summary + expandable raw detail

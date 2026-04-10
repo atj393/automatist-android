@@ -41,7 +41,11 @@ data class RunUiState(
     val profileName: String = "",
     val modelId: String = "",
     // Social output
-    val isSocialOutput: Boolean = false
+    val isSocialOutput: Boolean = false,
+    // Versions
+    val versions: List<OutputVersion> = emptyList(),
+    val synthesisInput: String = "",
+    val isRegenerating: Boolean = false
 )
 
 data class StageInfo(
@@ -240,7 +244,9 @@ class WorkflowRunViewModel @Inject constructor(
                         durationMs = executionState.durationMs,
                         profileName = executionState.profileName,
                         modelId = executionState.modelId,
-                        isSocialOutput = executionState.isSocialOutput
+                        isSocialOutput = executionState.isSocialOutput,
+                        versions = executionState.versions,
+                        synthesisInput = executionState.synthesisInput
                     )
                 }
 
@@ -271,7 +277,9 @@ class WorkflowRunViewModel @Inject constructor(
                         profileName = executionState.profileName,
                         modelId = executionState.modelId,
                         isSocialOutput = executionState.isSocialOutput,
-                        stagesJson = persistedStagesJson
+                        stagesJson = persistedStagesJson,
+                        synthesisInput = executionState.synthesisInput,
+                        versionsJson = OutputVersion.toJson(executionState.versions)
                     )
                 )
 
@@ -325,6 +333,57 @@ class WorkflowRunViewModel @Inject constructor(
                         stagesJson = persistedStagesJson
                     )
                 )
+            }
+        }
+    }
+
+    /**
+     * Regenerate: append one new version using the frozen synthesis input.
+     * Does NOT refetch actions — only reruns final AI generation.
+     */
+    fun regenerate() {
+        val currentState = _state.value
+        if (currentState.synthesisInput.isBlank() || currentState.isRegenerating) return
+        val runId = currentState.runId ?: return
+        val currentVersions = currentState.versions
+        if (currentVersions.size >= 10) return // max versions cap
+
+        viewModelScope.launch {
+            _state.update { it.copy(isRegenerating = true) }
+
+            val template = repository.getTemplateById(templateId)
+            if (template == null) {
+                _state.update { it.copy(isRegenerating = false) }
+                return@launch
+            }
+
+            val nextVersion = currentVersions.maxOfOrNull { it.version }?.plus(1) ?: 2
+
+            val result = engine.regenerate(
+                frozenInput = currentState.synthesisInput,
+                template = template,
+                nextVersion = nextVersion
+            )
+
+            result.onSuccess { newVersion ->
+                val updatedVersions = currentVersions + newVersion
+                _state.update {
+                    it.copy(
+                        isRegenerating = false,
+                        versions = updatedVersions,
+                        outputText = newVersion.outputText // show latest version
+                    )
+                }
+
+                // Persist updated versions to DB
+                val run = repository.getRunById(runId)
+                if (run != null) {
+                    repository.updateRun(run.copy(
+                        versionsJson = OutputVersion.toJson(updatedVersions)
+                    ))
+                }
+            }.onFailure {
+                _state.update { it.copy(isRegenerating = false) }
             }
         }
     }

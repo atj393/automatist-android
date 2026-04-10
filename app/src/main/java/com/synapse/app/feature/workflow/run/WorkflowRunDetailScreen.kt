@@ -135,13 +135,21 @@ fun WorkflowRunDetailScreen(
                 }
             }
 
-            // Output — format-aware rendering (social outputs render as per-platform cards)
+            // Output — versioned or single display
             if (r.outputText.isNotBlank()) {
-                OutputDisplay(
-                    outputText = r.outputText,
-                    outputFormat = r.outputFormat,
-                    isSocialOutput = r.isSocialOutput
-                )
+                val versions = r.outputVersions
+                if (versions.isNotEmpty()) {
+                    VersionedOutputDisplay(
+                        versions = versions,
+                        outputFormat = r.outputFormat
+                    )
+                } else {
+                    OutputDisplay(
+                        outputText = r.outputText,
+                        outputFormat = r.outputFormat,
+                        isSocialOutput = r.isSocialOutput
+                    )
+                }
             }
 
             // Error — dual layer: readable + raw technical detail
