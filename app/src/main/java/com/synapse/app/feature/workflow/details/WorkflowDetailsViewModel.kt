@@ -88,6 +88,36 @@ class WorkflowDetailsViewModel @Inject constructor(
         }
     }
 
+    fun toggleEnabled() {
+        viewModelScope.launch {
+            val template = _state.value.template ?: return@launch
+            val newEnabled = !template.isEnabled
+            val updated = template.copy(
+                isEnabled = newEnabled,
+                updatedAtMillis = System.currentTimeMillis()
+            )
+            repository.updateTemplate(updated)
+            _state.update { it.copy(template = updated) }
+
+            // Sync scheduling
+            if (newEnabled) {
+                // Re-register schedule if trigger is not Manual
+                if (updated.trigger !is WorkflowTrigger.Manual) {
+                    scheduleManager.scheduleWorkflow(templateId, updated.trigger)
+                }
+            } else {
+                // Cancel scheduled runs
+                scheduleManager.cancelSchedule(templateId)
+            }
+
+            // Refresh schedule info
+            val info = withContext(Dispatchers.IO) {
+                scheduleManager.getScheduleStatusSync(templateId)
+            }
+            _state.update { it.copy(scheduleInfo = info) }
+        }
+    }
+
     fun showDeleteDialog() {
         _state.update { it.copy(showDeleteDialog = true) }
     }

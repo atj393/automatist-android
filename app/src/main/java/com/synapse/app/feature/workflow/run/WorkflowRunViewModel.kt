@@ -248,6 +248,9 @@ class WorkflowRunViewModel @Inject constructor(
                 val effectiveFormat = if (executionState.isSocialOutput) OutputFormat.JSON
                     else template.outputConfig.outputFormat
 
+                // Persist stage history
+                val persistedStagesJson = stagesToJson(_state.value.stages)
+
                 // Update run record
                 repository.updateRun(
                     WorkflowRun(
@@ -267,7 +270,8 @@ class WorkflowRunViewModel @Inject constructor(
                         completedAtMillis = System.currentTimeMillis(),
                         profileName = executionState.profileName,
                         modelId = executionState.modelId,
-                        isSocialOutput = executionState.isSocialOutput
+                        isSocialOutput = executionState.isSocialOutput,
+                        stagesJson = persistedStagesJson
                     )
                 )
 
@@ -303,6 +307,9 @@ class WorkflowRunViewModel @Inject constructor(
                     )
                 }
 
+                // Persist stage history
+                val persistedStagesJson = stagesToJson(_state.value.stages)
+
                 // Update run record
                 repository.updateRun(
                     WorkflowRun(
@@ -314,11 +321,24 @@ class WorkflowRunViewModel @Inject constructor(
                         currentStage = executionState.stage,
                         errorMessage = executionState.error,
                         errorDetail = rawForStorage,
-                        completedAtMillis = System.currentTimeMillis()
+                        completedAtMillis = System.currentTimeMillis(),
+                        stagesJson = persistedStagesJson
                     )
                 )
             }
         }
+    }
+
+    /** Convert in-memory StageInfo list to persisted JSON. */
+    private fun stagesToJson(stages: List<StageInfo>): String {
+        val persisted = stages.map { stage ->
+            PersistedStage(
+                label = stage.label,
+                status = stage.status.name,
+                detail = stage.detail
+            )
+        }
+        return PersistedStage.toJson(persisted)
     }
 
     private fun List<StageInfo>.markLastCompleted(detail: String = ""): List<StageInfo> {

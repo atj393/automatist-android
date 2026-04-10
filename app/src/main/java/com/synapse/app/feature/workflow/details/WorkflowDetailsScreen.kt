@@ -112,6 +112,46 @@ fun WorkflowDetailsScreen(
                 )
             }
 
+            // ── Enable / Disable ──
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (template.isEnabled)
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        if (template.isEnabled) Icons.Default.CheckCircle else Icons.Default.PauseCircle,
+                        null,
+                        modifier = Modifier.size(20.dp),
+                        tint = if (template.isEnabled) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outline
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            if (template.isEnabled) "Active" else "Paused",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            if (template.isEnabled) "Scheduled runs are active"
+                            else "Scheduled runs are paused",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = template.isEnabled,
+                        onCheckedChange = { viewModel.toggleEnabled() }
+                    )
+                }
+            }
+
             // ── Action Buttons ──
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -123,7 +163,7 @@ fun WorkflowDetailsScreen(
                 ) {
                     Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Run Once Now")
+                    Text("Run Now")
                 }
                 OutlinedButton(
                     onClick = { onEdit(template.id) },
@@ -261,7 +301,7 @@ fun WorkflowDetailsScreen(
             ) {
                 if (state.recentRuns.isEmpty()) {
                     Text(
-                        "No runs yet. Tap \"Run Once Now\" to execute this workflow.",
+                        "No runs yet. Tap \"Run Now\" to execute this workflow.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

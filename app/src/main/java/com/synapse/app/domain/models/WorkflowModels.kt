@@ -351,11 +351,46 @@ data class WorkflowRun(
     val completedAtMillis: Long? = null,
     val profileName: String = "",
     val modelId: String = "",
-    val isSocialOutput: Boolean = false
+    val isSocialOutput: Boolean = false,
+    val stagesJson: String = ""
 ) {
     /** Parse social outputs from outputText when isSocialOutput is true. */
     val socialOutputs: List<SocialOutput>
         get() = if (isSocialOutput) SocialOutputParser.parse(outputText) else emptyList()
+
+    /** Parse persisted stage history from stagesJson. */
+    val persistedStages: List<PersistedStage>
+        get() = PersistedStage.parseList(stagesJson)
+}
+
+// ── Persisted Stage (for run detail history) ──
+
+@Serializable
+data class PersistedStage(
+    val label: String,
+    val status: String, // "COMPLETED", "FAILED", "RUNNING", "PENDING"
+    val detail: String = ""
+) {
+    companion object {
+        private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+        fun parseList(stagesJson: String): List<PersistedStage> {
+            if (stagesJson.isBlank()) return emptyList()
+            return try {
+                json.decodeFromString<List<PersistedStage>>(stagesJson)
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
+        fun toJson(stages: List<PersistedStage>): String {
+            return try {
+                json.encodeToString(stages)
+            } catch (_: Exception) {
+                ""
+            }
+        }
+    }
 }
 
 data class TokenUsage(

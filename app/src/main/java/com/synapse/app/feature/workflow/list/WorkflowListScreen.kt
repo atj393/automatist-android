@@ -183,6 +183,14 @@ private fun MyWorkflowCard(
 
             // Metadata chips
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (!template.isEnabled) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Paused", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline) },
+                        leadingIcon = { Icon(Icons.Default.PauseCircle, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.outline) },
+                        modifier = Modifier.height(28.dp)
+                    )
+                }
                 AssistChip(
                     onClick = {},
                     label = { Text(triggerLabel(template.trigger), style = MaterialTheme.typography.labelSmall) },
@@ -253,7 +261,7 @@ private fun MyWorkflowCard(
                 TextButton(onClick = onRun) {
                     Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Run Once Now")
+                    Text("Run Now")
                 }
                 IconButton(onClick = onViewHistory) {
                     Icon(Icons.Default.History, "History", modifier = Modifier.size(18.dp))
