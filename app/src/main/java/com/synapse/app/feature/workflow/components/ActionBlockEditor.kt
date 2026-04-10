@@ -23,6 +23,7 @@ fun ActionBlockEditor(
     action: WorkflowAction,
     index: Int,
     totalCount: Int,
+    allActions: List<WorkflowAction> = emptyList(),
     availableNotes: List<SavedNote> = emptyList(),
     availableWorkflows: List<WorkflowTemplate> = emptyList(),
     availableProfiles: List<ProviderProfile> = emptyList(),
@@ -50,7 +51,7 @@ fun ActionBlockEditor(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = action.label.ifBlank { "${action.type.displayName} #${index + 1}" },
+                    text = "${action.type.displayName} #${index + 1}",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.weight(1f)
@@ -112,6 +113,8 @@ fun ActionBlockEditor(
                         WorkflowActionType.FETCH_RSS_MULTI -> MultiFeedRssEditor(action, onUpdate)
                         WorkflowActionType.FETCH_WEATHER -> WeatherEditor(action, onUpdate)
                         WorkflowActionType.FETCH_ROUTE_TIME -> RouteTimeEditor(action, onUpdate)
+                        WorkflowActionType.USE_ACTION_OUTPUT -> ActionOutputEditor(action, onUpdate, allActions)
+                        WorkflowActionType.AI_PROMPT -> AiPromptEditor(action, onUpdate, availableProfiles)
                     }
 
                     // Per-action instruction (common to all types)
@@ -719,6 +722,159 @@ private fun RouteTimeEditor(action: WorkflowAction, onUpdate: (WorkflowAction) -
 
     Text(
         "Uses OpenRouteService (free). Add your API key in Settings \u2192 Service Keys.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+    )
+}
+
+// ── Use Action Output Editor ──
+
+@Composable
+private fun ActionOutputEditor(
+    action: WorkflowAction,
+    onUpdate: (WorkflowAction) -> Unit,
+    allActions: List<WorkflowAction>
+) {
+    val config = remember(action.extraConfig) {
+        if (action.extraConfig.isNotBlank()) {
+            try { json.decodeFromString<ActionOutputConfig>(action.extraConfig) }
+            catch (_: Exception) { ActionOutputConfig() }
+        } else ActionOutputConfig()
+    }
+
+    // Only show actions that appear before this one (by order), excluding self
+    val earlierActions = allActions.filter { it.order < action.order && it.id != action.id && it.isEnabled }
+
+    var showSelector by remember { mutableStateOf(false) }
+
+    if (earlierActions.isEmpty()) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+        ) {
+            Text(
+                "No earlier actions available to reference. Add actions above this one first.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(12.dp)
+            )
+        }
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (config.sourceActionId.isNotBlank())
+                    "Referencing: ${config.sourceActionLabel.ifBlank { "Action" }}"
+                else "No action selected",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedButton(onClick = { showSelector = true }) {
+                Text("Choose")
+            }
+        }
+
+        if (showSelector) {
+            AlertDialog(
+                onDismissRequest = { showSelector = false },
+                title = { Text("Select Source Action") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        earlierActions.forEach { src ->
+                            val srcLabel = src.label.ifBlank { "${src.type.displayName} #${src.order + 1}" }
+                            TextButton(
+                                onClick = {
+                                    val newConfig = ActionOutputConfig(
+                                        sourceActionId = src.id,
+                                        sourceActionLabel = srcLabel
+                                    )
+                                    onUpdate(action.copy(extraConfig = json.encodeToString(newConfig)))
+                                    showSelector = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(srcLabel, fontWeight = FontWeight.Medium)
+                                    Text(
+                                        src.type.displayName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showSelector = false }) { Text("Cancel") }
+                }
+            )
+        }
+    }
+
+    Text(
+        "This action passes the referenced action's output forward as its own result.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+    )
+}
+
+// ── AI Prompt Editor ──
+
+@Composable
+private fun AiPromptEditor(
+    action: WorkflowAction,
+    onUpdate: (WorkflowAction) -> Unit,
+    availableProfiles: List<ProviderProfile>
+) {
+    val config = remember(action.extraConfig) {
+        if (action.extraConfig.isNotBlank()) {
+            try { json.decodeFromString<AiPromptConfig>(action.extraConfig) }
+            catch (_: Exception) { AiPromptConfig() }
+        } else AiPromptConfig()
+    }
+
+    fun updateConfig(newConfig: AiPromptConfig) {
+        onUpdate(action.copy(extraConfig = json.encodeToString(newConfig)))
+    }
+
+    // Prompt text
+    OutlinedTextField(
+        value = config.promptText,
+        onValueChange = { updateConfig(config.copy(promptText = it)) },
+        label = { Text("AI Prompt *") },
+        placeholder = { Text("e.g. Summarize the above content as 5 bullet points...") },
+        minLines = 3, maxLines = 8,
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    // Output format selector
+    Text("Output format:", style = MaterialTheme.typography.labelLarge)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        AiPromptOutputFormat.entries.forEach { fmt ->
+            FilterChip(
+                selected = config.outputFormat == fmt,
+                onClick = { updateConfig(config.copy(outputFormat = fmt)) },
+                label = { Text(fmt.displayName, style = MaterialTheme.typography.labelSmall) }
+            )
+        }
+    }
+
+    // AI profile selector
+    if (availableProfiles.isNotEmpty()) {
+        ProfilePicker(
+            label = "AI Profile",
+            hint = "Select which AI model to use for this prompt",
+            selectedProfileId = config.profileId,
+            profiles = availableProfiles,
+            onProfileSelected = { updateConfig(config.copy(profileId = it)) },
+            inheritLabel = "Use workflow default"
+        )
+    }
+
+    Text(
+        "This action sends your prompt to an AI provider and returns the response. " +
+        "Context from prior actions in this run is automatically included.",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
     )

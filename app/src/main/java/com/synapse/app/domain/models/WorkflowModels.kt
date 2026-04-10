@@ -103,7 +103,9 @@ enum class WorkflowActionType(val displayName: String) {
     USE_PREVIOUS_OUTPUT("Previous Workflow Output"),
     FETCH_RSS_MULTI("Multi-Feed RSS"),
     FETCH_WEATHER("Weather Data"),
-    FETCH_ROUTE_TIME("Route / Commute Time")
+    FETCH_ROUTE_TIME("Route / Commute Time"),
+    USE_ACTION_OUTPUT("Use Action Output"),
+    AI_PROMPT("AI Prompt")
 }
 
 // ── Action Model ──
@@ -216,6 +218,31 @@ object RouteService {
     const val SERVICE_KEY = "openrouteservice"
     const val BASE_URL = "https://api.openrouteservice.org"
 }
+
+// ── Use Action Output Config ──
+
+@Serializable
+data class ActionOutputConfig(
+    val sourceActionId: String = "",
+    val sourceActionLabel: String = ""
+)
+
+// ── AI Prompt Config ──
+
+@Serializable
+enum class AiPromptOutputFormat(val displayName: String) {
+    PLAIN_TEXT("Plain Text"),
+    MARKDOWN("Markdown"),
+    JSON("JSON"),
+    CUSTOM("Custom")
+}
+
+@Serializable
+data class AiPromptConfig(
+    val promptText: String = "",
+    val outputFormat: AiPromptOutputFormat = AiPromptOutputFormat.PLAIN_TEXT,
+    val profileId: String = "" // AI profile override ("" = inherit workflow default)
+)
 
 // ── Saved Note ──
 

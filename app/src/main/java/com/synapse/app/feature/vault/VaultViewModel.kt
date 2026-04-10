@@ -111,7 +111,7 @@ class VaultViewModel @Inject constructor(
      */
     private fun autoMigrateLegacyProvider() {
         viewModelScope.launch {
-            val existingProfiles = profiles.value
+            val existingProfiles = workflowRepository.getAllProfiles().first()
             if (existingProfiles.isNotEmpty()) return@launch
 
             val settings = settingsRepository.settings.first()

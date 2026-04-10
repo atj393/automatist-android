@@ -174,6 +174,34 @@ object WorkflowActionRegistry {
             outputSummary = "The selected run's output text",
             exampleUseCase = "Turn yesterday's news digest into social media posts",
             requiresSourceData = false
+        ),
+        WorkflowActionType.USE_ACTION_OUTPUT to ActionTypeInfo(
+            type = WorkflowActionType.USE_ACTION_OUTPUT,
+            displayName = "Use Action Output",
+            description = "Reference the output of an earlier action in this workflow",
+            longDescription = "Passes the result of an earlier action in this same workflow run into a later step. Enables explicit chaining — fetch something, then reference that exact result for further processing.",
+            category = ActionCategory.WORKFLOW_CHAIN,
+            inputSummary = "Select an earlier action from this workflow",
+            outputSummary = "The referenced action's output text",
+            exampleUseCase = "Fetch an article, then pass it to an AI Prompt for summarization",
+            requiresSourceData = false
+        ),
+
+        // ── AI / Processing ──
+
+        WorkflowActionType.AI_PROMPT to ActionTypeInfo(
+            type = WorkflowActionType.AI_PROMPT,
+            displayName = "AI Prompt",
+            description = "Run a custom AI prompt mid-workflow",
+            longDescription = "Sends a user-written prompt to an AI provider and returns the response as this action's output. Use it for mid-pipeline processing: summarize, classify, extract, reformat, or transform content with AI before the final synthesis step.",
+            category = ActionCategory.WORKFLOW_CHAIN,
+            inputSummary = "A prompt, optional output format, optional AI profile",
+            outputSummary = "The AI-generated response text",
+            exampleUseCase = "Summarize fetched RSS items into bullet points before the final briefing",
+            setupRequirements = listOf(
+                SetupRequirement("AI provider API key", RequirementType.API_KEY)
+            ),
+            requiresSourceData = false
         )
     )
 
@@ -274,6 +302,31 @@ object WorkflowActionRegistry {
                     }
                 }
             }
+            WorkflowActionType.USE_ACTION_OUTPUT -> {
+                if (action.extraConfig.isBlank()) {
+                    errors.add("$label: select a source action to reference.")
+                } else {
+                    try {
+                        val cfg = json.decodeFromString<ActionOutputConfig>(action.extraConfig)
+                        if (cfg.sourceActionId.isBlank()) errors.add("$label: select a source action.")
+                        if (cfg.sourceActionId == action.id) errors.add("$label: cannot reference itself.")
+                    } catch (_: Exception) {
+                        errors.add("$label: invalid action output configuration.")
+                    }
+                }
+            }
+            WorkflowActionType.AI_PROMPT -> {
+                if (action.extraConfig.isBlank()) {
+                    errors.add("$label: write a prompt for the AI.")
+                } else {
+                    try {
+                        val cfg = json.decodeFromString<AiPromptConfig>(action.extraConfig)
+                        if (cfg.promptText.isBlank()) errors.add("$label: prompt text is required.")
+                    } catch (_: Exception) {
+                        errors.add("$label: invalid AI prompt configuration.")
+                    }
+                }
+            }
         }
 
         return errors
@@ -330,6 +383,24 @@ object WorkflowActionRegistry {
                         else "Configure route"
                     } catch (_: Exception) { "Configuration error" }
                 } else "Configure route"
+            }
+            WorkflowActionType.USE_ACTION_OUTPUT -> {
+                if (action.extraConfig.isNotBlank()) {
+                    try {
+                        val cfg = json.decodeFromString<ActionOutputConfig>(action.extraConfig)
+                        if (cfg.sourceActionLabel.isNotBlank()) "From: ${cfg.sourceActionLabel}"
+                        else "No action selected"
+                    } catch (_: Exception) { "Configuration error" }
+                } else "No action selected"
+            }
+            WorkflowActionType.AI_PROMPT -> {
+                if (action.extraConfig.isNotBlank()) {
+                    try {
+                        val cfg = json.decodeFromString<AiPromptConfig>(action.extraConfig)
+                        if (cfg.promptText.isNotBlank()) cfg.promptText.take(60).replace("\n", " ")
+                        else "No prompt set"
+                    } catch (_: Exception) { "Configuration error" }
+                } else "No prompt set"
             }
         }
     }

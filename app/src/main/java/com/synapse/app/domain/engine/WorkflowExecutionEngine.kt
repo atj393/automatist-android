@@ -52,17 +52,19 @@ class WorkflowExecutionEngine @Inject constructor(
 
         // Execute each action and collect results
         val actionResults = mutableListOf<ActionResult>()
+        val actionResultMap = mutableMapOf<String, String>() // action ID → output text
 
         for ((index, action) in enabledActions.withIndex()) {
             val label = action.label.ifBlank { "${action.type.displayName} #${index + 1}" }
 
             emit(ExecutionState.ActionStarted(index, enabledActions.size, label, action.type.name))
 
-            val result = executeAction(action)
+            val result = executeAction(action, actionResultMap, template)
 
             if (result.isSuccess) {
                 val text = result.getOrThrow()
                 actionResults.add(ActionResult(action, text))
+                actionResultMap[action.id] = text
                 emit(
                     ExecutionState.ActionCompleted(
                         index, enabledActions.size, label,
@@ -244,7 +246,11 @@ class WorkflowExecutionEngine @Inject constructor(
 
     // ── Action Dispatch ──
 
-    private suspend fun executeAction(action: WorkflowAction): Result<String> {
+    private suspend fun executeAction(
+        action: WorkflowAction,
+        actionResultMap: Map<String, String>,
+        template: WorkflowTemplate
+    ): Result<String> {
         return when (action.type) {
             WorkflowActionType.FETCH_URL -> fetchUrl(action.sourceData)
 
@@ -269,6 +275,10 @@ class WorkflowExecutionEngine @Inject constructor(
             WorkflowActionType.FETCH_WEATHER -> executeWeather(action)
 
             WorkflowActionType.FETCH_ROUTE_TIME -> executeRouteTime(action)
+
+            WorkflowActionType.USE_ACTION_OUTPUT -> executeActionOutput(action, actionResultMap)
+
+            WorkflowActionType.AI_PROMPT -> executeAiPrompt(action, actionResultMap, template)
         }
     }
 
@@ -795,6 +805,129 @@ class WorkflowExecutionEngine @Inject constructor(
             null
         } catch (_: Exception) {
             null
+        }
+    }
+
+    // ── USE_ACTION_OUTPUT ──
+
+    private fun executeActionOutput(
+        action: WorkflowAction,
+        actionResultMap: Map<String, String>
+    ): Result<String> {
+        return try {
+            if (action.extraConfig.isBlank()) {
+                return Result.failure(Exception("No source action configured"))
+            }
+
+            val config = json.decodeFromString<ActionOutputConfig>(action.extraConfig)
+            if (config.sourceActionId.isBlank()) {
+                return Result.failure(Exception("No source action selected"))
+            }
+            if (config.sourceActionId == action.id) {
+                return Result.failure(Exception("Action cannot reference itself"))
+            }
+
+            val sourceText = actionResultMap[config.sourceActionId]
+                ?: return Result.failure(Exception(
+                    "Referenced action \"${config.sourceActionLabel.ifBlank { config.sourceActionId }}\" has no result. " +
+                    "It may have failed or been disabled."
+                ))
+
+            if (sourceText.isBlank()) {
+                return Result.failure(Exception(
+                    "Referenced action \"${config.sourceActionLabel.ifBlank { "source" }}\" returned empty output."
+                ))
+            }
+
+            Result.success(sourceText.take(MAX_CHARS_PER_ACTION))
+        } catch (e: Exception) {
+            Result.failure(Exception("Action output reference error: ${e.message}"))
+        }
+    }
+
+    // ── AI_PROMPT ──
+
+    private suspend fun executeAiPrompt(
+        action: WorkflowAction,
+        actionResultMap: Map<String, String>,
+        template: WorkflowTemplate
+    ): Result<String> {
+        return try {
+            if (action.extraConfig.isBlank()) {
+                return Result.failure(Exception("No AI prompt configured"))
+            }
+
+            val config = json.decodeFromString<AiPromptConfig>(action.extraConfig)
+            if (config.promptText.isBlank()) {
+                return Result.failure(Exception("AI prompt text is empty"))
+            }
+
+            // Build the system prompt from output format preference
+            val formatInstruction = when (config.outputFormat) {
+                AiPromptOutputFormat.PLAIN_TEXT -> "Respond in plain readable text. No Markdown syntax."
+                AiPromptOutputFormat.MARKDOWN -> "Respond using Markdown formatting with headings, bullets, and bold for emphasis."
+                AiPromptOutputFormat.JSON -> "Respond with valid JSON only. No explanation, no Markdown code fences."
+                AiPromptOutputFormat.CUSTOM -> ""
+            }
+
+            val systemPrompt = buildString {
+                append("You are a professional AI assistant executing a workflow action. ")
+                if (formatInstruction.isNotBlank()) {
+                    append(formatInstruction)
+                    append(" ")
+                }
+                append("Follow the user's prompt precisely.")
+            }
+
+            // Build the user message: prompt + any prior context from action results
+            val userMessage = buildString {
+                append(config.promptText)
+
+                // If prior actions have produced results, include them as context
+                if (actionResultMap.isNotEmpty()) {
+                    append("\n\n--- Available context from prior actions ---\n")
+                    actionResultMap.entries.forEachIndexed { i, (_, text) ->
+                        append("Source ${i + 1}: ${text.take(2000)}\n\n")
+                    }
+                }
+            }
+
+            // Resolve profile: action-level config > action-level field > workflow default > app default
+            val profileId = config.profileId.ifBlank {
+                action.profileId.ifBlank {
+                    template.defaultProfileId.ifBlank { null }
+                }
+            }
+
+            val input = ArticleInput(
+                text = userMessage.take(MAX_TOTAL_CHARS),
+                systemPromptOverride = systemPrompt,
+                profileId = profileId
+            )
+
+            val transformResult = transformProvider.transform(input, TransformType.CUSTOM_WORKFLOW)
+
+            if (transformResult.isSuccess) {
+                val result = transformResult.getOrThrow()
+                Result.success(result.outputText.take(MAX_CHARS_PER_ACTION))
+            } else {
+                val error = transformResult.exceptionOrNull()!!
+                val rawDetail = when (error) {
+                    is DiagnosticException -> error.rawDetail
+                    else -> "${error.javaClass.simpleName}: ${error.message}"
+                }
+                Result.failure(DiagnosticException(
+                    message = "AI Prompt failed: ${error.message}",
+                    rawDetail = ErrorRedactor.redact(rawDetail),
+                    cause = error
+                ))
+            }
+        } catch (e: Exception) {
+            Result.failure(DiagnosticException(
+                message = "AI Prompt error: ${e.message}",
+                rawDetail = "Exception: ${e.javaClass.simpleName}: ${e.message}",
+                cause = e
+            ))
         }
     }
 

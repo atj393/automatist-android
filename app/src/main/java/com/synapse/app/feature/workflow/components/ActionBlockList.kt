@@ -33,6 +33,7 @@ fun ActionBlockList(
                 action = action,
                 index = index,
                 totalCount = actions.size,
+                allActions = actions,
                 availableNotes = availableNotes,
                 availableWorkflows = availableWorkflows,
                 availableProfiles = availableProfiles,
