@@ -196,7 +196,9 @@ class WorkflowWorker(
                         profileName = terminal.profileName,
                         modelId = terminal.modelId,
                         isSocialOutput = terminal.isSocialOutput,
-                        stagesJson = stagesJson
+                        stagesJson = stagesJson,
+                        synthesisInput = terminal.synthesisInput,
+                        versionsJson = com.synapse.app.domain.models.OutputVersion.toJson(terminal.versions)
                     )
                 )
 

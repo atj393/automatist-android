@@ -1,5 +1,6 @@
 package com.synapse.app.domain.engine
 
+import com.synapse.app.domain.models.OutputVersion
 import com.synapse.app.domain.models.ProviderType
 import com.synapse.app.domain.models.TokenUsage
 
@@ -52,7 +53,9 @@ sealed interface ExecutionState {
         val durationMs: Long,
         val profileName: String = "",
         val modelId: String = "",
-        val isSocialOutput: Boolean = false
+        val isSocialOutput: Boolean = false,
+        val versions: List<OutputVersion> = emptyList(),
+        val synthesisInput: String = "" // frozen combined input for regeneration
     ) : ExecutionState
 
     data class Failed(

@@ -70,7 +70,9 @@ data class WorkflowRunEntity(
     val profileName: String = "",
     val modelId: String = "",
     val isSocialOutput: Boolean = false,
-    val stagesJson: String = "" // JSON: List of persisted stage info
+    val stagesJson: String = "", // JSON: List of persisted stage info
+    val synthesisInput: String = "", // frozen combined input for regeneration
+    val versionsJson: String = ""    // JSON: List<OutputVersion>
 )
 
 // ── Provider Profile Entity ──
@@ -208,7 +210,9 @@ fun WorkflowRunEntity.toDomain() = WorkflowRun(
     profileName = profileName,
     modelId = modelId,
     isSocialOutput = isSocialOutput,
-    stagesJson = stagesJson
+    stagesJson = stagesJson,
+    synthesisInput = synthesisInput,
+    versionsJson = versionsJson
 )
 
 fun WorkflowRun.toEntity() = WorkflowRunEntity(
@@ -232,5 +236,7 @@ fun WorkflowRun.toEntity() = WorkflowRunEntity(
     profileName = profileName,
     modelId = modelId,
     isSocialOutput = isSocialOutput,
-    stagesJson = stagesJson
+    stagesJson = stagesJson,
+    synthesisInput = synthesisInput,
+    versionsJson = versionsJson
 )
