@@ -117,6 +117,7 @@ class WorkflowWorker(
         // ── Execute workflow via shared engine ──
         Log.i(TAG, "  Calling WorkflowExecutionEngine.execute()...")
         var finalState: ExecutionState? = null
+        val stageLog = mutableListOf<com.synapse.app.domain.models.PersistedStage>()
 
         try {
             engine.execute(template)
@@ -141,6 +142,15 @@ class WorkflowWorker(
                         is ExecutionState.Failed -> "Failed: ${state.error}"
                     }
 
+                    // Accumulate stage log for persistence
+                    val stageStatus = when (state) {
+                        is ExecutionState.ActionFailed -> "FAILED"
+                        is ExecutionState.Failed -> "FAILED"
+                        is ExecutionState.Completed -> "COMPLETED"
+                        else -> "COMPLETED"
+                    }
+                    stageLog.add(com.synapse.app.domain.models.PersistedStage(stageLabel, stageStatus))
+
                     Log.d(TAG, "  Stage: $stageLabel")
                     setProgress(workDataOf("status" to stageLabel, "runId" to runId))
 
@@ -151,7 +161,10 @@ class WorkflowWorker(
         } catch (e: Exception) {
             Log.e(TAG, "  Engine threw exception: ${e.javaClass.simpleName}: ${e.message}", e)
             finalState = ExecutionState.Failed(e.message ?: "Unexpected error", "execution")
+            stageLog.add(com.synapse.app.domain.models.PersistedStage("Exception: ${e.message}", "FAILED"))
         }
+
+        val stagesJson = com.synapse.app.domain.models.PersistedStage.toJson(stageLog)
 
         val terminalName = finalState?.let { it::class.simpleName } ?: "null"
         Log.i(TAG, "  Engine flow completed. Terminal state: $terminalName")
@@ -182,7 +195,8 @@ class WorkflowWorker(
                         completedAtMillis = System.currentTimeMillis(),
                         profileName = terminal.profileName,
                         modelId = terminal.modelId,
-                        isSocialOutput = terminal.isSocialOutput
+                        isSocialOutput = terminal.isSocialOutput,
+                        stagesJson = stagesJson
                     )
                 )
 
@@ -214,7 +228,8 @@ class WorkflowWorker(
                         currentStage = terminal.stage,
                         errorMessage = terminal.error,
                         errorDetail = rawForStorage,
-                        completedAtMillis = System.currentTimeMillis()
+                        completedAtMillis = System.currentTimeMillis(),
+                        stagesJson = stagesJson
                     )
                 )
 
@@ -236,7 +251,8 @@ class WorkflowWorker(
                         status = WorkflowRunStatus.FAILED,
                         currentStage = "Unknown",
                         errorMessage = "Workflow ended without a terminal state",
-                        completedAtMillis = System.currentTimeMillis()
+                        completedAtMillis = System.currentTimeMillis(),
+                        stagesJson = stagesJson
                     )
                 )
 

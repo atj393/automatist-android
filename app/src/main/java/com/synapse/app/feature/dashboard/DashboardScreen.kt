@@ -30,12 +30,13 @@ fun DashboardScreen(
     onNavigateToWorkflowList: () -> Unit = {},
     onNavigateToWorkflowDetails: (Long) -> Unit = {},
     onNavigateToWorkflowRun: (Long) -> Unit = {},
+    onNavigateToRunDetail: (Long) -> Unit = {},
     onNavigateToNotes: () -> Unit = {},
     onNavigateToTemplates: () -> Unit = {},
     onCreateBlankWorkflow: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
-    val recentHistory by viewModel.recentHistory.collectAsState()
+    val recentRuns by viewModel.recentRuns.collectAsState()
     val myWorkflows by viewModel.customWorkflows.collectAsState()
 
     Scaffold(
@@ -43,9 +44,6 @@ fun DashboardScreen(
             TopAppBar(
                 title = { Text("Synapse", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = onNavigateToNotes) {
-                        Icon(Icons.Default.StickyNote2, contentDescription = "Notes")
-                    }
                     IconButton(onClick = onNavigateToVault) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -140,46 +138,41 @@ fun DashboardScreen(
                         onRun = { onNavigateToWorkflowRun(wf.id) }
                     )
                 }
+                if (myWorkflows.size > 5) {
+                    item {
+                        TextButton(onClick = onNavigateToWorkflowList, modifier = Modifier.fillMaxWidth()) {
+                            Text("View all ${myWorkflows.size} workflows")
+                        }
+                    }
+                }
             }
 
-            // ── Recent History ──
+            // ── Recent Runs ──
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Recent History", style = MaterialTheme.typography.titleMedium)
+                    Text("Recent Runs", style = MaterialTheme.typography.titleMedium)
                     TextButton(onClick = onNavigateToHistory) { Text("See All") }
                 }
             }
 
-            if (recentHistory.isEmpty()) {
+            if (recentRuns.isEmpty()) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     ) {
                         Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("No history yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("No runs yet. Run a workflow to see results here.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
             } else {
-                items(recentHistory.take(3)) { item ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().clickable { onNavigateToHistoryDetail(item.id) },
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
-                            Text(
-                                "${item.workflowType.name.replace("_", " ")} - ${item.transformType.displayName}",
-                                style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(item.inputPreview, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
+                items(recentRuns) { run ->
+                    RecentRunCard(run = run, onClick = { onNavigateToRunDetail(run.id) })
                 }
             }
 
@@ -204,7 +197,8 @@ private fun DashboardWorkflowCard(
         ) {
             Icon(
                 Icons.Default.AutoAwesome, null,
-                tint = MaterialTheme.colorScheme.primary,
+                tint = if (template.isEnabled) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(28.dp)
             )
             Spacer(Modifier.width(12.dp))
@@ -212,9 +206,10 @@ private fun DashboardWorkflowCard(
                 Text(
                     template.name,
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (template.isEnabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                // Show trigger and status info
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -224,6 +219,14 @@ private fun DashboardWorkflowCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    // Active/Inactive indicator
+                    if (!template.isEnabled) {
+                        Text(
+                            "Paused",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
                     template.lastRunStatus?.let { status ->
                         Text(
                             when (status) {
@@ -241,13 +244,75 @@ private fun DashboardWorkflowCard(
                     }
                 }
             }
-            // Play button for quick run
+            // Play button
             IconButton(onClick = onRun) {
                 Icon(
-                    Icons.Default.PlayArrow, "Run Once Now",
+                    Icons.Default.PlayArrow, "Run Now",
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun RecentRunCard(run: WorkflowRun, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                when (run.status) {
+                    WorkflowRunStatus.COMPLETED -> Icons.Default.CheckCircle
+                    WorkflowRunStatus.FAILED -> Icons.Default.Error
+                    WorkflowRunStatus.RUNNING -> Icons.Default.Sync
+                },
+                null,
+                modifier = Modifier.size(20.dp),
+                tint = when (run.status) {
+                    WorkflowRunStatus.COMPLETED -> MaterialTheme.colorScheme.primary
+                    WorkflowRunStatus.FAILED -> MaterialTheme.colorScheme.error
+                    WorkflowRunStatus.RUNNING -> MaterialTheme.colorScheme.tertiary
+                }
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    run.templateName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        run.status.name.lowercase().replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        formatTimestamp(run.startedAtMillis),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    run.durationMs?.let {
+                        Text(
+                            formatDuration(it),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            Icon(
+                Icons.Default.ChevronRight, null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -258,4 +323,14 @@ private fun triggerLabel(trigger: WorkflowTrigger): String = when (trigger) {
     is WorkflowTrigger.Weekly -> "Weekly"
     is WorkflowTrigger.Interval -> trigger.displayLabel
     is WorkflowTrigger.NotificationKeyword -> "Notification"
+}
+
+private fun formatTimestamp(millis: Long): String {
+    val sdf = java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault())
+    return sdf.format(java.util.Date(millis))
+}
+
+private fun formatDuration(ms: Long): String {
+    val seconds = ms / 1000
+    return if (seconds < 60) "${seconds}s" else "${seconds / 60}m ${seconds % 60}s"
 }

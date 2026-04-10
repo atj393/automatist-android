@@ -69,7 +69,8 @@ data class WorkflowRunEntity(
     val completedAtMillis: Long?,
     val profileName: String = "",
     val modelId: String = "",
-    val isSocialOutput: Boolean = false
+    val isSocialOutput: Boolean = false,
+    val stagesJson: String = "" // JSON: List of persisted stage info
 )
 
 // ── Provider Profile Entity ──
@@ -206,7 +207,8 @@ fun WorkflowRunEntity.toDomain() = WorkflowRun(
     completedAtMillis = completedAtMillis,
     profileName = profileName,
     modelId = modelId,
-    isSocialOutput = isSocialOutput
+    isSocialOutput = isSocialOutput,
+    stagesJson = stagesJson
 )
 
 fun WorkflowRun.toEntity() = WorkflowRunEntity(
@@ -229,5 +231,6 @@ fun WorkflowRun.toEntity() = WorkflowRunEntity(
     completedAtMillis = completedAtMillis,
     profileName = profileName,
     modelId = modelId,
-    isSocialOutput = isSocialOutput
+    isSocialOutput = isSocialOutput,
+    stagesJson = stagesJson
 )
