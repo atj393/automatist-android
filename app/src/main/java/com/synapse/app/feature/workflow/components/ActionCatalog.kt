@@ -370,4 +370,6 @@ private fun actionIcon(type: WorkflowActionType) = when (type) {
     WorkflowActionType.USE_SAVED_NOTE -> Icons.Default.StickyNote2
     WorkflowActionType.FETCH_API_GET -> Icons.Default.Api
     WorkflowActionType.USE_PREVIOUS_OUTPUT -> Icons.Default.History
+    WorkflowActionType.USE_ACTION_OUTPUT -> Icons.Default.Link
+    WorkflowActionType.AI_PROMPT -> Icons.Default.AutoAwesome
 }
