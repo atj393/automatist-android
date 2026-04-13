@@ -3,6 +3,8 @@ package com.synapse.app.feature.workflow.details
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.synapse.app.domain.access.PlanState
+import com.synapse.app.domain.access.ProductAccessRepository
 import com.synapse.app.domain.models.*
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.domain.templates.BuiltInTemplates
@@ -42,6 +44,7 @@ class WorkflowDetailsViewModel @Inject constructor(
     private val repository: WorkflowRepository,
     private val scheduleManager: ScheduleManager,
     private val portabilityManager: WorkflowPortabilityManager,
+    private val accessRepository: ProductAccessRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -49,6 +52,14 @@ class WorkflowDetailsViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(WorkflowDetailsUiState())
     val state = _state.asStateFlow()
+
+    val planState = accessRepository.planState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlanState())
+
+    suspend fun canCreateWorkflow(): Boolean {
+        val count = repository.getAllTemplates().first().size
+        return accessRepository.currentPlanState().canCreateWorkflow(count)
+    }
 
     init {
         loadWorkflow()
@@ -157,12 +168,15 @@ class WorkflowDetailsViewModel @Inject constructor(
                     it.copy(
                         isProcessing = false,
                         duplicatedWorkflowId = result.newWorkflowId,
-                        snackbarMessage = "Duplicated as \"${result.newName}\""
+                        snackbarMessage = "Workflow duplicated as \"${result.newName}\" (paused)"
                     )
                 }
             } catch (e: Exception) {
                 _state.update {
-                    it.copy(isProcessing = false, snackbarMessage = "Duplication failed: ${e.message}")
+                    it.copy(
+                        isProcessing = false,
+                        snackbarMessage = "Duplicate failed: ${e.message?.take(100) ?: "unknown error"}"
+                    )
                 }
             }
         }
@@ -187,7 +201,10 @@ class WorkflowDetailsViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 _state.update {
-                    it.copy(isProcessing = false, snackbarMessage = "Export failed: ${e.message}")
+                    it.copy(
+                        isProcessing = false,
+                        snackbarMessage = "Export failed: ${e.message?.take(100) ?: "unknown error"}"
+                    )
                 }
             }
         }

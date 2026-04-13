@@ -1,5 +1,7 @@
 package com.synapse.app.feature.workflow.list
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,13 +12,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.synapse.app.domain.models.*
+import com.synapse.app.feature.upgrade.UpgradePromptDialog
 import com.synapse.app.platform.scheduling.ScheduleInfo
 import com.synapse.app.platform.scheduling.ScheduleState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,10 +36,69 @@ fun WorkflowListScreen(
     onViewRunDetail: (Long) -> Unit,
     onViewHistory: (Long) -> Unit,
     onViewSchedules: () -> Unit = {},
+    onNavigateToImported: (Long) -> Unit = {},
+    onNavigateToUpgrade: () -> Unit = {},
     viewModel: WorkflowListViewModel = hiltViewModel()
 ) {
     val workflows by viewModel.workflows.collectAsState()
     val scheduleStatuses by viewModel.scheduleStatuses.collectAsState()
+    val importState by viewModel.importState.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var overflowExpanded by remember { mutableStateOf(false) }
+    var showUpgradePrompt by remember { mutableStateOf(false) }
+
+    fun gatedCreate(action: () -> Unit) {
+        if (viewModel.canCreateWorkflow()) action() else showUpgradePrompt = true
+    }
+
+    if (showUpgradePrompt) {
+        UpgradePromptDialog(
+            onUpgrade = { showUpgradePrompt = false; onNavigateToUpgrade() },
+            onDismiss = { showUpgradePrompt = false }
+        )
+    }
+
+    // ── SAF launcher for import ──
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val jsonString = context.contentResolver.openInputStream(uri)?.use { stream ->
+                        stream.bufferedReader().readText()
+                    }
+                    if (jsonString.isNullOrBlank()) {
+                        snackbarHostState.showSnackbar("Import failed: file is empty")
+                    } else {
+                        viewModel.importWorkflow(jsonString)
+                    }
+                } catch (e: Exception) {
+                    snackbarHostState.showSnackbar("Import failed: could not read file")
+                }
+            }
+        }
+    }
+
+    // ── React to import success → navigate ──
+    val importedId = importState.importedWorkflowId
+    LaunchedEffect(importedId) {
+        if (importedId != null) {
+            viewModel.clearImportedWorkflowId()
+            onNavigateToImported(importedId)
+        }
+    }
+
+    // ── Snackbar messages from import ──
+    val snackbarMessage = importState.snackbarMessage
+    LaunchedEffect(snackbarMessage) {
+        if (snackbarMessage != null) {
+            snackbarHostState.showSnackbar(snackbarMessage)
+            viewModel.clearImportSnackbar()
+        }
+    }
 
     // Refresh schedule statuses when workflows change
     LaunchedEffect(workflows) {
@@ -43,6 +108,7 @@ fun WorkflowListScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("My Workflows") },
@@ -55,16 +121,37 @@ fun WorkflowListScreen(
                     IconButton(onClick = onViewSchedules) {
                         Icon(Icons.Default.Schedule, "Schedules")
                     }
+                    Box {
+                        IconButton(onClick = { overflowExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, "More actions")
+                        }
+                        DropdownMenu(
+                            expanded = overflowExpanded,
+                            onDismissRequest = { overflowExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Import Workflow") },
+                                leadingIcon = { Icon(Icons.Default.FileUpload, null, modifier = Modifier.size(20.dp)) },
+                                onClick = {
+                                    overflowExpanded = false
+                                    if (!importState.isImporting) {
+                                        gatedCreate { importLauncher.launch(arrayOf("application/json", "*/*")) }
+                                    }
+                                },
+                                enabled = !importState.isImporting
+                            )
+                        }
+                    }
                 }
             )
         },
         floatingActionButton = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.End) {
-                SmallFloatingActionButton(onClick = onCreateBlank) {
+                SmallFloatingActionButton(onClick = { gatedCreate(onCreateBlank) }) {
                     Icon(Icons.Default.Add, "Start Empty")
                 }
                 ExtendedFloatingActionButton(
-                    onClick = onBrowseTemplates,
+                    onClick = { gatedCreate(onBrowseTemplates) },
                     icon = { Icon(Icons.Default.Dashboard, "Templates") },
                     text = { Text("From Template") }
                 )

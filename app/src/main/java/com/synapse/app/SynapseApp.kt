@@ -2,6 +2,7 @@ package com.synapse.app
 
 import android.app.Application
 import android.util.Log
+import com.synapse.app.data.billing.BillingManager
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.platform.scheduling.ScheduleManager
 import dagger.hilt.android.HiltAndroidApp
@@ -17,6 +18,7 @@ class SynapseApp : Application() {
 
     @Inject lateinit var scheduleManager: ScheduleManager
     @Inject lateinit var workflowRepository: WorkflowRepository
+    @Inject lateinit var billingManager: BillingManager
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -28,6 +30,9 @@ class SynapseApp : Application() {
         // before rescheduleNext() could enqueue the next occurrence (e.g. OOM, reboot
         // during execution, force-stop). WorkManager persists enqueued work across
         // reboots, but a consumed one-shot that didn't reschedule is lost.
+        // Refresh billing entitlement on app start
+        billingManager.queryOwnedPurchases()
+
         appScope.launch {
             try {
                 scheduleManager.reconcileSchedules {
