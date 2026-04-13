@@ -1,0 +1,550 @@
+# Phase 0: Workflow Portability Implementation Map
+
+**Date:** 2026-04-10
+**Scope:** Duplicate, Export (JSON), Import (JSON)
+**Status:** Analysis complete. Ready for Phase 1.
+
+---
+
+## 1. Current Workflow Architecture Map
+
+### Domain Models
+
+| Model | File | Type | Role |
+|-------|------|------|------|
+| `WorkflowTemplate` | `domain/models/WorkflowModels.kt` | data class | Core editable workflow definition |
+| `WorkflowAction` | `domain/models/WorkflowModels.kt` | @Serializable data class | Single action in a workflow |
+| `WorkflowTrigger` | `domain/models/WorkflowModels.kt` | @Serializable sealed interface | 5 variants: Manual, Daily, Weekly, Interval, NotificationKeyword |
+| `WorkflowOutputConfig` | `domain/models/WorkflowModels.kt` | @Serializable data class | Output type, format, social platforms, compaction, profileId, numberOfOutputs |
+| `TemplateCustomization` | `domain/models/WorkflowModels.kt` | @Serializable data class | Editable sections, locked action IDs |
+| `WorkflowRun` | `domain/models/WorkflowModels.kt` | data class | Execution record (output, tokens, duration, stages, versions) |
+| `ProviderProfile` | `domain/models/Settings.kt` | data class | AI provider + model configuration |
+| `SavedNote` | `domain/models/WorkflowModels.kt` | data class | Reusable text content |
+
+### Room Entities (Database v12, 5 tables)
+
+| Entity | Table | PK | Key JSON Columns |
+|--------|-------|----|-----------------|
+| `WorkflowTemplateEntity` | `workflow_templates` | `id: Long` (auto) | `triggerJson`, `actionsJson`, `outputConfigJson`, `customizationJson` |
+| `WorkflowRunEntity` | `workflow_runs` | `id: Long` (auto) | `stagesJson`, `versionsJson` — FK cascade to template |
+| `ProviderProfileEntity` | `provider_profiles` | `id: String` (UUID) | None |
+| `SavedNoteEntity` | `saved_notes` | `id: Long` (auto) | None |
+| `HistoryEntity` | `history_items` | `id: Long` (auto) | None |
+
+### Action Config Storage
+
+`WorkflowAction.extraConfig` is a **String** containing JSON-serialized config. Each action type maps to a specific config model:
+
+| Action Type | Config Model | Notable Fields |
+|-------------|-------------|----------------|
+| `FETCH_RSS_FEED` | `RssFeedConfig` | maxItems, keywordFilter |
+| `FETCH_API_GET` | `ApiGetConfig` | `headers: Map`, `queryParams: Map`, extractionHint |
+| `USE_SAVED_NOTE` | `SavedNoteReference` | `noteId: Long`, noteTitle |
+| `USE_PREVIOUS_OUTPUT` | `PreviousOutputConfig` | `sourceWorkflowId: Long`, specificRunId |
+| `FETCH_RSS_MULTI` | `MultiFeedRssConfig` | feedUrls list, dedup, sort |
+| `FETCH_WEATHER` | `WeatherConfig` | location, units |
+| `FETCH_ROUTE_TIME` | `RouteConfig` | origin, destination, travelMode |
+| `USE_ACTION_OUTPUT` | `ActionOutputConfig` | sourceActionId |
+| `AI_PROMPT` | `AiPromptConfig` | promptText, `profileId` |
+| `FETCH_URL` | (none) | Uses `sourceData` directly |
+| `PASTE_TEXT` | (none) | Uses `sourceData` directly |
+
+### Profile Reference Fields (4 locations)
+
+1. `WorkflowTemplate.defaultProfileId: String` — workflow-level default
+2. `WorkflowAction.profileId: String` — per-action AI override
+3. `WorkflowOutputConfig.outputProfileId: String` — output synthesis override
+4. `AiPromptConfig.profileId: String` — mid-pipeline AI prompt override (inside extraConfig JSON)
+
+### Saved Note Reference Fields
+
+- `SavedNoteReference.noteId: Long` — stored in `extraConfig` of `USE_SAVED_NOTE` actions
+- `SavedNoteReference.noteTitle: String` — display label
+
+### sourceTemplateId Handling
+
+- Set to the built-in template's string ID (e.g., `"article_summarizer"`) when a workflow is created from a template
+- Empty string for blank-created workflows
+- Informational only — does not restrict editing
+- Preserved on duplicate and export/import
+
+### Serialization Stack
+
+- **kotlinx.serialization** for all domain model JSON (trigger, actions, outputConfig, customization, export envelope)
+- `Json { ignoreUnknownKeys = true }` used throughout for forward compatibility
+- `Json { prettyPrint = true; encodeDefaults = true }` for export output
+- Entity↔Domain mapping via extension functions in `WorkflowEntities.kt` (lines 145-242)
+
+### Repository Layer
+
+- **Interface:** `domain/repositories/WorkflowRepository.kt` — methods for templates, runs, profiles, notes
+- **Implementation:** `data/repositories/RoomWorkflowRepository.kt` — delegates to `WorkflowDao`
+- **Key methods:** `saveTemplate()` returns `Long` (new ID), `updateTemplate()`, `deleteTemplate()` (cascades runs)
+
+---
+
+## 2. Current Workflow Creation/Update/Delete Paths
+
+### Path A: Start Empty
+
+**Entry:** `SynapseNavGraph.kt:91` → `Routes.WORKFLOW_EDITOR` (no params)
+**ViewModel:** `WorkflowEditorViewModel.kt:139-153` — initializes blank `EditorUiState`
+**Save:** `WorkflowEditorViewModel.save()` → `repository.saveTemplate()` → `scheduleManager.scheduleWorkflow()`
+**ID assignment:** `WorkflowTemplate.id = 0` → Room auto-generates on insert
+**Action IDs:** UUID strings, generated by editor when user adds each action
+
+### Path B: Create from Built-In Template
+
+**Entry:** `SynapseNavGraph.kt:130` → `Routes.WORKFLOW_EDITOR?sourceTemplateId={builtInId}`
+**ViewModel:** `WorkflowEditorViewModel.kt:114-137` — loads blueprint from `BuiltInTemplates.findById()`, sets `sourceTemplateId`
+**Save:** Same as Path A — `repository.saveTemplate()` creates new Row
+**Note:** Blueprint actions have hardcoded UUIDs from `BuiltInTemplates.kt`; on save, action order is re-indexed
+
+### Path C: Edit Existing Workflow
+
+**Entry:** `SynapseNavGraph.kt:146` → `Routes.WORKFLOW_EDITOR?templateId={id}`
+**ViewModel:** `WorkflowEditorViewModel.kt:86-111` — loads existing template from Room
+**Save:** `repository.updateTemplate()` (preserves ID, preserves `createdAtMillis`)
+**Schedule:** `scheduleManager.scheduleWorkflow()` called on every save
+
+### Path D: Seed Sample ("Article Briefing")
+
+**Location:** `DashboardViewModel.kt:44-71`
+**Trigger:** On first dashboard load when zero workflows exist
+**Creates:** A normal `WorkflowTemplate` from `BuiltInTemplates.findById("article_summarizer")` blueprint
+**Properties:** `isEnabled = true`, `sourceTemplateId = "article_summarizer"`, no schedule registered (trigger is Manual)
+
+### Path E: Duplicate (already implemented)
+
+**Location:** `WorkflowPortabilityManager.duplicateWorkflow()` (line 49-79)
+**Called by:** `WorkflowDetailsViewModel.duplicateWorkflow()` (line 151-169)
+**UI:** ViewModel method exists, but **no UI button wired in WorkflowDetailsScreen**
+
+### Path F: Import (already implemented)
+
+**Location:** `WorkflowPortabilityManager.importWorkflow()` (line 166-262)
+**Called by:** Nothing yet — **no ViewModel or UI wired**
+
+### Update Path
+
+**Save:** `WorkflowEditorViewModel.save()` (line 191-256)
+- Validates name and actions
+- Builds `WorkflowTemplate` with `isEnabled = true` always
+- Calls `repository.updateTemplate()` if editing, `repository.saveTemplate()` if new
+- Calls `scheduleManager.scheduleWorkflow()` on every save
+
+### Delete Path
+
+**Primary:** `WorkflowListViewModel.deleteWorkflow()` (line 45-50)
+1. `scheduleManager.cancelSchedule(id)` — cancels all WorkManager jobs
+2. `repository.deleteTemplate(id)` — Room CASCADE deletes all `workflow_runs` for that template
+
+**Secondary:** `WorkflowDetailsViewModel.deleteWorkflow()` (line 141-147) — same sequence
+
+### Enable/Disable Toggle
+
+**Location:** `WorkflowDetailsViewModel.toggleEnabled()` (line 103-131)
+- Flips `isEnabled`, calls `repository.updateTemplate()`
+- If enabling AND trigger is not Manual: calls `scheduleManager.scheduleWorkflow()`
+- If disabling: calls `scheduleManager.cancelSchedule()`
+
+### Schedule Registration/Cancellation
+
+**Registration:** `ScheduleManager.scheduleWorkflow(templateId, trigger)` — creates unique one-shot WorkManager work named `"WorkflowWorker_{templateId}"`
+**Cancellation:** `ScheduleManager.cancelSchedule(templateId)` — cancels both scheduled and one-time work
+**Reconciliation:** `SynapseApp.onCreate()` → `scheduleManager.reconcileSchedules()` — re-enqueues any enabled non-Manual workflows missing from WorkManager
+
+---
+
+## 3. Fields to Copy/Export/Import (Bucket A)
+
+These fields represent the user's authored workflow definition and must be preserved:
+
+| Field | Source | Notes |
+|-------|--------|-------|
+| `name` | `WorkflowTemplate` | Renamed on duplicate/import to avoid conflicts |
+| `description` | `WorkflowTemplate` | |
+| `trigger` | `WorkflowTemplate` | Full WorkflowTrigger (Manual/Daily/Weekly/Interval/NotificationKeyword) |
+| `actions` (full list) | `WorkflowTemplate` | All fields per action below |
+| `action.type` | `WorkflowAction` | WorkflowActionType enum |
+| `action.label` | `WorkflowAction` | User-authored display name |
+| `action.sourceData` | `WorkflowAction` | URL, text content, etc. |
+| `action.instruction` | `WorkflowAction` | Per-action processing instruction |
+| `action.order` | `WorkflowAction` | Execution sequence |
+| `action.isEnabled` | `WorkflowAction` | Per-action toggle |
+| `action.extraConfig` | `WorkflowAction` | JSON string — type-specific config (sanitized on export) |
+| `action.profileId` | `WorkflowAction` | AI profile reference ID |
+| `globalInstruction` | `WorkflowTemplate` | Processing instruction for AI synthesis |
+| `outputConfig.outputType` | `WorkflowOutputConfig` | BRIEFING/SOCIAL_POST/BOTH/CUSTOM |
+| `outputConfig.outputFormat` | `WorkflowOutputConfig` | MARKDOWN/PLAIN_TEXT/JSON/AUTO |
+| `outputConfig.customInstruction` | `WorkflowOutputConfig` | User-authored |
+| `outputConfig.socialPlatforms` | `WorkflowOutputConfig` | Set of SocialPlatform |
+| `outputConfig.saveToHistory` | `WorkflowOutputConfig` | |
+| `outputConfig.outputProfileId` | `WorkflowOutputConfig` | AI profile reference |
+| `outputConfig.socialGlobalInstruction` | `WorkflowOutputConfig` | |
+| `outputConfig.platformInstructions` | `WorkflowOutputConfig` | Map per-platform |
+| `outputConfig.customPlatforms` | `WorkflowOutputConfig` | |
+| `outputConfig.inputCompaction` | `WorkflowOutputConfig` | NONE/LIGHT/AGGRESSIVE |
+| `outputConfig.numberOfOutputs` | `WorkflowOutputConfig` | 1-10 |
+| `notifyOnCompletion` | `WorkflowTemplate` | |
+| `notifyOnStart` | `WorkflowTemplate` | |
+| `sourceTemplateId` | `WorkflowTemplate` | Informational origin tracking |
+| `category` | `WorkflowTemplate` | |
+| `customization` | `WorkflowTemplate` | TemplateCustomization (editable sections, locked IDs, etc.) |
+| `defaultProfileId` | `WorkflowTemplate` | Workflow-level AI profile reference |
+
+### Export-only reference data (in `ExportReferences`):
+
+| Reference | Purpose |
+|-----------|---------|
+| `SafeProfileRefDto` per profile ID | Metadata for fallback matching on import (name, providerType, modelId — NO keys) |
+| `SavedNoteSnapshotDto` per saved note | Full content snapshot for cross-device portability |
+
+---
+
+## 4. Fields to Regenerate on Duplicate/Import (Bucket B)
+
+| Field | Regeneration Rule | Current Implementation |
+|-------|-------------------|----------------------|
+| `WorkflowTemplate.id` | Set to `0` → Room auto-generates | `duplicateWorkflow()` line 57, `importWorkflow()` line 232 |
+| `WorkflowAction.id` | New `UUID.randomUUID().toString()` per action | `duplicateWorkflow()` line 62, `importWorkflow()` line 215 |
+| `WorkflowTemplate.createdAtMillis` | `System.currentTimeMillis()` | Both: set to `now` |
+| `WorkflowTemplate.updatedAtMillis` | `System.currentTimeMillis()` | Both: set to `now` |
+| `WorkflowTemplate.name` | `generateUniqueName()` appends "(Copy)" / "(Copy N)" | Both: handled |
+
+---
+
+## 5. Fields to Exclude Completely (Bucket C)
+
+| Field | Reason | Current Implementation |
+|-------|--------|----------------------|
+| `WorkflowTemplate.lastRunAtMillis` | Runtime state | Both: set to `null` |
+| `WorkflowTemplate.lastRunStatus` | Runtime state | Both: set to `null` |
+| `WorkflowTemplate.isEnabled` | **Must be `false`** on duplicate/import | Both: set to `false` |
+| All `WorkflowRun` records | Execution history, not definition | Not copied (separate table, not part of export) |
+| `WorkflowRun.stagesJson` | Execution logs | N/A |
+| `WorkflowRun.synthesisInput` | Execution state | N/A |
+| `WorkflowRun.versionsJson` | Output versions | N/A |
+| `WorkflowRun.outputText` | Output content | N/A |
+| `WorkflowRun.tokenUsage` | Usage metrics | N/A |
+| API key values | Secrets | Never in workflow model; profiles store IDs only |
+| Service key values | Secrets | Never in workflow model; stored in `SecureStorage` |
+| WorkManager chain state | Transient scheduler state | Not persisted in workflow model |
+| Notification channel state | OS-level | Not in workflow model |
+| Global `AppSettings` | Unrelated | Not in workflow model |
+
+---
+
+## 6. Exact Candidate Insertion Points for Future Phases
+
+### 6a. Duplicate
+
+| Aspect | Location | Status |
+|--------|----------|--------|
+| **Core logic** | `WorkflowPortabilityManager.duplicateWorkflow()` line 49-79 | **DONE** |
+| **ViewModel binding** | `WorkflowDetailsViewModel.duplicateWorkflow()` line 151-169 | **DONE** |
+| **UI state** | `WorkflowDetailsUiState.duplicatedWorkflowId` + `isProcessing` | **DONE** |
+| **UI button** | `WorkflowDetailsScreen.kt` — add between "Edit" button row (line 176) and "Schedule" card (line 178) | **NOT DONE** |
+| **Navigation on success** | `SynapseNavGraph.kt` — add `onDuplicateNavigate` callback to `WorkflowDetailsScreen`, navigate to `"${Routes.WORKFLOW_DETAILS}/$newId"` | **NOT DONE** |
+
+### 6b. Export
+
+| Aspect | Location | Status |
+|--------|----------|--------|
+| **Core logic** | `WorkflowPortabilityManager.exportWorkflow()` line 85-160 | **DONE** |
+| **Export DTOs** | `domain/models/WorkflowExportModels.kt` (full file) | **DONE** |
+| **Sanitization** | `sanitizeAndStructureConfig()` + `isSensitiveKey()` line 330-392 | **DONE** |
+| **ViewModel binding** | `WorkflowDetailsViewModel.prepareExport()` line 177-194 | **DONE** |
+| **UI state** | `WorkflowDetailsUiState.exportData` | **DONE** |
+| **UI button** | `WorkflowDetailsScreen.kt` — add alongside duplicate button | **NOT DONE** |
+| **File writing** | Need `rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json"))` | **NOT DONE** |
+| **Share sheet** | Need `Intent(Intent.ACTION_SEND)` with `FileProvider` URI for JSON file | **NOT DONE** |
+| **FileProvider** | Need `<provider>` in `AndroidManifest.xml` + `res/xml/file_paths.xml` | **NOT DONE** |
+
+### 6c. Import
+
+| Aspect | Location | Status |
+|--------|----------|--------|
+| **Core logic** | `WorkflowPortabilityManager.importWorkflow()` line 166-262 | **DONE** |
+| **Profile resolution** | `buildProfileResolutionMap()` line 396-426 — 3-tier fallback | **DONE** |
+| **Note resolution** | `resolveSavedNotes()` line 430-450 — match or create | **DONE** |
+| **Action config resolution** | `resolveActionConfig()` line 454-496 | **DONE** |
+| **ViewModel** | None — needs new method in `WorkflowListViewModel` or new shared ViewModel | **NOT DONE** |
+| **UI entry** | `WorkflowListScreen.kt` — add "Import" button alongside "Browse Templates" and "Start Empty" | **NOT DONE** |
+| **File picker** | Need `rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument(arrayOf("application/json")))` | **NOT DONE** |
+| **JSON reading** | Read content from `ContentResolver.openInputStream(uri)` | **NOT DONE** |
+| **Warnings dialog** | Show import warnings (unresolved profiles, renamed, non-portable actions) | **NOT DONE** |
+
+### 6d. Ensuring Disabled-by-Default
+
+| Aspect | Status |
+|--------|--------|
+| Duplicate creates with `isEnabled = false` | **DONE** (line 60) |
+| Import creates with `isEnabled = false` | **DONE** (line 235) |
+| Neither calls `scheduleManager.scheduleWorkflow()` | **DONE** — neither method registers a schedule |
+| User must manually enable via toggle in WorkflowDetailsScreen | Existing flow already handles this |
+
+---
+
+## 7. Security and Portability Risks Found
+
+### 7a. Sensitive Fields in Action Configs
+
+**Risk:** `ApiGetConfig.headers` and `ApiGetConfig.queryParams` can contain API keys, auth tokens, or Bearer headers that users manually entered.
+
+**Current mitigation:** `WorkflowPortabilityManager.sanitizeAndStructureConfig()` (line 330-377) redacts values for keys matching sensitive patterns (`auth`, `token`, `secret`, `key`, `bearer`, `api_key`, `apikey`, `api-key`, `password`, `private_key`, `private-key`).
+
+**Residual risk:** If a user stores a secret in a non-obvious key name (e.g., `x-custom-header` containing an API key), it will NOT be redacted. This is an acceptable tradeoff — the export sanitization catches common patterns, and users are warned when any headers/params are present.
+
+**Duplicate risk:** `duplicateWorkflow()` copies `extraConfig` verbatim (line 64 via `it.copy(id = ...)`). This is correct because duplicate is on-device — the same user already has access to those values. No secret leakage.
+
+### 7b. sourceData Field
+
+**Risk:** `WorkflowAction.sourceData` (URL or text) is copied/exported as-is. If a user puts a URL with embedded API keys (e.g., `https://api.example.com?key=SECRET`), it will be exported.
+
+**Current mitigation:** None. The `sanitizeAndStructureConfig` only processes `extraConfig`, not `sourceData`.
+
+**Recommendation for Phase 1:** Add a warning in the export UI when any `sourceData` URL contains query parameters matching sensitive patterns. Do NOT auto-redact (could break the workflow), but warn the user before export.
+
+### 7c. Workflow Models Do NOT Store Raw Secrets
+
+**Verified:** `WorkflowTemplate`, `WorkflowAction`, `WorkflowOutputConfig`, and all config models store only:
+- Profile IDs (string references to `ProviderProfile`)
+- Service references by name (e.g., `"openweathermap"`)
+- Never actual API key values
+
+API keys live exclusively in `SecureStorage` (DataStore), accessed by `ProviderType` enum. The separation is clean.
+
+### 7d. Saved Note References and Cross-Device Portability
+
+**Risk:** `SavedNoteReference.noteId` is a local auto-increment ID. Importing on another device would reference a non-existent note.
+
+**Current mitigation:** Export includes `SavedNoteSnapshotDto` with full note content. Import resolves via `resolveSavedNotes()` — matches by ID+title or creates a new note copy. This is correct and sufficient.
+
+### 7e. Profile IDs Are Device-Local
+
+**Risk:** Profile IDs are UUIDs generated per-device. A workflow exported from device A references profile `"abc-123"` which doesn't exist on device B.
+
+**Current mitigation:** Export includes `SafeProfileRefDto` (ID, name, providerType, modelId). Import resolves via `buildProfileResolutionMap()` with 3-tier fallback:
+1. Exact ID match
+2. Name + provider + model match
+3. Provider + model only match
+4. Unresolvable → cleared to empty string, warning emitted
+
+**Assessment:** This is well-designed. Unresolved profiles fall back to the app's default profile at execution time (existing router behavior). The warning tells the user to configure in Settings.
+
+### 7f. Duplicate/Import Could Accidentally Enable and Trigger Scheduling
+
+**Risk:** If `isEnabled` were copied as `true` and `trigger` is Daily/Weekly/Interval, the imported/duplicated workflow would immediately be scheduled.
+
+**Current mitigation:**
+- `duplicateWorkflow()` sets `isEnabled = false` (line 60)
+- `importWorkflow()` sets `isEnabled = false` (line 235)
+- Neither method calls `scheduleManager.scheduleWorkflow()`
+- Schedule only activates when user explicitly toggles `isEnabled` in `WorkflowDetailsViewModel.toggleEnabled()`
+
+**Assessment:** Correctly handled. No risk.
+
+### 7g. Seed/Auto-Enable of Workflows
+
+**Risk:** Does any code path auto-enable a workflow after creation?
+
+**Paths checked:**
+- `seedSampleWorkflowIfNeeded()` — creates with `isEnabled = true` but trigger is `Manual`, so no schedule registered. Safe.
+- `WorkflowEditorViewModel.save()` — saves with `isEnabled = true` always (line 209), then calls `scheduleManager.scheduleWorkflow()`. This is the normal user-initiated save flow. Not a risk.
+- No other code path creates workflows.
+
+**Assessment:** No unexpected auto-enable behavior found.
+
+### 7h. USE_PREVIOUS_OUTPUT Non-Portability
+
+**Risk:** `PreviousOutputConfig.sourceWorkflowId` references a local workflow ID that won't exist on another device.
+
+**Current mitigation:** Import clears `sourceWorkflowId = 0` and removes `specificRunId` (line 473-478). Warning emitted (line 207-209).
+
+**Assessment:** Correctly handled. User must reconfigure these actions after import.
+
+---
+
+## 8. Recommended Phase 1 Implementation Scope
+
+### What's already done (no work needed):
+- `WorkflowPortabilityManager` — full duplicate/export/import logic
+- `WorkflowExportModels.kt` — export DTOs with structured extraConfig
+- `WorkflowDetailsViewModel` — duplicate() and prepareExport() wired
+- Export sanitization for sensitive API headers/params
+- Profile resolution with 3-tier fallback
+- Saved note snapshots and resolution
+- Disabled-by-default guarantee for duplicate and import
+
+### Phase 1: Wire UI for Duplicate + Export (smallest shippable increment)
+
+| # | Task | Files | Effort |
+|---|------|-------|--------|
+| 1 | Add Duplicate + Export buttons to WorkflowDetailsScreen | `WorkflowDetailsScreen.kt` | 1-2h |
+| 2 | Add `onNavigateToDuplicated` callback to WorkflowDetailsScreen | `WorkflowDetailsScreen.kt`, `SynapseNavGraph.kt` | 30m |
+| 3 | Handle `duplicatedWorkflowId` state — show snackbar + navigate | `WorkflowDetailsScreen.kt` | 30m |
+| 4 | Add export-to-clipboard fallback (simplest export, no SAF needed) | `WorkflowDetailsScreen.kt` | 30m |
+| 5 | Add `ActivityResultContracts.CreateDocument` launcher for "Save to file" | `WorkflowDetailsScreen.kt` | 1h |
+| 6 | Handle `exportData` state — show dialog with "Copy JSON" + "Save to File" options | `WorkflowDetailsScreen.kt` | 1h |
+| 7 | Show export warnings in dialog if any | `WorkflowDetailsScreen.kt` | 30m |
+| 8 | Add sourceData URL warning for potential secrets | `WorkflowPortabilityManager.kt` | 30m |
+
+**No new files. No architecture changes. No database changes.**
+
+### Phase 2: Wire UI for Import
+
+| # | Task | Files | Effort |
+|---|------|-------|--------|
+| 1 | Add `importWorkflow(jsonString)` to `WorkflowListViewModel` | `WorkflowListViewModel.kt` | 30m |
+| 2 | Add `ActivityResultContracts.OpenDocument` launcher in `WorkflowListScreen` | `WorkflowListScreen.kt` | 1h |
+| 3 | Read file content from `ContentResolver` | `WorkflowListScreen.kt` | 30m |
+| 4 | Add "Import Workflow" button to WorkflowListScreen header | `WorkflowListScreen.kt` | 30m |
+| 5 | Show import result dialog (success + warnings, or error) | `WorkflowListScreen.kt` | 1h |
+| 6 | Navigate to imported workflow's details on success | `WorkflowListScreen.kt`, `SynapseNavGraph.kt` | 30m |
+
+### Phase 3: Polish + Edge Cases
+
+| # | Task | Files |
+|---|------|-------|
+| 1 | Add share intent for export (via FileProvider) | `AndroidManifest.xml`, `res/xml/file_paths.xml`, `WorkflowDetailsScreen.kt` |
+| 2 | Support import via share intent (receive `.json` files) | `AndroidManifest.xml`, `ShareEntryActivity.kt` or new receiver |
+| 3 | Add export/duplicate to WorkflowListScreen context menu (overflow per card) | `WorkflowListScreen.kt` |
+| 4 | Add import-from-clipboard option | `WorkflowListScreen.kt` |
+
+### Phase 4: Tests
+
+| # | Test | Scope |
+|---|------|-------|
+| 1 | `WorkflowPortabilityManager` unit tests | Duplicate: name uniqueness, ID regeneration, disabled state, field preservation |
+| 2 | Export unit tests | Sanitization of sensitive headers, profile reference collection, note snapshots |
+| 3 | Import unit tests | Schema validation, profile resolution (all 4 tiers), note resolution, action config resolution |
+| 4 | Round-trip test | Export → import produces equivalent workflow (minus IDs and name) |
+| 5 | Edge cases | Import with unknown action types, missing profiles, empty workflows, max name conflict iterations |
+
+---
+
+## 9. Files Most Likely to Change
+
+### Phase 1 (Duplicate + Export UI)
+
+| File | Change |
+|------|--------|
+| `feature/workflow/details/WorkflowDetailsScreen.kt` | Add Duplicate/Export buttons, snackbar, export dialog, CreateDocument launcher |
+| `ui/navigation/SynapseNavGraph.kt` | Add `onNavigateToDuplicated` callback to WorkflowDetailsScreen composable call |
+
+### Phase 2 (Import UI)
+
+| File | Change |
+|------|--------|
+| `feature/workflow/list/WorkflowListScreen.kt` | Add Import button, OpenDocument launcher, result dialog |
+| `feature/workflow/list/WorkflowListViewModel.kt` | Add `importWorkflow()` method, inject `WorkflowPortabilityManager` |
+| `ui/navigation/SynapseNavGraph.kt` | Add `onNavigateToImported` callback |
+
+### Phase 3 (Share/Receive)
+
+| File | Change |
+|------|--------|
+| `AndroidManifest.xml` | Add FileProvider, add intent filter for JSON files |
+| `res/xml/file_paths.xml` | New file — FileProvider paths |
+| `feature/workflow/details/WorkflowDetailsScreen.kt` | Add share intent for export |
+| `ShareEntryActivity.kt` or new activity | Handle incoming JSON file intents |
+
+### Phase 4 (Tests)
+
+| File | Change |
+|------|--------|
+| `app/src/test/java/com/synapse/app/domain/workflow/WorkflowPortabilityManagerTest.kt` | New file — unit tests |
+| `app/src/test/java/com/synapse/app/domain/models/WorkflowExportModelsTest.kt` | New file — serialization tests |
+
+---
+
+## 10. Manual Verification Checklist for Phase 0 Findings
+
+Before starting Phase 1, verify these claims by inspection:
+
+- [ ] `WorkflowPortabilityManager.kt` exists at `domain/workflow/` with `duplicateWorkflow()`, `exportWorkflow()`, `importWorkflow()` methods
+- [ ] `WorkflowExportModels.kt` exists at `domain/models/` with `WorkflowExportEnvelope`, `WorkflowExportDto`, `ActionExportDto`, `SafeProfileRefDto`, `SavedNoteSnapshotDto`, `ExportReferences`
+- [ ] `WorkflowDetailsViewModel.kt` has `duplicateWorkflow()` and `prepareExport()` methods
+- [ ] `WorkflowDetailsUiState` has `duplicatedWorkflowId: Long?`, `exportData: ExportData?`, `isProcessing: Boolean`
+- [ ] `WorkflowDetailsScreen.kt` does NOT have Duplicate or Export buttons (only Run Now, Edit, Delete)
+- [ ] `WorkflowListScreen.kt` does NOT have an Import button
+- [ ] `WorkflowListViewModel.kt` does NOT inject `WorkflowPortabilityManager`
+- [ ] No `ActivityResultContracts.CreateDocument` or `OpenDocument` usage exists anywhere in the app
+- [ ] No `FileProvider` declared in `AndroidManifest.xml`
+- [ ] `duplicateWorkflow()` sets `isEnabled = false` and does NOT call `scheduleManager`
+- [ ] `importWorkflow()` sets `isEnabled = false` and does NOT call `scheduleManager`
+- [ ] `sanitizeAndStructureConfig()` only processes `FETCH_API_GET` extraConfig (headers and queryParams)
+- [ ] `sourceData` field is NOT sanitized on export (potential risk documented in Section 7b)
+- [ ] No test files exist under `app/src/test/`
+- [ ] Database is v12 with no pending schema changes needed for portability
+- [ ] `ExportReferences` includes both profile metadata (no keys) and saved note content snapshots
+
+---
+
+## Appendix A: Existing Export Envelope Schema (v1)
+
+```json
+{
+  "schemaVersion": 1,
+  "type": "synapse-workflow",
+  "exportedAt": "2026-04-10T...",
+  "app": {
+    "name": "Synapse",
+    "exportFormatVersion": 1
+  },
+  "workflow": {
+    "name": "...",
+    "description": "...",
+    "trigger": { "type": "daily", "hour": 8, "minute": 0 },
+    "actions": [
+      {
+        "type": "FETCH_RSS_MULTI",
+        "label": "...",
+        "sourceData": "...",
+        "instruction": "...",
+        "order": 0,
+        "isEnabled": true,
+        "extraConfig": { /* structured JSON, not double-encoded */ },
+        "profileId": ""
+      }
+    ],
+    "globalInstruction": "...",
+    "outputConfig": {
+      "outputType": "BRIEFING",
+      "outputFormat": "MARKDOWN",
+      "customInstruction": "",
+      "socialPlatforms": [],
+      "saveToHistory": true,
+      "outputProfileId": "",
+      "inputCompaction": "NONE",
+      "numberOfOutputs": 1
+    },
+    "notifyOnCompletion": false,
+    "notifyOnStart": false,
+    "sourceTemplateId": "",
+    "category": "",
+    "customization": { "editableSections": [...], "lockedActionIds": [], "canAddActions": true, "canRemoveActions": true },
+    "defaultProfileId": ""
+  },
+  "references": {
+    "profiles": [
+      { "profileId": "uuid", "name": "My Claude", "providerType": "ANTHROPIC", "modelId": "claude-sonnet-4-20250514" }
+    ],
+    "savedNotes": [
+      { "originalNoteId": 1, "title": "Note Title", "content": "Full note content..." }
+    ]
+  }
+}
+```
+
+## Appendix B: Key Architectural Invariants to Preserve
+
+1. **isEnabled = false** on any programmatic workflow creation (duplicate, import, seed is the exception but is Manual-trigger)
+2. **No scheduleManager call** from duplicate or import — scheduling only activates via user-initiated toggleEnabled()
+3. **Profile IDs are references, not secrets** — safe to export
+4. **API keys never touch workflow models** — always in SecureStorage, accessed by ProviderType
+5. **Actions list is denormalized JSON** in the template entity — no separate actions table
+6. **extraConfig is a JSON string** at the domain/entity level, structured `JsonElement?` only in export DTOs
+7. **Foreign key CASCADE** on workflow_runs → workflow_templates means deleting a template auto-cleans runs
+8. **kotlinx.serialization** for all model JSON — not Gson (Gson is only for Retrofit network calls)

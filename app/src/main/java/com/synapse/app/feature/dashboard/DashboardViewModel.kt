@@ -2,6 +2,8 @@ package com.synapse.app.feature.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.synapse.app.domain.access.PlanState
+import com.synapse.app.domain.access.ProductAccessRepository
 import com.synapse.app.domain.models.*
 import com.synapse.app.domain.repositories.WorkflowRepository
 import com.synapse.app.domain.templates.BuiltInTemplates
@@ -15,7 +17,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    private val workflowRepository: WorkflowRepository
+    private val workflowRepository: WorkflowRepository,
+    private val accessRepository: ProductAccessRepository
 ) : ViewModel() {
 
     val recentRuns: StateFlow<List<WorkflowRun>> = workflowRepository.getRecentRuns(10)
@@ -32,8 +35,16 @@ class DashboardViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
+    val planState: StateFlow<PlanState> = accessRepository.planState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlanState())
+
     init {
         seedSampleWorkflowIfNeeded()
+    }
+
+    fun canCreateWorkflow(): Boolean {
+        val count = customWorkflows.value.size
+        return planState.value.canCreateWorkflow(count)
     }
 
     /**

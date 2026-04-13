@@ -7,9 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -17,6 +15,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.synapse.app.domain.models.*
+import com.synapse.app.feature.upgrade.UpgradePromptDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,16 +33,48 @@ fun DashboardScreen(
     onNavigateToNotes: () -> Unit = {},
     onNavigateToTemplates: () -> Unit = {},
     onCreateBlankWorkflow: () -> Unit = {},
+    onNavigateToUpgrade: () -> Unit = {},
+    onNavigateToCloudSync: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val recentRuns by viewModel.recentRuns.collectAsState()
     val myWorkflows by viewModel.customWorkflows.collectAsState()
+    var showUpgradePrompt by remember { mutableStateOf(false) }
+
+    fun gatedCreate(action: () -> Unit) {
+        if (viewModel.canCreateWorkflow()) action() else showUpgradePrompt = true
+    }
+
+    if (showUpgradePrompt) {
+        UpgradePromptDialog(
+            onUpgrade = { showUpgradePrompt = false; onNavigateToUpgrade() },
+            onDismiss = { showUpgradePrompt = false }
+        )
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Synapse", fontWeight = FontWeight.Bold) },
                 actions = {
+                    val plan by viewModel.planState.collectAsState()
+                    AssistChip(
+                        onClick = onNavigateToUpgrade,
+                        label = {
+                            Text(
+                                if (plan.isProUnlocked) "Pro" else "Free",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(14.dp))
+                        },
+                        modifier = Modifier.height(28.dp)
+                    )
+                    IconButton(onClick = onNavigateToCloudSync) {
+                        Icon(Icons.Default.CloudSync, contentDescription = "Cloud Sync")
+                    }
                     IconButton(onClick = onNavigateToVault) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -71,7 +102,7 @@ fun DashboardScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     // Browse Templates
                     Card(
-                        modifier = Modifier.weight(1f).clickable(onClick = onNavigateToTemplates),
+                        modifier = Modifier.weight(1f).clickable(onClick = { gatedCreate(onNavigateToTemplates) }),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                     ) {
@@ -86,7 +117,7 @@ fun DashboardScreen(
                     }
                     // Start Empty
                     OutlinedCard(
-                        modifier = Modifier.weight(1f).clickable(onClick = onCreateBlankWorkflow)
+                        modifier = Modifier.weight(1f).clickable(onClick = { gatedCreate(onCreateBlankWorkflow) })
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp).fillMaxWidth(),
