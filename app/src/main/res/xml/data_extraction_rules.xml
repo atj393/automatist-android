@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ (API 31+) data extraction rules.
+    Controls both cloud backup AND device-to-device transfer.
+
+    Strategy:
+    - EXCLUDE secure_prefs_stub (API keys, service keys)
+    - EXCLUDE product_access (billing entitlement cache — re-derived from Play)
+    - EXCLUDE cloud_sync (Drive session metadata — re-created on sign-in)
+    - INCLUDE settings (non-sensitive app preferences)
+    - INCLUDE Room database (workflow definitions — no secrets stored in DB)
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="secure_prefs_stub.preferences_pb" />
+        <exclude domain="sharedpref" path="product_access.preferences_pb" />
+        <exclude domain="sharedpref" path="cloud_sync.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="secure_prefs_stub.preferences_pb" />
+        <exclude domain="sharedpref" path="product_access.preferences_pb" />
+        <exclude domain="sharedpref" path="cloud_sync.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

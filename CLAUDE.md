@@ -1,4 +1,4 @@
-# Synapse
+# Automatist
 
 ## Project Identity
 
@@ -30,6 +30,9 @@
 | HTTP | Retrofit + OkHttp |
 | Async | Kotlin Coroutines + Flow |
 | Serialization | Gson (Retrofit) + kotlinx.serialization (DataStore) |
+| Billing | Google Play Billing Library (v7.0.0) |
+| Cloud Sync | Google Drive API (appDataFolder) |
+| Auth | Google Play Services Auth |
 
 **Build:** Gradle KTS, version catalog (`libs.versions.toml`), compile/target SDK 34, min SDK 26, Java 17.
 
@@ -40,23 +43,28 @@
 **Single-activity** app with Jetpack Compose navigation.
 
 ```
-┌─────────────────────────────────────────────┐
-│  feature/                                   │
-│   article/   meeting/   brief/              │
-│   dashboard/  history/   vault/             │
-├─────────────────────────────────────────────┤
-│  domain/          (interfaces + models)     │
-│   models/  providers/  repositories/        │
-├─────────────────────────────────────────────┤
-│  data/            (implementations)         │
-│   local/  network/  providers/  repositories│
-├─────────────────────────────────────────────┤
-│  platform/        (OS-level concerns)       │
-│   automation/  security/                    │
-├─────────────────────────────────────────────┤
-│  di/              (Hilt modules)            │
-│  ui/              (theme + navigation)      │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│  feature/                                       │
+│   article/  meeting/  brief/  dashboard/        │
+│   history/  vault/    notes/  workflow/          │
+│   upgrade/  sync/                               │
+├─────────────────────────────────────────────────┤
+│  domain/          (interfaces + models)         │
+│   models/  providers/  repositories/  access/   │
+│   actions/  engine/  templates/  readiness/     │
+│   sync/  workflow/                              │
+├─────────────────────────────────────────────────┤
+│  data/            (implementations)             │
+│   local/  network/  providers/  repositories/   │
+│   access/  billing/  sync/                      │
+├─────────────────────────────────────────────────┤
+│  platform/        (OS-level concerns)           │
+│   automation/  security/  notifications/        │
+│   scheduling/                                   │
+├─────────────────────────────────────────────────┤
+│  di/              (Hilt modules)                │
+│  ui/              (theme + navigation)          │
+└─────────────────────────────────────────────────┘
 ```
 
 **Pattern:** MVVM — each screen has a `@HiltViewModel` with `StateFlow`; UI observes state and dispatches intents.
@@ -141,30 +149,56 @@ customInstruction?
 ## File Structure
 
 ```
-app/src/main/java/com/synapse/app/
+app/src/main/java/com/automatist/app/
 ├── MainActivity.kt                  # Launcher, handles share intents
 ├── ShareEntryActivity.kt            # Receives ACTION_SEND text/plain
-├── SynapseApp.kt                    # @HiltAndroidApp
+├── AutomatistApp.kt                 # @HiltAndroidApp
 │
 ├── domain/
+│   ├── access/
+│   │   └── ProductAccess.kt        # PlanType, PlanState, ProductAccessRepository interface
+│   ├── actions/
+│   │   └── WorkflowActionRegistry.kt  # Centralized action metadata, validation, summaries
+│   ├── engine/
+│   │   ├── DiagnosticException.kt   # Structured error reporting for workflow execution
+│   │   ├── ExecutionState.kt        # Sealed interface for execution progress
+│   │   ├── TextCompactor.kt         # Text truncation/compaction utilities
+│   │   └── WorkflowExecutionEngine.kt # Shared execution pipeline
 │   ├── models/
 │   │   ├── Models.kt                # ArticleInput, BriefConfig, TransformResult, HistoryItem
+│   │   ├── Settings.kt              # AppSettings (activeProvider)
 │   │   ├── Types.kt                 # WorkflowType, TransformType, ProviderType, etc.
-│   │   └── Settings.kt              # AppSettings (activeProvider)
+│   │   ├── WorkflowExportModels.kt  # Portable DTOs for workflow import/export
+│   │   └── WorkflowModels.kt        # WorkflowTemplate, WorkflowRun, WorkflowAction, etc.
 │   ├── providers/
 │   │   └── ArticleTransformProvider.kt  # Interface: transform(input, type) → Result
-│   └── repositories/
-│       └── HistoryRepository.kt     # Interface: CRUD for history
+│   ├── readiness/
+│   │   └── ReadinessEvaluator.kt    # Dynamic readiness checks for actions/workflows
+│   ├── repositories/
+│   │   ├── HistoryRepository.kt     # Interface: CRUD for history
+│   │   └── WorkflowRepository.kt   # Interface: CRUD for workflows + runs
+│   ├── sync/
+│   │   ├── CloudBackupModels.kt     # CloudBackupEnvelope serializable model
+│   │   └── CloudSyncRepository.kt   # SyncStatus, SyncResult interfaces
+│   ├── templates/
+│   │   └── BuiltInTemplates.kt      # Code-defined workflow template blueprints
+│   └── workflow/
+│       └── WorkflowPortabilityManager.kt  # Import, export, duplication of workflows
 │
 ├── data/
+│   ├── access/
+│   │   ├── BillingProductAccessRepository.kt  # Google Play Billing entitlements
+│   │   └── LocalProductAccessRepository.kt    # Local DataStore-backed (dev/testing)
+│   ├── billing/
+│   │   └── BillingManager.kt        # Google Play Billing v7 integration
 │   ├── local/
-│   │   ├── HistoryEntity.kt         # Room entity + mapping extensions
+│   │   ├── AutomatistDatabase.kt    # Room DB (v3, 4 tables)
 │   │   ├── HistoryDao.kt            # Room DAO
-│   │   ├── WorkflowEntities.kt      # Room entities for workflows + runs
-│   │   ├── WorkflowDao.kt           # Room DAO for workflows
+│   │   ├── HistoryEntity.kt         # Room entity + mapping extensions
 │   │   ├── Migrations.kt            # DB migrations v1→v2, v2→v3
-│   │   ├── SynapseDatabase.kt       # Room DB (v3, 4 tables)
-│   │   └── SettingsRepository.kt    # DataStore for AppSettings + BriefConfig
+│   │   ├── SettingsRepository.kt    # DataStore for AppSettings + BriefConfig
+│   │   ├── WorkflowDao.kt           # Room DAO for workflows
+│   │   └── WorkflowEntities.kt      # Room entities for workflows + runs
 │   ├── network/
 │   │   └── RssParser.kt             # RSS/Atom fetcher + parser
 │   ├── providers/
@@ -176,8 +210,12 @@ app/src/main/java/com/synapse/app/
 │   │   ├── openai/    (OpenAIApi.kt, OpenAIModels.kt)
 │   │   ├── anthropic/ (AnthropicApi.kt, AnthropicModels.kt)
 │   │   └── gemini/    (GeminiApi.kt, GeminiModels.kt)
-│   └── repositories/
-│       └── RoomHistoryRepository.kt # Room implementation of HistoryRepository
+│   ├── repositories/
+│   │   ├── RoomHistoryRepository.kt # Room implementation of HistoryRepository
+│   │   └── RoomWorkflowRepository.kt # Room implementation of WorkflowRepository
+│   └── sync/
+│       ├── CloudSyncManager.kt      # Google Drive appDataFolder operations
+│       └── LocalCloudSyncRepository.kt # DataStore-backed sync status
 │
 ├── feature/
 │   ├── article/     (ArticleScreen.kt, ArticleViewModel.kt)
@@ -187,48 +225,45 @@ app/src/main/java/com/synapse/app/
 │   ├── history/     (HistoryScreen.kt, HistoryDetailScreen.kt, HistoryViewModel.kt)
 │   ├── vault/       (VaultScreen.kt, VaultViewModel.kt)
 │   ├── notes/       (NotesScreen.kt, NotesViewModel.kt)
+│   ├── upgrade/     (Upgrade / Pro purchase flow)
+│   │   ├── UpgradePrompt.kt        # Non-dismissable modal for free tier limit
+│   │   └── UpgradeScreen.kt        # Full upgrade screen with billing + restore
+│   ├── sync/        (Cloud sync UI)
+│   │   └── CloudSyncScreen.kt      # Google Drive backup management
 │   └── workflow/    (Workflow Builder feature)
-│       ├── templates/   (WorkflowTemplatesScreen.kt — browse built-in templates)
-│       ├── list/        (WorkflowListScreen.kt, WorkflowListViewModel.kt — My Workflows)
+│       ├── templates/   (WorkflowTemplatesScreen.kt, WorkflowTemplatesViewModel.kt)
+│       ├── list/        (WorkflowListScreen.kt, WorkflowListViewModel.kt)
 │       ├── editor/      (WorkflowEditorScreen.kt, WorkflowEditorViewModel.kt)
-│       ├── run/         (WorkflowRunScreen.kt, WorkflowRunViewModel.kt, WorkflowRunDetailScreen.kt)
-│       └── components/  (ActionBlockEditor.kt, ActionBlockList.kt)
-│
-├── domain/
-│   └── actions/
-│       └── WorkflowActionRegistry.kt  # Centralized action metadata, validation, summaries
-│
-├── domain/
-│   └── templates/
-│       └── BuiltInTemplates.kt      # Code-defined workflow template blueprints
-│
-├── domain/
-│   └── engine/
-│       ├── ExecutionState.kt        # Sealed interface for execution progress
-│       └── WorkflowExecutionEngine.kt # Shared execution pipeline
+│       ├── run/         (WorkflowRunScreen.kt, WorkflowRunViewModel.kt, WorkflowRunDetailScreen.kt, WorkflowRunDetailViewModel.kt)
+│       ├── details/     (WorkflowDetailsScreen.kt, WorkflowDetailsViewModel.kt)
+│       ├── history/     (WorkflowHistoryScreen.kt, WorkflowHistoryViewModel.kt)
+│       ├── schedule/    (ScheduleStatusScreen.kt, ScheduleStatusViewModel.kt)
+│       └── components/  (ActionBlockEditor.kt, ActionBlockList.kt, ActionCatalog.kt, ProfilePicker.kt)
 │
 ├── platform/
 │   ├── automation/
 │   │   ├── SynthesizerWorker.kt     # WorkManager job for Morning Brief
 │   │   └── WorkflowWorker.kt       # WorkManager job for custom workflows
+│   ├── notifications/
+│   │   └── NotificationHelper.kt   # Centralized notification creation
+│   ├── scheduling/
+│   │   └── ScheduleManager.kt      # WorkManager schedule orchestration
 │   └── security/
 │       ├── SecureStorage.kt         # Interface
 │       └── KeystoreSecureStorage.kt # DataStore impl (TODO: upgrade to Keystore)
 │
 ├── di/
+│   ├── AccessModule.kt              # ProductAccessRepository binding
 │   ├── AppModule.kt                 # Application context
 │   ├── DatabaseModule.kt            # Room DB + DAO + repository binding
 │   ├── NetworkModule.kt             # OkHttp + 3 Retrofit instances
 │   ├── ProviderModule.kt            # Router → ArticleTransformProvider binding
-│   └── SecurityModule.kt            # SecureStorage binding
+│   ├── SecurityModule.kt            # SecureStorage binding
+│   └── SyncModule.kt                # CloudSyncRepository binding
 │
 └── ui/
-    ├── navigation/
-    │   └── SynapseNavGraph.kt       # All routes
-    └── theme/
-        ├── Color.kt                 # Purple/Pink palette
-        ├── Theme.kt                 # Material3 dynamic color
-        └── Type.kt                  # Typography
+    └── navigation/
+        └── AutomatistNavGraph.kt    # All routes
 ```
 
 ---
@@ -303,13 +338,89 @@ Each provider: fetches key from `SecureStorage` → builds system prompt (or use
 
 Every workflow output can be saved. Stored in Room (`history_items` table) with: id, workflowType, transformType, inputPreview, outputText, providerType, createdAtMillis. Displayed on Dashboard (last 3) and History screen (full list).
 
+### Product Access / Entitlements
+
+**`ProductAccessRepository`** — interface for checking plan state (Free vs Pro).
+
+**`PlanType`:** `FREE` | `PRO`
+
+**`PlanState`:** Contains `planType`, `FREE_WORKFLOW_LIMIT = 1`.
+
+**Implementations:**
+- `BillingProductAccessRepository` — production; backed by Google Play Billing ownership state
+- `LocalProductAccessRepository` — development/testing; backed by local DataStore
+
+**Hilt binding:** `AccessModule` binds `BillingProductAccessRepository` as the production implementation.
+
+**Free tier limits:** Free users can create 1 workflow. Attempting to create more triggers `UpgradePrompt` modal.
+
+### Google Play Billing
+
+**`BillingManager`** — manages connection to Google Play Billing Library v7.0.0.
+
+**Product ID:** `"automatist_pro"` (one-time purchase, not subscription).
+
+**State flows:**
+- `billingStatus: StateFlow<BillingStatus>` — Initializing, Ready, Error
+- `purchaseState: StateFlow<PurchaseState>` — Idle, Pending, Success, Error
+- `proOwned: StateFlow<Boolean>` — whether Pro has been purchased
+- `productDetails: StateFlow<ProductDetails?>` — queried from Google Play
+
+**Features:** Async product query, purchase flow launch, ownership verification, purchase acknowledgement, local caching for startup.
+
+**Integration:** `AutomatistApp.onCreate()` calls `billingManager.queryOwnedPurchases()` on app start.
+
+### Cloud Sync (Google Drive)
+
+**`CloudSyncManager`** — handles backup/restore of workflows to Google Drive `appDataFolder`.
+
+**Flow:** Uses `WorkflowPortabilityManager` to create portable, secret-free workflow DTOs → serializes as `CloudBackupEnvelope` → uploads to Google Drive.
+
+**Auth:** Google Account Credential with OAuth2 (Drive appdata scope).
+
+**Status tracking:** `CloudSyncRepository` stores sync state (email, last backup timestamp, workflow count) in DataStore.
+
+**UI:** `CloudSyncScreen` — sign in, trigger backup, view sync status.
+
+**Hilt binding:** `SyncModule` binds `LocalCloudSyncRepository` as the current implementation.
+
+### Upgrade Flow
+
+**`UpgradePrompt`** — non-dismissable modal dialog shown when free user hits the workflow creation limit.
+
+**`UpgradeScreen`** — full-screen purchase flow with:
+- Purchase button (connects to Google Play Billing)
+- Restore purchases button (for existing customers)
+- Debug toggle (`BuildConfig.DEBUG` only) for testing Pro state
+
+**`UpgradeViewModel`** — manages `planState`, `purchaseState`, `productDetails`, `billingStatus`.
+
 ### Secure Storage
 
 API keys stored per-provider in DataStore. Current implementation is plaintext DataStore (TODO: upgrade to Android Keystore / EncryptedSharedPreferences).
 
 ### Navigation Routes
 
-`dashboard` → `workflow_templates` | `workflow_list` | `workflow_editor` | `history` → `history_detail/{itemId}` | `vault` | `saved_notes`
+| Route | Screen |
+|-------|--------|
+| `dashboard` | DashboardScreen |
+| `article_transformer` | ArticleScreen (legacy) |
+| `meeting_strategist` | MeetingScreen (legacy) |
+| `morning_brief` | BriefScreen (legacy) |
+| `history` | HistoryScreen |
+| `history_detail/{id}` | HistoryDetailScreen |
+| `vault` | VaultScreen (settings) |
+| `workflow_templates` | WorkflowTemplatesScreen |
+| `workflow_list` | WorkflowListScreen |
+| `workflow_editor` | WorkflowEditorScreen |
+| `workflow_run/{id}` | WorkflowRunScreen |
+| `workflow_run_detail/{id}` | WorkflowRunDetailScreen |
+| `workflow_details/{id}` | WorkflowDetailsScreen |
+| `workflow_history` | WorkflowHistoryScreen |
+| `saved_notes` | NotesScreen |
+| `schedule_status` | ScheduleStatusScreen |
+| `upgrade` | UpgradeScreen |
+| `cloud_sync` | CloudSyncScreen |
 
 Legacy quick-access screens (`article_transformer`, `meeting_strategist`, `morning_brief`) remain available via direct routes but are no longer shown on the dashboard.
 
@@ -360,6 +471,29 @@ User creates WorkflowTemplate via editor
   → saves WorkflowRun to Room (workflow_runs table)
   → fires notification if enabled
   → user reviews output → copy / share
+```
+
+### Pro Upgrade (billing)
+```
+Free user hits workflow limit → UpgradePrompt modal
+  → navigates to UpgradeScreen
+  → UpgradeViewModel queries BillingManager for product details
+  → user taps Purchase → BillingManager.launchPurchase(activity)
+  → Google Play purchase flow
+  → BillingManager acknowledges purchase
+  → proOwned StateFlow updates → BillingProductAccessRepository reflects Pro
+  → PlanState updates across app → workflow limit removed
+```
+
+### Cloud Sync (Google Drive backup)
+```
+User opens CloudSyncScreen → signs in with Google Account
+  → CloudSyncManager obtains OAuth2 credential (Drive appdata scope)
+  → user taps Backup → WorkflowPortabilityManager exports all workflows
+  → creates CloudBackupEnvelope (portable, secret-free DTOs)
+  → uploads to Google Drive appDataFolder
+  → CloudSyncRepository stores sync status (email, timestamp, count)
+  → Restore: downloads envelope → WorkflowPortabilityManager imports workflows
 ```
 
 ---
@@ -455,8 +589,11 @@ Users can create workflows from curated templates OR from scratch. Templates are
 - Break the manual-approval model (user must always review before action)
 - Auto-post, auto-share, or auto-send anything
 - Fetch full articles — snippets only
-- Add a backend server or cloud storage
+- Add a backend server (Google Drive sync is the only cloud integration)
 - Store API keys in plaintext files or logs
+- Include API keys or secrets in workflow export/sync payloads (use WorkflowPortabilityManager)
+- Bypass the entitlement system (free tier limits must be enforced via ProductAccessRepository)
+- Change the billing product ID (`automatist_pro`) without explicit request
 
 ---
 
@@ -481,6 +618,16 @@ Users can create workflows from curated templates OR from scratch. Templates are
 2. Add system prompt case in each provider's `getSystemPrompt()` function
 3. Add mock response in `FakeArticleTransformProvider`
 4. Add UI option in the relevant screen (Article or Meeting)
+
+### Release Signing
+- Copy `keystore.properties.example` → `keystore.properties` (gitignored)
+- Generate keystore: `keytool -genkeypair -v -keystore automatist-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias automatist`
+- Fill in `storePassword` and `keyPassword` in `keystore.properties`
+- If `keystore.properties` is missing, release builds remain unsigned (debug builds unaffected)
+
+### Build Variants
+- **Debug:** `applicationId = "com.automatist.app.debug"` (can coexist with release on same device)
+- **Release:** `applicationId = "com.automatist.app"`, minification + resource shrinking enabled
 
 ### Worker Scheduling
 - Periodic: `PeriodicWorkRequestBuilder` with `ExistingPeriodicWorkPolicy.UPDATE` and `setInitialDelay()` computed from target time-of-day

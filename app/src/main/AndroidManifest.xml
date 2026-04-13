@@ -9,9 +9,13 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
-        android:name=".SynapseApp"
+        android:name=".AutomatistApp"
         android:allowBackup="true"
-        android:label="Synapse"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:label="Automatist"
+        android:theme="@style/Theme.Automatist"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true">
 
         <activity

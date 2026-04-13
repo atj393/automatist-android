@@ -39,6 +39,7 @@ proguard/
 # Keystore files (IMPORTANT - never commit)
 *.jks
 *.keystore
+keystore.properties
 
 # Navigation component
 .navigation/

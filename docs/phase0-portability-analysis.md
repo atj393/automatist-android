@@ -87,7 +87,7 @@
 
 ### Path A: Start Empty
 
-**Entry:** `SynapseNavGraph.kt:91` → `Routes.WORKFLOW_EDITOR` (no params)
+**Entry:** `AutomatistNavGraph.kt:91` → `Routes.WORKFLOW_EDITOR` (no params)
 **ViewModel:** `WorkflowEditorViewModel.kt:139-153` — initializes blank `EditorUiState`
 **Save:** `WorkflowEditorViewModel.save()` → `repository.saveTemplate()` → `scheduleManager.scheduleWorkflow()`
 **ID assignment:** `WorkflowTemplate.id = 0` → Room auto-generates on insert
@@ -95,14 +95,14 @@
 
 ### Path B: Create from Built-In Template
 
-**Entry:** `SynapseNavGraph.kt:130` → `Routes.WORKFLOW_EDITOR?sourceTemplateId={builtInId}`
+**Entry:** `AutomatistNavGraph.kt:130` → `Routes.WORKFLOW_EDITOR?sourceTemplateId={builtInId}`
 **ViewModel:** `WorkflowEditorViewModel.kt:114-137` — loads blueprint from `BuiltInTemplates.findById()`, sets `sourceTemplateId`
 **Save:** Same as Path A — `repository.saveTemplate()` creates new Row
 **Note:** Blueprint actions have hardcoded UUIDs from `BuiltInTemplates.kt`; on save, action order is re-indexed
 
 ### Path C: Edit Existing Workflow
 
-**Entry:** `SynapseNavGraph.kt:146` → `Routes.WORKFLOW_EDITOR?templateId={id}`
+**Entry:** `AutomatistNavGraph.kt:146` → `Routes.WORKFLOW_EDITOR?templateId={id}`
 **ViewModel:** `WorkflowEditorViewModel.kt:86-111` — loads existing template from Room
 **Save:** `repository.updateTemplate()` (preserves ID, preserves `createdAtMillis`)
 **Schedule:** `scheduleManager.scheduleWorkflow()` called on every save
@@ -152,7 +152,7 @@
 
 **Registration:** `ScheduleManager.scheduleWorkflow(templateId, trigger)` — creates unique one-shot WorkManager work named `"WorkflowWorker_{templateId}"`
 **Cancellation:** `ScheduleManager.cancelSchedule(templateId)` — cancels both scheduled and one-time work
-**Reconciliation:** `SynapseApp.onCreate()` → `scheduleManager.reconcileSchedules()` — re-enqueues any enabled non-Manual workflows missing from WorkManager
+**Reconciliation:** `AutomatistApp.onCreate()` → `scheduleManager.reconcileSchedules()` — re-enqueues any enabled non-Manual workflows missing from WorkManager
 
 ---
 
@@ -245,7 +245,7 @@ These fields represent the user's authored workflow definition and must be prese
 | **ViewModel binding** | `WorkflowDetailsViewModel.duplicateWorkflow()` line 151-169 | **DONE** |
 | **UI state** | `WorkflowDetailsUiState.duplicatedWorkflowId` + `isProcessing` | **DONE** |
 | **UI button** | `WorkflowDetailsScreen.kt` — add between "Edit" button row (line 176) and "Schedule" card (line 178) | **NOT DONE** |
-| **Navigation on success** | `SynapseNavGraph.kt` — add `onDuplicateNavigate` callback to `WorkflowDetailsScreen`, navigate to `"${Routes.WORKFLOW_DETAILS}/$newId"` | **NOT DONE** |
+| **Navigation on success** | `AutomatistNavGraph.kt` — add `onDuplicateNavigate` callback to `WorkflowDetailsScreen`, navigate to `"${Routes.WORKFLOW_DETAILS}/$newId"` | **NOT DONE** |
 
 ### 6b. Export
 
@@ -382,7 +382,7 @@ API keys live exclusively in `SecureStorage` (DataStore), accessed by `ProviderT
 | # | Task | Files | Effort |
 |---|------|-------|--------|
 | 1 | Add Duplicate + Export buttons to WorkflowDetailsScreen | `WorkflowDetailsScreen.kt` | 1-2h |
-| 2 | Add `onNavigateToDuplicated` callback to WorkflowDetailsScreen | `WorkflowDetailsScreen.kt`, `SynapseNavGraph.kt` | 30m |
+| 2 | Add `onNavigateToDuplicated` callback to WorkflowDetailsScreen | `WorkflowDetailsScreen.kt`, `AutomatistNavGraph.kt` | 30m |
 | 3 | Handle `duplicatedWorkflowId` state — show snackbar + navigate | `WorkflowDetailsScreen.kt` | 30m |
 | 4 | Add export-to-clipboard fallback (simplest export, no SAF needed) | `WorkflowDetailsScreen.kt` | 30m |
 | 5 | Add `ActivityResultContracts.CreateDocument` launcher for "Save to file" | `WorkflowDetailsScreen.kt` | 1h |
@@ -401,7 +401,7 @@ API keys live exclusively in `SecureStorage` (DataStore), accessed by `ProviderT
 | 3 | Read file content from `ContentResolver` | `WorkflowListScreen.kt` | 30m |
 | 4 | Add "Import Workflow" button to WorkflowListScreen header | `WorkflowListScreen.kt` | 30m |
 | 5 | Show import result dialog (success + warnings, or error) | `WorkflowListScreen.kt` | 1h |
-| 6 | Navigate to imported workflow's details on success | `WorkflowListScreen.kt`, `SynapseNavGraph.kt` | 30m |
+| 6 | Navigate to imported workflow's details on success | `WorkflowListScreen.kt`, `AutomatistNavGraph.kt` | 30m |
 
 ### Phase 3: Polish + Edge Cases
 
@@ -431,7 +431,7 @@ API keys live exclusively in `SecureStorage` (DataStore), accessed by `ProviderT
 | File | Change |
 |------|--------|
 | `feature/workflow/details/WorkflowDetailsScreen.kt` | Add Duplicate/Export buttons, snackbar, export dialog, CreateDocument launcher |
-| `ui/navigation/SynapseNavGraph.kt` | Add `onNavigateToDuplicated` callback to WorkflowDetailsScreen composable call |
+| `ui/navigation/AutomatistNavGraph.kt` | Add `onNavigateToDuplicated` callback to WorkflowDetailsScreen composable call |
 
 ### Phase 2 (Import UI)
 
@@ -439,7 +439,7 @@ API keys live exclusively in `SecureStorage` (DataStore), accessed by `ProviderT
 |------|--------|
 | `feature/workflow/list/WorkflowListScreen.kt` | Add Import button, OpenDocument launcher, result dialog |
 | `feature/workflow/list/WorkflowListViewModel.kt` | Add `importWorkflow()` method, inject `WorkflowPortabilityManager` |
-| `ui/navigation/SynapseNavGraph.kt` | Add `onNavigateToImported` callback |
+| `ui/navigation/AutomatistNavGraph.kt` | Add `onNavigateToImported` callback |
 
 ### Phase 3 (Share/Receive)
 
@@ -454,8 +454,8 @@ API keys live exclusively in `SecureStorage` (DataStore), accessed by `ProviderT
 
 | File | Change |
 |------|--------|
-| `app/src/test/java/com/synapse/app/domain/workflow/WorkflowPortabilityManagerTest.kt` | New file — unit tests |
-| `app/src/test/java/com/synapse/app/domain/models/WorkflowExportModelsTest.kt` | New file — serialization tests |
+| `app/src/test/java/com/automatist/app/domain/workflow/WorkflowPortabilityManagerTest.kt` | New file — unit tests |
+| `app/src/test/java/com/automatist/app/domain/models/WorkflowExportModelsTest.kt` | New file — serialization tests |
 
 ---
 
@@ -487,10 +487,10 @@ Before starting Phase 1, verify these claims by inspection:
 ```json
 {
   "schemaVersion": 1,
-  "type": "synapse-workflow",
+  "type": "automatist-workflow",
   "exportedAt": "2026-04-10T...",
   "app": {
-    "name": "Synapse",
+    "name": "Automatist",
     "exportFormatVersion": 1
   },
   "workflow": {

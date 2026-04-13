@@ -1,8 +1,8 @@
-# Synapse
+# Automatist
 
 A workflow-first AI utility for Android that transforms text content into structured, shareable outputs — entirely on-device with no backend.
 
-Synapse is not a chatbot. It takes articles, meeting notes, and RSS feeds as input and produces summaries, social media posts, professional briefs, and strategic insights using pluggable AI providers.
+Automatist is not a chatbot. It takes articles, meeting notes, and RSS feeds as input and produces summaries, social media posts, professional briefs, and strategic insights using pluggable AI providers.
 
 ---
 
@@ -28,19 +28,38 @@ Configure RSS feeds and get AI-generated digests on a schedule:
 
 ### Workflow Builder (Custom Workflows)
 Create reusable custom workflow templates with multiple data sources:
+- **Template library** — 7 built-in templates (Morning Commute Brief, Competitor Monitor, Research Digest, etc.)
 - **Multi-step builder** — guided sections for basics, trigger, actions, instructions, and output
-- **Action blocks** — add multiple Fetch URL or Paste Text sources, each with per-source instructions
+- **9 action types** — Fetch URL, Paste Text, RSS Feed, Multi-RSS, API GET, Saved Notes, Previous Output, Weather, Route Time
+- **Action Catalog** — full-screen categorized browser with search, readiness badges, and detail views
 - **Flexible triggers** — manual, daily schedule, or weekly schedule
 - **Output options** — briefing, social post, both, or custom format
 - **Live execution screen** — stage-by-stage progress, action status, token usage, and duration
 - **Run history** — all runs persisted with full output, token stats, and error details
+- **Workflow portability** — import, export, and duplicate workflows (secret-free portable format)
 - **Background scheduling** — via WorkManager for reliable scheduled execution
+- **Schedule dashboard** — view next run times, last run status, and manage all schedules
+
+### Pro Upgrade (Google Play Billing)
+- **Free tier** — 1 custom workflow, all built-in templates browsable
+- **Pro tier** — unlimited workflows via one-time purchase (`automatist_pro`)
+- **Upgrade prompt** — non-dismissable modal when free tier limit is reached
+- **Restore purchases** — for existing customers on new devices
+
+### Cloud Sync (Google Drive)
+- **Backup workflows** to Google Drive `appDataFolder` (private, app-scoped storage)
+- **Restore workflows** from backup on any device
+- **Secret-free exports** — API keys are never included in sync payloads
+- **Sync status tracking** — last backup time, workflow count, connected account
 
 ### Additional Features
 - **History** — all outputs saved locally with full search and detail view
-- **Vault** — manage AI provider selection and API keys
+- **Vault (Settings)** — AI provider profiles, API keys, service keys, legacy provider fallback
+- **Saved Notes** — reusable note content that workflows can reference
+- **Readiness System** — dynamic checks for action/workflow prerequisites with setup CTAs
 - **Share Intent** — receive text from any app via Android share sheet
 - **Multi-Provider** — switch between OpenAI, Anthropic, Gemini, or a local demo mode
+- **Provider Profiles** — named provider+model configurations, one set as default
 - **Token Usage Tracking** — real token counts from OpenAI, Anthropic, and Gemini APIs
 
 ---
@@ -64,8 +83,10 @@ ui/               Theme + navigation graph
 
 - **Single-activity** with Jetpack Compose navigation
 - **MVVM** — each screen backed by a `@HiltViewModel` with `StateFlow`
-- **Provider router** — strategy pattern routes AI calls to the active provider
-- **Repository pattern** — Room-backed history with Flow-based reactivity
+- **Provider router** — strategy pattern routes AI calls to the active provider/profile
+- **Repository pattern** — Room-backed history and workflows with Flow-based reactivity
+- **Readiness system** — dynamic prerequisite checks for actions and workflows
+- **Entitlement layer** — `ProductAccessRepository` abstracts Free/Pro state from billing implementation
 
 ---
 
@@ -81,6 +102,10 @@ ui/               Theme + navigation graph
 | Background | WorkManager |
 | HTTP | Retrofit + OkHttp |
 | Async | Coroutines + Flow |
+| Serialization | Gson (Retrofit) + kotlinx.serialization (DataStore) |
+| Billing | Google Play Billing Library v7.0.0 |
+| Cloud Sync | Google Drive API (appDataFolder) |
+| Auth | Google Play Services Auth |
 
 **Min SDK:** 26 (Android 8.0) | **Target SDK:** 34 (Android 14) | **Java:** 17
 
@@ -97,26 +122,32 @@ ui/               Theme + navigation graph
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-org/synapse.git
-   cd synapse
+   git clone https://github.com/your-org/automatist.git
+   cd automatist
    ```
 
 2. Open in Android Studio and sync Gradle.
 
-3. Build and run:
+3. (Optional) Set up release signing:
+   ```bash
+   cp keystore.properties.example keystore.properties
+   # Generate a keystore and fill in passwords — see keystore.properties.example for details
+   ```
+
+4. Build and run:
    ```bash
    ./gradlew assembleDebug
    ./gradlew installDebug
    ```
 
-4. Configure an AI provider in the **Vault** screen:
-   - Select a provider (OpenAI, Anthropic, or Gemini)
-   - Enter your API key
+5. Configure an AI provider in **Settings**:
+   - Create a provider profile (OpenAI, Anthropic, or Gemini) with your API key
    - Or use **Fake (Local Demo)** to explore without an API key
+   - Optionally add service API keys (OpenWeatherMap, OpenRouteService) for weather/route actions
 
 ### API Keys
 
-Synapse requires an API key for whichever provider you choose:
+Automatist requires an API key for whichever AI provider you choose:
 
 | Provider | Get a key at |
 |----------|-------------|
@@ -124,28 +155,45 @@ Synapse requires an API key for whichever provider you choose:
 | Anthropic | https://console.anthropic.com/ |
 | Gemini | https://aistudio.google.com/apikey |
 
-Keys are stored on-device only. No data leaves the device except direct API calls to your selected provider.
+Some workflow actions require additional service API keys:
+
+| Service | Used By | Get a key at |
+|---------|---------|-------------|
+| OpenWeatherMap | Weather action | https://openweathermap.org/api |
+| OpenRouteService | Route Time action | https://openrouteservice.org/ |
+
+All keys are stored on-device only. No data leaves the device except direct API calls to the respective provider/service.
 
 ---
 
 ## Project Structure
 
 ```
-app/src/main/java/com/synapse/app/
+app/src/main/java/com/automatist/app/
 ├── MainActivity.kt              # Launcher + share intent handler
 ├── ShareEntryActivity.kt        # Receives shared text from other apps
-├── SynapseApp.kt                # Application class (@HiltAndroidApp)
+├── AutomatistApp.kt             # Application class (@HiltAndroidApp)
 │
 ├── domain/                      # Business logic (pure Kotlin)
+│   ├── access/                  # Product access / entitlements (Free vs Pro)
+│   ├── actions/                 # Workflow action registry + metadata
+│   ├── engine/                  # Workflow execution engine + state
 │   ├── models/                  # Data classes + enums
 │   ├── providers/               # ArticleTransformProvider interface
-│   └── repositories/            # HistoryRepository interface
+│   ├── readiness/               # Dynamic readiness evaluator
+│   ├── repositories/            # History + Workflow repository interfaces
+│   ├── sync/                    # Cloud sync models + interfaces
+│   ├── templates/               # Built-in workflow templates
+│   └── workflow/                # Workflow portability (import/export)
 │
 ├── data/                        # Implementation layer
+│   ├── access/                  # Billing-backed + local entitlement repos
+│   ├── billing/                 # Google Play Billing Manager
 │   ├── local/                   # Room DB, DAO, entity, settings
 │   ├── network/                 # RSS parser
 │   ├── providers/               # AI provider implementations + router
-│   └── repositories/            # Room-backed history repository
+│   ├── repositories/            # Room-backed history + workflow repos
+│   └── sync/                    # Google Drive sync manager + local repo
 │
 ├── feature/                     # Screens (Compose + ViewModel)
 │   ├── article/                 # Article Transformer
@@ -153,13 +201,20 @@ app/src/main/java/com/synapse/app/
 │   ├── brief/                   # Morning Brief config + results
 │   ├── dashboard/               # Home screen
 │   ├── history/                 # History list + detail
-│   └── vault/                   # Provider & API key management
+│   ├── notes/                   # Saved Notes manager
+│   ├── vault/                   # Settings (profiles, API keys, service keys)
+│   ├── upgrade/                 # Pro upgrade screen + purchase prompt
+│   ├── sync/                    # Cloud sync (Google Drive backup)
+│   └── workflow/                # Workflow builder, editor, run, templates,
+│                                #   details, history, schedule, components
 │
 ├── platform/
-│   ├── automation/              # SynthesizerWorker (Morning Brief)
+│   ├── automation/              # WorkManager workers (Brief + Workflow)
+│   ├── notifications/           # Notification helper
+│   ├── scheduling/              # Schedule manager
 │   └── security/                # Secure API key storage
 │
-├── di/                          # Hilt modules
+├── di/                          # Hilt modules (7 modules)
 └── ui/                          # Navigation graph + theme
 ```
 
@@ -167,14 +222,14 @@ app/src/main/java/com/synapse/app/
 
 ## Supported AI Providers
 
-| Provider | Model | Notes |
-|----------|-------|-------|
+| Provider | Default Model | Notes |
+|----------|--------------|-------|
 | Fake | — | Local mock responses, no API key needed |
-| OpenAI | gpt-3.5-turbo | Bearer token auth |
-| Anthropic | claude-3-haiku | x-api-key header |
+| OpenAI | gpt-3.5-turbo (overridable) | Bearer token auth |
+| Anthropic | claude-3-haiku (overridable) | x-api-key header |
 | Gemini | gemini-1.5-flash | API key query param |
 
-All providers implement the same `ArticleTransformProvider` interface. Switch between them at runtime from the Vault screen.
+All providers implement the same `ArticleTransformProvider` interface. Create named **provider profiles** (provider + model combinations) in Settings and assign them as defaults or per-workflow overrides.
 
 ---
 
@@ -195,15 +250,26 @@ WorkManager trigger → Load config → Fetch RSS (snippets only) → Parse top 
 External app → Share text → ShareEntryActivity → Article Transformer (pre-filled)
 ```
 
+### Pro Upgrade (Billing)
+```
+Free user hits limit → UpgradePrompt → UpgradeScreen → Google Play purchase → BillingManager acknowledges → Pro state updates app-wide
+```
+
+### Cloud Sync
+```
+Sign in with Google → CloudSyncManager → Export workflows (secret-free) → Upload to Drive appDataFolder → Track sync status locally
+```
+
 ---
 
 ## Design Principles
 
 - **User always reviews before acting** — no auto-posting, auto-sharing, or auto-sending
 - **Snippets only** — RSS parsing extracts titles and descriptions, never full articles
-- **On-device everything** — no backend server, no cloud storage, no analytics
+- **On-device first** — no backend server, no analytics; Google Drive sync is optional and user-initiated
 - **Template-driven outputs** — transform types define output shape, not free-form generation
-- **Idempotent worker** — Morning Brief runs are safe to retry
+- **Secret-free portability** — workflow exports and cloud backups never include API keys
+- **Idempotent workers** — Brief and Workflow runs are safe to retry
 
 ---
 
@@ -229,6 +295,8 @@ External app → Share text → ShareEntryActivity → Article Transformer (pre-
 
 - All data stored locally on-device (Room database + DataStore)
 - API keys never leave the device except in direct provider API calls
+- Cloud sync (Google Drive) is optional and user-initiated — uses private `appDataFolder` scope
+- Workflow backups are secret-free — API keys are stripped before sync/export
 - No telemetry, analytics, or tracking
 - No backend server
 - RSS feeds fetched directly from source — no proxy

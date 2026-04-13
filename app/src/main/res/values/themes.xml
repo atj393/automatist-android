@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Minimal launch theme used by the manifest before Compose takes over.
+        Prevents a white flash on cold start. Compose applies its own Material3
+        theme in AutomatistTheme once composition begins.
+    -->
+    <style name="Theme.Automatist" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>
