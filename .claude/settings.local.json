@@ -8,7 +8,7 @@
       "Bash(./gradlew compileDebugKotlin)",
       "Bash(ls \"c:\\\\Alexis\\\\Test\\\\mobile-app\\\\gradlew\"*)",
       "Bash(ls \"c:\\\\Alexis\\\\Test\\\\mobile-app\\\\gradle\"*)",
-      "Bash(grep -n \"notifyOnCompletion\" /c/Alexis/Test/mobile-app/app/src/main/java/com/synapse/app/data/local/*.kt)",
+      "Bash(grep -n \"notifyOnCompletion\" /c/Alexis/Test/mobile-app/app/src/main/java/com/automatist/app/data/local/*.kt)",
       "Bash(grep -E \"\\\\.kt$\")",
       "Bash(ls gradlew*)",
       "Bash(adb devices:*)",

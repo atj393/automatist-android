@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Synapse"
+rootProject.name = "Automatist"
 include(":app")
