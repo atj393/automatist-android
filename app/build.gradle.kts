@@ -88,10 +88,27 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+
+    // Billing
+    implementation(libs.billing)
+
+    // Google Drive + Auth (Cloud Sync)
+    implementation(libs.google.api.drive) {
+        exclude(group = "org.apache.httpcomponents")
+    }
+    implementation(libs.google.api.client.android) {
+        exclude(group = "org.apache.httpcomponents")
+    }
+    implementation(libs.google.play.auth)
     
     // Serialization
     implementation(libs.kotlinx.serialization.json)
 
     // Debug
     debugImplementation(libs.androidx.ui.tooling)
+
+    // Test
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.kotlinx.serialization.json)
 }

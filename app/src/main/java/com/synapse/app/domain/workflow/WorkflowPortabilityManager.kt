@@ -122,7 +122,14 @@ class WorkflowPortabilityManager @Inject constructor(
         }
 
         if (hadSensitiveFields) {
-            warnings.add("Some sensitive fields (API keys, tokens, authorization headers) were omitted for security.")
+            warnings.add("Sensitive fields (API keys, tokens, auth headers) were redacted from action configs.")
+        }
+
+        // ── Check sourceData URLs for embedded secrets ──
+        val suspiciousActions = findActionsWithSuspiciousUrls(template.actions)
+        if (suspiciousActions.isNotEmpty()) {
+            val labels = suspiciousActions.joinToString(", ") { "\"${it}\"" }
+            warnings.add("Action $labels may contain sensitive values in URLs. Review the exported file before sharing.")
         }
 
         val envelope = WorkflowExportEnvelope(
@@ -205,7 +212,7 @@ class WorkflowPortabilityManager @Inject constructor(
             it.type == WorkflowActionType.USE_PREVIOUS_OUTPUT
         }
         if (hasPreviousOutputActions) {
-            warnings.add("\"Previous Workflow Output\" actions reference local workflows and may need reconfiguring.")
+            warnings.add("\"Previous Output\" actions reference workflows from the source device and need reconfiguring.")
         }
 
         // ── Build imported actions ──
@@ -252,10 +259,16 @@ class WorkflowPortabilityManager @Inject constructor(
         val newId = repository.saveTemplate(template)
 
         if (unresolvedProfiles > 0) {
-            warnings.add("$unresolvedProfiles AI profile reference(s) could not be resolved. Configure them in Settings.")
+            warnings.add("$unresolvedProfiles AI profile(s) not found locally. Set them up in Settings > AI Profiles.")
         }
         if (uniqueName != wf.name) {
-            warnings.add("Renamed to \"$uniqueName\" to avoid a name conflict.")
+            warnings.add("Renamed to \"$uniqueName\" to avoid a duplicate name.")
+        }
+
+        // ── Inform about recreated saved notes ──
+        val recreatedNotes = noteIdMap.count { (originalId, newId) -> originalId != newId }
+        if (recreatedNotes > 0) {
+            warnings.add("$recreatedNotes saved note(s) were recreated from the exported snapshot.")
         }
 
         return ImportResult(newId, uniqueName, warnings)
@@ -323,6 +336,27 @@ class WorkflowPortabilityManager @Inject constructor(
             }
         }
         return snapshots
+    }
+
+    // ── Export: sourceData URL secret detection ──
+
+    internal fun findActionsWithSuspiciousUrls(actions: List<WorkflowAction>): List<String> {
+        val result = mutableListOf<String>()
+        for (action in actions) {
+            val data = action.sourceData
+            if (data.isBlank()) continue
+            // Only inspect values that look like URLs with query strings
+            if (!data.contains("?") || !data.contains("=")) continue
+            val queryPart = data.substringAfter("?", "")
+            if (queryPart.isBlank()) continue
+            val paramNames = queryPart.split("&").mapNotNull { param ->
+                param.substringBefore("=", "").takeIf { it.isNotBlank() }
+            }
+            if (paramNames.any { isSensitiveKey(it) }) {
+                result.add(action.label.ifBlank { action.type.displayName })
+            }
+        }
+        return result
     }
 
     // ── Export sanitization ──

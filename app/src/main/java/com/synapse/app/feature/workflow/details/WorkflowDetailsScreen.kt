@@ -1,5 +1,7 @@
 package com.synapse.app.feature.workflow.details
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,14 +12,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.synapse.app.domain.actions.WorkflowActionRegistry
 import com.synapse.app.domain.models.*
+import com.synapse.app.feature.upgrade.UpgradePromptDialog
 import com.synapse.app.platform.scheduling.ScheduleInfo
 import com.synapse.app.platform.scheduling.ScheduleState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,9 +33,81 @@ fun WorkflowDetailsScreen(
     onRun: (Long) -> Unit,
     onViewHistory: (Long) -> Unit,
     onViewRunDetail: (Long) -> Unit,
+    onNavigateToDuplicated: (Long) -> Unit = {},
+    onNavigateToUpgrade: () -> Unit = {},
     viewModel: WorkflowDetailsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var overflowExpanded by remember { mutableStateOf(false) }
+    var showUpgradePrompt by remember { mutableStateOf(false) }
+
+    if (showUpgradePrompt) {
+        UpgradePromptDialog(
+            onUpgrade = { showUpgradePrompt = false; onNavigateToUpgrade() },
+            onDismiss = { showUpgradePrompt = false }
+        )
+    }
+
+    // ── SAF launcher for export ──
+    // Holds the JSON + warnings to surface once the user picks a destination.
+    var pendingExportJson by remember { mutableStateOf<String?>(null) }
+    var pendingExportWarnings by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val json = pendingExportJson
+        val warnings = pendingExportWarnings
+        pendingExportJson = null
+        pendingExportWarnings = emptyList()
+        viewModel.clearExportData()
+        if (uri != null && json != null) {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray()) }
+                    val message = if (warnings.isEmpty()) {
+                        "Workflow exported"
+                    } else {
+                        "Exported with warnings: ${warnings.joinToString(". ")}"
+                    }
+                    snackbarHostState.showSnackbar(message)
+                } catch (e: Exception) {
+                    snackbarHostState.showSnackbar("Export failed: ${e.message?.take(80) ?: "unknown error"}")
+                }
+            }
+        }
+    }
+
+    // ── React to exportData becoming available ──
+    val exportData = state.exportData
+    LaunchedEffect(exportData) {
+        if (exportData != null) {
+            pendingExportJson = exportData.json
+            pendingExportWarnings = exportData.warnings
+            exportLauncher.launch(exportData.suggestedFilename)
+        }
+    }
+
+    // ── React to duplicate success ──
+    val duplicatedId = state.duplicatedWorkflowId
+    LaunchedEffect(duplicatedId) {
+        if (duplicatedId != null) {
+            viewModel.clearDuplicatedWorkflowId()
+            onNavigateToDuplicated(duplicatedId)
+        }
+    }
+
+    // ── Snackbar messages from ViewModel ──
+    val snackbarMessage = state.snackbarMessage
+    LaunchedEffect(snackbarMessage) {
+        if (snackbarMessage != null) {
+            snackbarHostState.showSnackbar(snackbarMessage)
+            viewModel.clearSnackbarMessage()
+        }
+    }
 
     // Delete confirmation dialog
     if (state.showDeleteDialog) {
@@ -50,6 +128,7 @@ fun WorkflowDetailsScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Workflow Details") },
@@ -60,6 +139,42 @@ fun WorkflowDetailsScreen(
                     state.template?.let { t ->
                         IconButton(onClick = { onEdit(t.id) }) {
                             Icon(Icons.Default.Edit, "Edit")
+                        }
+                        Box {
+                            IconButton(onClick = { overflowExpanded = true }) {
+                                Icon(Icons.Default.MoreVert, "More actions")
+                            }
+                            DropdownMenu(
+                                expanded = overflowExpanded,
+                                onDismissRequest = { overflowExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Duplicate") },
+                                    leadingIcon = { Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(20.dp)) },
+                                    onClick = {
+                                        overflowExpanded = false
+                                        if (!state.isProcessing) {
+                                            scope.launch {
+                                                if (viewModel.canCreateWorkflow()) {
+                                                    viewModel.duplicateWorkflow()
+                                                } else {
+                                                    showUpgradePrompt = true
+                                                }
+                                            }
+                                        }
+                                    },
+                                    enabled = !state.isProcessing
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Export JSON") },
+                                    leadingIcon = { Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(20.dp)) },
+                                    onClick = {
+                                        overflowExpanded = false
+                                        if (!state.isProcessing) viewModel.prepareExport()
+                                    },
+                                    enabled = !state.isProcessing
+                                )
+                            }
                         }
                     }
                 }

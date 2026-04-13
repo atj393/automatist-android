@@ -23,6 +23,8 @@ import com.synapse.app.feature.workflow.details.WorkflowDetailsScreen
 import com.synapse.app.feature.workflow.history.WorkflowHistoryScreen
 import com.synapse.app.feature.workflow.schedule.ScheduleStatusScreen
 import com.synapse.app.feature.workflow.templates.WorkflowTemplatesScreen
+import com.synapse.app.feature.sync.CloudSyncScreen
+import com.synapse.app.feature.upgrade.UpgradeScreen
 import com.synapse.app.feature.vault.SettingsSection
 import com.synapse.app.feature.notes.NotesScreen
 import java.net.URLEncoder
@@ -45,6 +47,8 @@ object Routes {
     const val WORKFLOW_HISTORY = "workflow_history"
     const val SAVED_NOTES = "saved_notes"
     const val SCHEDULE_STATUS = "schedule_status"
+    const val UPGRADE = "upgrade"
+    const val CLOUD_SYNC = "cloud_sync"
 }
 
 @Composable
@@ -88,7 +92,9 @@ fun SynapseNavGraph(
                 onNavigateToRunDetail = { id -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$id") },
                 onNavigateToNotes = { navController.navigate(Routes.SAVED_NOTES) },
                 onNavigateToTemplates = { navController.navigate(Routes.WORKFLOW_TEMPLATES) },
-                onCreateBlankWorkflow = { navController.navigate(Routes.WORKFLOW_EDITOR) }
+                onCreateBlankWorkflow = { navController.navigate(Routes.WORKFLOW_EDITOR) },
+                onNavigateToUpgrade = { navController.navigate(Routes.UPGRADE) },
+                onNavigateToCloudSync = { navController.navigate(Routes.CLOUD_SYNC) }
             )
         }
 
@@ -148,7 +154,9 @@ fun SynapseNavGraph(
                 onViewDetails = { id -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$id") },
                 onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") },
                 onViewHistory = { id -> navController.navigate("${Routes.WORKFLOW_HISTORY}/$id") },
-                onViewSchedules = { navController.navigate(Routes.SCHEDULE_STATUS) }
+                onViewSchedules = { navController.navigate(Routes.SCHEDULE_STATUS) },
+                onNavigateToImported = { id -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$id") },
+                onNavigateToUpgrade = { navController.navigate(Routes.UPGRADE) }
             )
         }
 
@@ -163,7 +171,9 @@ fun SynapseNavGraph(
                 onEdit = { id -> navController.navigate("${Routes.WORKFLOW_EDITOR}?templateId=$id") },
                 onRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
                 onViewHistory = { id -> navController.navigate("${Routes.WORKFLOW_HISTORY}/$id") },
-                onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") }
+                onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") },
+                onNavigateToDuplicated = { newId -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$newId") },
+                onNavigateToUpgrade = { navController.navigate(Routes.UPGRADE) }
             )
         }
 
@@ -226,6 +236,18 @@ fun SynapseNavGraph(
 
         composable(Routes.SAVED_NOTES) {
             NotesScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Upgrade ──
+
+        composable(Routes.UPGRADE) {
+            UpgradeScreen(onBack = { navController.popBackStack() })
+        }
+
+        // ── Cloud Sync ──
+
+        composable(Routes.CLOUD_SYNC) {
+            CloudSyncScreen(onBack = { navController.popBackStack() })
         }
     }
 }
