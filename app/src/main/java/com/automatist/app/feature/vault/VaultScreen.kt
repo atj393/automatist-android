@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.automatist.app.BuildConfig
 import com.automatist.app.domain.models.ProviderModels
 import com.automatist.app.domain.models.ProviderProfile
 import com.automatist.app.domain.models.ProviderType
@@ -364,7 +365,7 @@ fun VaultScreen(
                         subtitle = "Automatist — Workflow AI utility"
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            AboutRow("Version", "1.0.0")
+                            AboutRow("Version", BuildConfig.VERSION_NAME)
                             AboutRow("Storage", "All data stays on device")
                             AboutRow("API keys", "Stored locally, never uploaded")
                             AboutRow("Cloud backup", "Workflow definitions only")
