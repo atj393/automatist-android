@@ -30,7 +30,10 @@ data class VaultUiState(
     val profileEditorName: String = "",
     val profileEditorProvider: ProviderType = ProviderType.OPENAI,
     val profileEditorModel: String = "",
-    val profileEditorError: String? = null
+    val profileEditorError: String? = null,
+
+    // Checklist: whether the user has at least one workflow
+    val hasAnyWorkflow: Boolean = false
 )
 
 @HiltViewModel
@@ -97,6 +100,11 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
                 _state.update { it.copy(activeProvider = settings.activeProvider) }
+            }
+        }
+        viewModelScope.launch {
+            workflowRepository.getAllTemplates().collect { templates ->
+                _state.update { it.copy(hasAnyWorkflow = templates.isNotEmpty()) }
             }
         }
     }

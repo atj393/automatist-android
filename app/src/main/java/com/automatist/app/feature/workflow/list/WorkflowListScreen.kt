@@ -18,7 +18,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.automatist.app.domain.models.*
-import com.automatist.app.feature.upgrade.UpgradePromptDialog
 import com.automatist.app.platform.scheduling.ScheduleInfo
 import com.automatist.app.platform.scheduling.ScheduleState
 import kotlinx.coroutines.Dispatchers
@@ -47,18 +46,9 @@ fun WorkflowListScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var overflowExpanded by remember { mutableStateOf(false) }
-    var showUpgradePrompt by remember { mutableStateOf(false) }
 
-    fun gatedCreate(action: () -> Unit) {
-        if (viewModel.canCreateWorkflow()) action() else showUpgradePrompt = true
-    }
-
-    if (showUpgradePrompt) {
-        UpgradePromptDialog(
-            onUpgrade = { showUpgradePrompt = false; onNavigateToUpgrade() },
-            onDismiss = { showUpgradePrompt = false }
-        )
-    }
+    // Creation is no longer gated — free users can create workflows freely.
+    // The free-tier limit is enforced on activation (enabling) instead.
 
     // ── SAF launcher for import ──
     val importLauncher = rememberLauncherForActivityResult(
@@ -135,7 +125,7 @@ fun WorkflowListScreen(
                                 onClick = {
                                     overflowExpanded = false
                                     if (!importState.isImporting) {
-                                        gatedCreate { importLauncher.launch(arrayOf("application/json", "*/*")) }
+                                        importLauncher.launch(arrayOf("application/json", "*/*"))
                                     }
                                 },
                                 enabled = !importState.isImporting
@@ -147,11 +137,11 @@ fun WorkflowListScreen(
         },
         floatingActionButton = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.End) {
-                SmallFloatingActionButton(onClick = { gatedCreate(onCreateBlank) }) {
+                SmallFloatingActionButton(onClick = onCreateBlank) {
                     Icon(Icons.Default.Add, "Start Empty")
                 }
                 ExtendedFloatingActionButton(
-                    onClick = { gatedCreate(onBrowseTemplates) },
+                    onClick = onBrowseTemplates,
                     icon = { Icon(Icons.Default.Dashboard, "Templates") },
                     text = { Text("From Template") }
                 )

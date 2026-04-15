@@ -30,7 +30,7 @@ class LocalProductAccessRepository @Inject constructor(
     override val planState: Flow<PlanState> = context.accessDataStore.data.map { prefs ->
         val unlocked = prefs[PRO_UNLOCKED_KEY] ?: false
         if (unlocked) PlanState(PlanType.PRO, Int.MAX_VALUE)
-        else PlanState(PlanType.FREE, PlanState.FREE_WORKFLOW_LIMIT)
+        else PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
     }
 
     override suspend fun currentPlanState(): PlanState = planState.first()

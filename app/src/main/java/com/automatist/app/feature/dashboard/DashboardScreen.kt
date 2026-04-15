@@ -15,7 +15,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.automatist.app.domain.models.*
-import com.automatist.app.feature.upgrade.UpgradePromptDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,18 +38,8 @@ fun DashboardScreen(
 ) {
     val recentRuns by viewModel.recentRuns.collectAsState()
     val myWorkflows by viewModel.customWorkflows.collectAsState()
-    var showUpgradePrompt by remember { mutableStateOf(false) }
-
-    fun gatedCreate(action: () -> Unit) {
-        if (viewModel.canCreateWorkflow()) action() else showUpgradePrompt = true
-    }
-
-    if (showUpgradePrompt) {
-        UpgradePromptDialog(
-            onUpgrade = { showUpgradePrompt = false; onNavigateToUpgrade() },
-            onDismiss = { showUpgradePrompt = false }
-        )
-    }
+    // Creation is no longer gated — free users can create workflows freely.
+    // The free-tier limit is enforced on activation (enabling) instead.
 
     Scaffold(
         topBar = {
@@ -102,7 +91,7 @@ fun DashboardScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     // Browse Templates
                     Card(
-                        modifier = Modifier.weight(1f).clickable(onClick = { gatedCreate(onNavigateToTemplates) }),
+                        modifier = Modifier.weight(1f).clickable(onClick = onNavigateToTemplates),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                     ) {
@@ -117,7 +106,7 @@ fun DashboardScreen(
                     }
                     // Start Empty
                     OutlinedCard(
-                        modifier = Modifier.weight(1f).clickable(onClick = { gatedCreate(onCreateBlankWorkflow) })
+                        modifier = Modifier.weight(1f).clickable(onClick = onCreateBlankWorkflow)
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp).fillMaxWidth(),
