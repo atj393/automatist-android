@@ -6,7 +6,7 @@ Status key: [x] done | [ ] manual action needed | [~] not applicable
 
 ## Codebase (handled in repo)
 
-- [x] App icons — launcher icons in all mipmap densities + adaptive icon (handled separately)
+- [x] App icons — launcher icons in all mipmap densities + adaptive icon with foreground/background/monochrome layers (see "App Icon Assets" section in README)
 - [x] `strings.xml` created with `app_name`
 - [x] `AndroidManifest.xml` uses `@string/app_name` (not hardcoded)
 - [x] `versionCode = 1`, `versionName = "1.0.0"` set in `build.gradle.kts`
@@ -30,9 +30,36 @@ Status key: [x] done | [ ] manual action needed | [~] not applicable
 - [ ] **Back up keystore + passwords** in a secure location
 - [ ] Enroll in Google Play App Signing (recommended)
 
+## Google OAuth — Cloud Sync (Android OAuth Clients)
+
+The app uses Google Play Services Auth (`GoogleSignIn`) for Cloud Sync (Google
+Drive backup). It does **not** use Firebase Auth, `google-services.json`, or a
+web/server client ID. OAuth client resolution is handled automatically by
+Google Play Services based on the installed app's **package name + SHA-1
+signing certificate**.
+
+Two Android OAuth clients must be registered in Google Cloud Console
+(APIs & Services → Credentials):
+
+| Client | Package Name | SHA-1 Source |
+|--------|-------------|--------------|
+| Debug | `com.automatist.app.debug` | Default debug keystore (`./gradlew signingReport`) |
+| Release / Play | `com.automatist.app` | Release keystore, or Play App Signing certificate |
+
+**Common pitfall:** Debug builds use `applicationIdSuffix = ".debug"`, so the
+debug package is `com.automatist.app.debug` — not `com.automatist.app`. Using
+the wrong package name causes `DEVELOPER_ERROR` (code 10) at sign-in.
+
+- [ ] Debug Android OAuth client registered with `com.automatist.app.debug` + debug SHA-1
+- [ ] Release Android OAuth client registered with `com.automatist.app` + release SHA-1
+- [ ] If using Play App Signing: also register the **upload signing** certificate SHA-1 (from Play Console → Setup → App signing) as an additional Android OAuth client for `com.automatist.app`
+- [ ] OAuth consent screen configured (app name, support email, authorized domains)
+- [ ] Test users added to consent screen if app is in "Testing" publish status
+- [ ] Drive API enabled in Google Cloud Console (APIs & Services → Enabled APIs)
+
 ## Play Console — Store Listing
 
-- [ ] Upload 512x512 app icon PNG (no alpha)
+- [ ] Upload 512x512 app icon PNG (no alpha) — use `play-store/play_store_icon_512.png` from the repo
 - [ ] Upload feature graphic (1024x500)
 - [ ] Upload 4-8 phone screenshots (1080x1920 or 1440x2560)
   - Recommended: Dashboard, Workflow Editor, Execution screen, Article Transformer, Templates, Settings, Morning Brief output, Cloud Sync
