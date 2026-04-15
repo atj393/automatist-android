@@ -125,7 +125,11 @@ fun AutomatistNavGraph(
             arguments = listOf(navArgument("section") { type = NavType.StringType; defaultValue = "" })
         ) { backStackEntry ->
             val section = backStackEntry.arguments?.getString("section") ?: ""
-            VaultScreen(onBack = { navController.popBackStack() }, initialSection = section)
+            VaultScreen(
+                onBack = { navController.popBackStack() },
+                onNavigateToTemplates = { navController.navigate(Routes.WORKFLOW_TEMPLATES) },
+                initialSection = section
+            )
         }
 
         // ── Workflow Templates (browse built-in templates) ──

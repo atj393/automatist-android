@@ -42,11 +42,6 @@ class DashboardViewModel @Inject constructor(
         seedSampleWorkflowIfNeeded()
     }
 
-    fun canCreateWorkflow(): Boolean {
-        val count = customWorkflows.value.size
-        return planState.value.canCreateWorkflow(count)
-    }
-
     /**
      * Seeds a sample "Article Briefing" workflow on first use if no workflows exist.
      * This gives new users a useful starting point that works with the share-to-app flow.

@@ -2,8 +2,6 @@ package com.automatist.app.feature.workflow.list
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.automatist.app.domain.access.PlanState
-import com.automatist.app.domain.access.ProductAccessRepository
 import com.automatist.app.domain.models.WorkflowTemplate
 import com.automatist.app.domain.repositories.WorkflowRepository
 import com.automatist.app.domain.workflow.WorkflowPortabilityManager
@@ -30,18 +28,11 @@ data class ImportUiState(
 class WorkflowListViewModel @Inject constructor(
     private val repository: WorkflowRepository,
     private val scheduleManager: ScheduleManager,
-    private val portabilityManager: WorkflowPortabilityManager,
-    private val accessRepository: ProductAccessRepository
+    private val portabilityManager: WorkflowPortabilityManager
 ) : ViewModel() {
 
     val workflows = repository.getAllTemplates()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val planState = accessRepository.planState
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlanState())
-
-    fun canCreateWorkflow(): Boolean =
-        planState.value.canCreateWorkflow(workflows.value.size)
 
     private val _scheduleStatuses = MutableStateFlow<Map<Long, ScheduleInfo>>(emptyMap())
     val scheduleStatuses = _scheduleStatuses.asStateFlow()
