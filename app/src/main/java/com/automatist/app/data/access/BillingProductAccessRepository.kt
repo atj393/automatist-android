@@ -40,7 +40,7 @@ class BillingProductAccessRepository @Inject constructor(
         combine(billingManager.proOwned, localOverride) { billingOwned, localFlag ->
             val unlocked = billingOwned || localFlag
             if (unlocked) PlanState(PlanType.PRO, Int.MAX_VALUE)
-            else PlanState(PlanType.FREE, PlanState.FREE_WORKFLOW_LIMIT)
+            else PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
         }
 
     override suspend fun currentPlanState(): PlanState = planState.first()

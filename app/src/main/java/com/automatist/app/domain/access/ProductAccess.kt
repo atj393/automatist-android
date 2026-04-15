@@ -9,15 +9,19 @@ enum class PlanType(val displayName: String) {
 
 data class PlanState(
     val plan: PlanType = PlanType.FREE,
-    val maxWorkflows: Int = FREE_WORKFLOW_LIMIT
+    val maxActiveWorkflows: Int = FREE_ACTIVE_WORKFLOW_LIMIT
 ) {
     val isProUnlocked: Boolean get() = plan == PlanType.PRO
 
-    fun canCreateWorkflow(currentCount: Int): Boolean =
-        isProUnlocked || currentCount < maxWorkflows
+    /**
+     * Free users can create unlimited workflows but only activate one at a time.
+     * "Active" means isEnabled == true on a WorkflowTemplate.
+     */
+    fun canActivateWorkflow(currentActiveCount: Int): Boolean =
+        isProUnlocked || currentActiveCount < maxActiveWorkflows
 
     companion object {
-        const val FREE_WORKFLOW_LIMIT = 1
+        const val FREE_ACTIVE_WORKFLOW_LIMIT = 1
     }
 }
 

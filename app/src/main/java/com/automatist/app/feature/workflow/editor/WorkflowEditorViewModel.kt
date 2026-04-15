@@ -3,6 +3,7 @@ package com.automatist.app.feature.workflow.editor
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.automatist.app.domain.access.ProductAccessRepository
 import com.automatist.app.domain.actions.WorkflowActionRegistry
 import com.automatist.app.domain.models.*
 import com.automatist.app.domain.readiness.ReadinessEvaluator
@@ -15,6 +16,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -61,6 +63,7 @@ class WorkflowEditorViewModel @Inject constructor(
     val readinessEvaluator: ReadinessEvaluator,
     private val scheduleManager: ScheduleManager,
     private val notificationHelper: NotificationHelper,
+    private val accessRepository: ProductAccessRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -200,11 +203,28 @@ class WorkflowEditorViewModel @Inject constructor(
             _state.update { it.copy(isSaving = true, validationErrors = emptyList()) }
 
             val now = System.currentTimeMillis()
+
+            // For new workflows, check if the free user already has an active workflow.
+            // If so, save as paused to respect the 1-active limit.
+            val shouldEnable = if (templateId != null) {
+                // Editing existing — preserve current enabled state
+                repository.getTemplateById(templateId)?.isEnabled ?: true
+            } else {
+                // New workflow — check activation limit
+                val plan = accessRepository.currentPlanState()
+                if (plan.isProUnlocked) {
+                    true
+                } else {
+                    val activeCount = repository.getAllTemplates().first().count { it.isEnabled }
+                    plan.canActivateWorkflow(activeCount)
+                }
+            }
+
             val template = WorkflowTemplate(
                 id = templateId ?: 0,
                 name = current.name.trim(),
                 description = current.description.trim(),
-                isEnabled = true,
+                isEnabled = shouldEnable,
                 trigger = current.trigger,
                 actions = current.actions.mapIndexed { i, a -> a.copy(order = i) },
                 globalInstruction = current.globalInstruction.trim(),

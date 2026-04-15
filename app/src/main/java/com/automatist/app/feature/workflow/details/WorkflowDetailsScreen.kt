@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.automatist.app.domain.actions.WorkflowActionRegistry
 import com.automatist.app.domain.models.*
-import com.automatist.app.feature.upgrade.UpgradePromptDialog
+import com.automatist.app.feature.upgrade.ActivationLimitDialog
 import com.automatist.app.platform.scheduling.ScheduleInfo
 import com.automatist.app.platform.scheduling.ScheduleState
 import kotlinx.coroutines.Dispatchers
@@ -42,12 +42,17 @@ fun WorkflowDetailsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var overflowExpanded by remember { mutableStateOf(false) }
-    var showUpgradePrompt by remember { mutableStateOf(false) }
+    var activationBlockedByName by remember { mutableStateOf<String?>(null) }
 
-    if (showUpgradePrompt) {
-        UpgradePromptDialog(
-            onUpgrade = { showUpgradePrompt = false; onNavigateToUpgrade() },
-            onDismiss = { showUpgradePrompt = false }
+    if (activationBlockedByName != null) {
+        ActivationLimitDialog(
+            activeWorkflowName = activationBlockedByName ?: "",
+            onUpgrade = { activationBlockedByName = null; onNavigateToUpgrade() },
+            onSwitchActive = {
+                activationBlockedByName = null
+                viewModel.switchActiveToThis()
+            },
+            onDismiss = { activationBlockedByName = null }
         )
     }
 
@@ -154,13 +159,7 @@ fun WorkflowDetailsScreen(
                                     onClick = {
                                         overflowExpanded = false
                                         if (!state.isProcessing) {
-                                            scope.launch {
-                                                if (viewModel.canCreateWorkflow()) {
-                                                    viewModel.duplicateWorkflow()
-                                                } else {
-                                                    showUpgradePrompt = true
-                                                }
-                                            }
+                                            viewModel.duplicateWorkflow()
                                         }
                                     },
                                     enabled = !state.isProcessing
@@ -262,7 +261,14 @@ fun WorkflowDetailsScreen(
                     }
                     Switch(
                         checked = template.isEnabled,
-                        onCheckedChange = { viewModel.toggleEnabled() }
+                        onCheckedChange = {
+                            scope.launch {
+                                val blockedBy = viewModel.toggleEnabled()
+                                if (blockedBy != null) {
+                                    activationBlockedByName = blockedBy
+                                }
+                            }
+                        }
                     )
                 }
             }

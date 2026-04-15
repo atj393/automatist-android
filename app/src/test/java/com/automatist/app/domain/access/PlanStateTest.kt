@@ -5,35 +5,37 @@ import org.junit.Test
 
 class PlanStateTest {
 
+    // ── Active-workflow gating (new model) ──
+
     @Test
-    fun `free plan allows creation when no workflows exist`() {
-        val state = PlanState(PlanType.FREE, PlanState.FREE_WORKFLOW_LIMIT)
-        assertTrue(state.canCreateWorkflow(0))
+    fun `free plan allows activating first workflow`() {
+        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
+        assertTrue(state.canActivateWorkflow(0))
     }
 
     @Test
-    fun `free plan blocks creation at limit`() {
-        val state = PlanState(PlanType.FREE, PlanState.FREE_WORKFLOW_LIMIT)
-        assertFalse(state.canCreateWorkflow(1))
+    fun `free plan blocks activating second workflow`() {
+        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
+        assertFalse(state.canActivateWorkflow(1))
     }
 
     @Test
-    fun `free plan blocks creation above limit`() {
-        val state = PlanState(PlanType.FREE, PlanState.FREE_WORKFLOW_LIMIT)
-        assertFalse(state.canCreateWorkflow(5))
+    fun `free plan blocks activating when many are active`() {
+        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
+        assertFalse(state.canActivateWorkflow(5))
     }
 
     @Test
-    fun `pro plan allows creation at any count`() {
+    fun `pro plan allows activating at any count`() {
         val state = PlanState(PlanType.PRO, Int.MAX_VALUE)
-        assertTrue(state.canCreateWorkflow(0))
-        assertTrue(state.canCreateWorkflow(1))
-        assertTrue(state.canCreateWorkflow(100))
+        assertTrue(state.canActivateWorkflow(0))
+        assertTrue(state.canActivateWorkflow(1))
+        assertTrue(state.canActivateWorkflow(100))
     }
 
     @Test
-    fun `free workflow limit is 1`() {
-        assertEquals(1, PlanState.FREE_WORKFLOW_LIMIT)
+    fun `free active workflow limit is 1`() {
+        assertEquals(1, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
     }
 
     @Test
@@ -49,10 +51,22 @@ class PlanStateTest {
     }
 
     @Test
-    fun `seeded workflow counts toward free limit`() {
-        // The seeded "Article Briefing" workflow is a normal workflow.
-        // With 1 seeded workflow, a free user should NOT be able to create another.
-        val state = PlanState(PlanType.FREE, PlanState.FREE_WORKFLOW_LIMIT)
-        assertFalse(state.canCreateWorkflow(1)) // 1 seeded workflow = at limit
+    fun `free user can create unlimited workflows - gating is on activation not creation`() {
+        // The free tier no longer limits workflow creation count.
+        // Only activation (isEnabled) is limited to 1 at a time.
+        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
+        // With 0 active, can activate one
+        assertTrue(state.canActivateWorkflow(0))
+        // With 1 active, cannot activate another
+        assertFalse(state.canActivateWorkflow(1))
+        // But creating (saving) workflows is unrestricted - no method to block it
+    }
+
+    @Test
+    fun `seeded workflow counts as active if enabled`() {
+        // The seeded "Article Briefing" workflow is isEnabled=true.
+        // A free user with this active should not be able to activate another.
+        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
+        assertFalse(state.canActivateWorkflow(1)) // 1 active = at limit
     }
 }

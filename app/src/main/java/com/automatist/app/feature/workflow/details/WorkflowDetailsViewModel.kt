@@ -56,9 +56,54 @@ class WorkflowDetailsViewModel @Inject constructor(
     val planState = accessRepository.planState
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlanState())
 
-    suspend fun canCreateWorkflow(): Boolean {
-        val count = repository.getAllTemplates().first().size
-        return accessRepository.currentPlanState().canCreateWorkflow(count)
+    /**
+     * Check whether the user can activate (enable) this workflow.
+     * Free users are limited to 1 active workflow at a time.
+     * Returns null if activation is allowed, or the name of the currently active
+     * workflow that blocks activation (so the UI can offer a switch).
+     */
+    suspend fun checkActivationBlocked(): String? {
+        val plan = accessRepository.currentPlanState()
+        if (plan.isProUnlocked) return null
+
+        val thisId = templateId
+        val allTemplates = repository.getAllTemplates().first()
+        val activeOthers = allTemplates.filter { it.isEnabled && it.id != thisId }
+        return if (plan.canActivateWorkflow(activeOthers.size)) null
+        else activeOthers.firstOrNull()?.name ?: "another workflow"
+    }
+
+    /**
+     * Deactivate all other active workflows, then enable this one.
+     * Used by the "Switch Active" flow for free users.
+     */
+    fun switchActiveToThis() {
+        viewModelScope.launch {
+            val template = _state.value.template ?: return@launch
+            val allTemplates = repository.getAllTemplates().first()
+
+            // Disable all other enabled workflows and cancel their schedules
+            allTemplates.filter { it.isEnabled && it.id != template.id }.forEach { other ->
+                repository.updateTemplate(
+                    other.copy(isEnabled = false, updatedAtMillis = System.currentTimeMillis())
+                )
+                scheduleManager.cancelSchedule(other.id)
+            }
+
+            // Enable this one
+            val updated = template.copy(isEnabled = true, updatedAtMillis = System.currentTimeMillis())
+            repository.updateTemplate(updated)
+            _state.update { it.copy(template = updated) }
+
+            if (updated.trigger !is WorkflowTrigger.Manual) {
+                scheduleManager.scheduleWorkflow(templateId, updated.trigger)
+            }
+
+            val info = withContext(Dispatchers.IO) {
+                scheduleManager.getScheduleStatusSync(templateId)
+            }
+            _state.update { it.copy(scheduleInfo = info) }
+        }
     }
 
     init {
@@ -111,34 +156,41 @@ class WorkflowDetailsViewModel @Inject constructor(
         }
     }
 
-    fun toggleEnabled() {
-        viewModelScope.launch {
-            val template = _state.value.template ?: return@launch
-            val newEnabled = !template.isEnabled
-            val updated = template.copy(
-                isEnabled = newEnabled,
-                updatedAtMillis = System.currentTimeMillis()
-            )
-            repository.updateTemplate(updated)
-            _state.update { it.copy(template = updated) }
+    /**
+     * Toggle enabled state. When enabling, checks activation limit for free users.
+     * Returns the name of the blocking active workflow if gated, or null on success.
+     */
+    suspend fun toggleEnabled(): String? {
+        val template = _state.value.template ?: return null
+        val newEnabled = !template.isEnabled
 
-            // Sync scheduling
-            if (newEnabled) {
-                // Re-register schedule if trigger is not Manual
-                if (updated.trigger !is WorkflowTrigger.Manual) {
-                    scheduleManager.scheduleWorkflow(templateId, updated.trigger)
-                }
-            } else {
-                // Cancel scheduled runs
-                scheduleManager.cancelSchedule(templateId)
-            }
-
-            // Refresh schedule info
-            val info = withContext(Dispatchers.IO) {
-                scheduleManager.getScheduleStatusSync(templateId)
-            }
-            _state.update { it.copy(scheduleInfo = info) }
+        // If enabling, check activation limit
+        if (newEnabled) {
+            val blockingName = checkActivationBlocked()
+            if (blockingName != null) return blockingName
         }
+
+        val updated = template.copy(
+            isEnabled = newEnabled,
+            updatedAtMillis = System.currentTimeMillis()
+        )
+        repository.updateTemplate(updated)
+        _state.update { it.copy(template = updated) }
+
+        // Sync scheduling
+        if (newEnabled) {
+            if (updated.trigger !is WorkflowTrigger.Manual) {
+                scheduleManager.scheduleWorkflow(templateId, updated.trigger)
+            }
+        } else {
+            scheduleManager.cancelSchedule(templateId)
+        }
+
+        val info = withContext(Dispatchers.IO) {
+            scheduleManager.getScheduleStatusSync(templateId)
+        }
+        _state.update { it.copy(scheduleInfo = info) }
+        return null
     }
 
     fun showDeleteDialog() {
