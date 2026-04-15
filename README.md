@@ -303,6 +303,51 @@ Sign in with Google → CloudSyncManager → Export workflows (secret-free) → 
 
 ---
 
+## App Icon Assets
+
+The Automatist launcher icon uses Android adaptive icon layers (API 26+) with monochrome themed icon support (API 33+), plus legacy pre-composed bitmaps for older launchers.
+
+### Background
+
+The original icon artwork filled ~76% of the adaptive icon canvas, which caused the three circular nodes of the symbol to be cropped by launcher masking on Samsung One UI and other OEMs that apply aggressive circular or squircle masks. The fix was to reduce the artwork scale to 45% fill with 89px padding per side on the 432px adaptive canvas, keeping the design identical but ensuring full visibility under all launcher mask shapes including parallax-shifted states.
+
+### Final approved sizing
+
+| Parameter | Value |
+|-----------|-------|
+| Adaptive canvas | 432 x 432 px |
+| Artwork fill | 45% of canvas width |
+| Scaled artwork size | 254 x 254 px |
+| Padding per side | 89 px |
+
+### Android resource locations
+
+| File | Location |
+|------|----------|
+| Foreground layer | `app/src/main/res/drawable/ic_launcher_foreground.png` |
+| Background layer | `app/src/main/res/drawable/ic_launcher_background.png` |
+| Monochrome layer | `app/src/main/res/drawable/ic_launcher_monochrome.png` |
+| Adaptive XML | `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` |
+| Adaptive XML (round) | `app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml` |
+| Legacy mdpi (48x48) | `app/src/main/res/mipmap-mdpi/ic_launcher.png` |
+| Legacy hdpi (72x72) | `app/src/main/res/mipmap-hdpi/ic_launcher.png` |
+| Legacy xhdpi (96x96) | `app/src/main/res/mipmap-xhdpi/ic_launcher.png` |
+| Legacy xxhdpi (144x144) | `app/src/main/res/mipmap-xxhdpi/ic_launcher.png` |
+| Legacy xxxhdpi (192x192) | `app/src/main/res/mipmap-xxxhdpi/ic_launcher.png` |
+| Play Store icon (512x512) | `play-store/play_store_icon_512.png` |
+
+The Play Store icon is not an Android runtime resource. Upload it manually to Google Play Console during release.
+
+### Source files
+
+The master source image and all generated exports are kept in `icons/` at the project root for reference. The Android project resources in `res/` are the copies that ship with the app.
+
+### Future changes
+
+Do not regenerate or resize icons without testing on a real device with an aggressive launcher mask (e.g., Samsung One UI circular mask). The 45% fill ratio was chosen specifically to prevent cropping across Samsung, Pixel, and stock Android launchers. If the icon design changes, regenerate all assets from the new master and re-verify on-device before merging.
+
+---
+
 ## License
 
 <!-- Add your license here -->
