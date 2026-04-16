@@ -22,6 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.automatist.app.domain.actions.WorkflowActionRegistry
 import com.automatist.app.domain.models.*
 import com.automatist.app.domain.readiness.WorkflowReadiness
+import com.automatist.app.feature.vault.SettingsSection
 import com.automatist.app.feature.workflow.components.ActionBlockList
 import com.automatist.app.feature.workflow.components.ProfilePicker
 
@@ -31,7 +32,7 @@ fun WorkflowEditorScreen(
     onBack: () -> Unit,
     onSaved: (Long) -> Unit,
     onTestRun: (Long) -> Unit,
-    onNavigateToSettings: () -> Unit = {},
+    onNavigateToSettings: (String) -> Unit = {},
     viewModel: WorkflowEditorViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -233,7 +234,7 @@ fun WorkflowEditorScreen(
                 availableWorkflows = availableWorkflows,
                 availableProfiles = availableProfiles,
                 readinessEvaluator = viewModel.readinessEvaluator,
-                onNavigateToSettings = onNavigateToSettings
+                onNavigateToSettings = { onNavigateToSettings(SettingsSection.SERVICE_KEYS.key) }
             )
 
             // ── Section 4: Processing Instructions ──
@@ -971,15 +972,22 @@ private fun SocialPlatformSection(
 @Composable
 private fun ReadinessBar(
     readiness: WorkflowReadiness?,
-    onSetup: () -> Unit
+    onSetup: (String) -> Unit
 ) {
     if (readiness == null) return
+    // Don't show readiness bar for empty workflows — there's nothing to evaluate yet
+    if (readiness.totalCount == 0 && readiness.profileIssues.isEmpty()) return
 
-    val containerColor = if (readiness.isFullyReady)
+    val hasActionIssues = readiness.needsSetupActions.isNotEmpty()
+    val hasProfileIssues = readiness.profileIssues.isNotEmpty()
+    // If not fully ready but there are no actionable issues to show, treat as ready
+    val effectivelyReady = readiness.isFullyReady || (!hasActionIssues && !hasProfileIssues)
+
+    val containerColor = if (effectivelyReady)
         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
     else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
 
-    val contentColor = if (readiness.isFullyReady)
+    val contentColor = if (effectivelyReady)
         MaterialTheme.colorScheme.onPrimaryContainer
     else MaterialTheme.colorScheme.onErrorContainer
 
@@ -989,31 +997,53 @@ private fun ReadinessBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                if (readiness.isFullyReady) Icons.Default.CheckCircle else Icons.Default.Warning,
+                if (effectivelyReady) Icons.Default.CheckCircle else Icons.Default.Warning,
                 null,
                 tint = contentColor,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
-                if (readiness.isFullyReady) {
-                    Text("Ready to run", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, color = contentColor)
-                } else {
-                    val setupCount = readiness.needsSetupActions.size
-                    Text(
-                        "$setupCount action(s) need setup",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = contentColor
-                    )
-                    val names = readiness.needsSetupActions.joinToString(", ") {
-                        WorkflowActionRegistry.getInfo(it.type).displayName
+                when {
+                    effectivelyReady -> {
+                        Text("Ready to run", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium, color = contentColor)
                     }
-                    Text(names, style = MaterialTheme.typography.bodySmall, color = contentColor.copy(alpha = 0.8f))
+                    hasActionIssues -> {
+                        val setupCount = readiness.needsSetupActions.size
+                        Text(
+                            "$setupCount action(s) need setup",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = contentColor
+                        )
+                        val names = readiness.needsSetupActions.joinToString(", ") {
+                            WorkflowActionRegistry.getInfo(it.type).displayName
+                        }
+                        Text(names, style = MaterialTheme.typography.bodySmall, color = contentColor.copy(alpha = 0.8f))
+                    }
+                    hasProfileIssues -> {
+                        Text(
+                            "AI provider needs setup",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = contentColor
+                        )
+                        Text(
+                            readiness.profileIssues.first(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor.copy(alpha = 0.8f),
+                            maxLines = 2
+                        )
+                    }
                 }
             }
-            if (!readiness.isFullyReady) {
-                TextButton(onClick = onSetup) {
+            if (!effectivelyReady) {
+                // Route to the correct settings section based on the actual issue
+                val section = if (hasProfileIssues && !hasActionIssues)
+                    SettingsSection.PROVIDER_KEYS.key
+                else
+                    SettingsSection.SERVICE_KEYS.key
+                TextButton(onClick = { onSetup(section) }) {
                     Text("Fix in Settings", color = contentColor)
                 }
             }

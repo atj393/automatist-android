@@ -209,7 +209,7 @@ fun AutomatistNavGraph(
                     navController.navigate("${Routes.WORKFLOW_DETAILS}/$id")
                 },
                 onTestRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
-                onNavigateToSettings = { navController.navigate("${Routes.VAULT}?section=${SettingsSection.SERVICE_KEYS.key}") }
+                onNavigateToSettings = { section -> navController.navigate("${Routes.VAULT}?section=$section") }
             )
         }
 
