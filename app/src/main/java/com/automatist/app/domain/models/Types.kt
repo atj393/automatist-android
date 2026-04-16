@@ -24,7 +24,9 @@ enum class ProviderType(val displayName: String) {
     OPENAI("OpenAI"),
     ANTHROPIC("Anthropic"),
     GEMINI("Google Gemini"),
-    OPENAI_COMPATIBLE("OpenAI-Compatible")
+    OPENAI_COMPATIBLE("OpenAI-Compatible"),
+    /** On-device AI: runs locally without internet or API key. See [com.automatist.app.domain.offline.OfflineModelCatalog]. */
+    LOCAL_AI("On-device AI")
 }
 
 @Serializable
