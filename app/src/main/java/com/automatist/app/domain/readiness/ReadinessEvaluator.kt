@@ -79,6 +79,17 @@ class ReadinessEvaluator @Inject constructor(
      * Evaluate readiness for an entire workflow template, including profile chain validation.
      */
     suspend fun evaluateWorkflow(template: WorkflowTemplate): WorkflowReadiness {
+        // Empty workflows are clean drafts — nothing to validate yet.
+        // Profile and service-key checks only become relevant once actions are added.
+        if (template.actions.isEmpty()) {
+            return WorkflowReadiness(
+                isFullyReady = true,
+                actionReadiness = emptyList(),
+                hasProviderProfile = workflowRepository.getDefaultProfile() != null,
+                profileIssues = emptyList()
+            )
+        }
+
         val actionTypes = template.actions.map { it.type }.distinct()
         val actionReadiness = actionTypes.map { evaluateAction(it) }
 
