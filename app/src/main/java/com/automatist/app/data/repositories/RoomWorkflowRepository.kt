@@ -85,6 +85,15 @@ class RoomWorkflowRepository @Inject constructor(
         dao.updateProfile(profile.copy(isDefault = true))
     }
 
+    override suspend fun getFallbackProfile(): ProviderProfile? =
+        dao.getFallbackProfile()?.toDomain()
+
+    override suspend fun setFallbackProfile(id: String) {
+        dao.clearFallbackProfiles()
+        val profile = dao.getProfileById(id) ?: return
+        dao.updateProfile(profile.copy(isFallback = true))
+    }
+
     // ── Saved Notes ──
 
     override fun getAllNotes(): Flow<List<SavedNote>> =

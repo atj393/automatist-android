@@ -6,7 +6,10 @@ data class ArticleInput(
     val text: String,
     val systemPromptOverride: String? = null,
     val profileId: String? = null,     // provider profile ID (null = use app default)
-    val modelOverride: String? = null  // model ID override (null = use profile's default model)
+    val modelOverride: String? = null, // model ID override (null = use profile's default model)
+    // ── Custom provider fields (populated by router from profile) ──
+    val customBaseUrl: String? = null,
+    val customApiKeyId: String? = null
 )
 
 @Serializable

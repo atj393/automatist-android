@@ -102,4 +102,10 @@ interface WorkflowDao {
 
     @Query("UPDATE provider_profiles SET isDefault = 0")
     suspend fun clearDefaultProfiles()
+
+    @Query("SELECT * FROM provider_profiles WHERE isFallback = 1 LIMIT 1")
+    suspend fun getFallbackProfile(): ProviderProfileEntity?
+
+    @Query("UPDATE provider_profiles SET isFallback = 0")
+    suspend fun clearFallbackProfiles()
 }

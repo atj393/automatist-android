@@ -11,7 +11,7 @@ import androidx.room.RoomDatabase
         SavedNoteEntity::class,
         ProviderProfileEntity::class
     ],
-    version = 12,
+    version = 15,
     exportSchema = false
 )
 abstract class AutomatistDatabase : RoomDatabase() {

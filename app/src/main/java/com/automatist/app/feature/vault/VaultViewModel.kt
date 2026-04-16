@@ -14,26 +14,30 @@ import java.util.UUID
 import javax.inject.Inject
 
 data class VaultUiState(
-    // Provider API keys
     val providerKeyStatus: Map<ProviderType, Boolean> = emptyMap(),
-    val activeProvider: ProviderType = ProviderType.FAKE,
-
-    // Service keys
     val serviceKeyStatus: Map<String, Boolean> = emptyMap(),
-
-    // Provider profiles
+    val customServiceKeys: List<String> = emptyList(),
     val profiles: List<ProviderProfile> = emptyList(),
 
     // Profile editor
     val isProfileEditorOpen: Boolean = false,
     val editingProfile: ProviderProfile? = null,
-    val profileEditorName: String = "",
-    val profileEditorProvider: ProviderType = ProviderType.OPENAI,
-    val profileEditorModel: String = "",
-    val profileEditorError: String? = null,
+    val editorName: String = "",
+    val editorCatalogEntry: CatalogEntry = ProviderCatalog.ALL_ENTRIES.first(),
+    val editorModel: String = "",              // selected from suggested list
+    val editorCustomModel: String = "",        // typed custom model
+    val editorUseCustomModel: Boolean = false,
+    val editorCustomBaseUrl: String = "",       // for presets/custom - may be pre-filled
+    val editorCustomProviderName: String = "",  // for Custom Provider only
+    val editorApiKey: String = "",
+    val editorHasExistingKey: Boolean = false,
+    val editorError: String? = null,
 
-    // Checklist: whether the user has at least one workflow
-    val hasAnyWorkflow: Boolean = false
+    // Getting Started
+    val setupProviderDone: Boolean = false,
+    val setupProfileDone: Boolean = false,
+    val setupDefaultDone: Boolean = false,
+    val setupWorkflowDone: Boolean = false
 )
 
 @HiltViewModel
@@ -44,43 +48,31 @@ class VaultViewModel @Inject constructor(
 ) : ViewModel() {
 
     companion object {
-        val SERVICE_KEYS = listOf(
-            ServiceKeyInfo(
-                id = "openweathermap",
-                displayName = "OpenWeatherMap",
-                description = "Weather data for workflows",
-                helpText = "Create a free API key to fetch current weather conditions in your workflows.",
-                signUpUrl = "https://home.openweathermap.org/api_keys",
-                steps = listOf(
-                    "Open the link below and create a free account (or sign in)",
-                    "Go to 'API keys' in your account",
-                    "Copy the default key or generate a new one",
-                    "Paste it here and tap Save"
-                )
-            ),
-            ServiceKeyInfo(
-                id = "openrouteservice",
-                displayName = "OpenRouteService",
-                description = "Route and commute time data",
-                helpText = "Create a free API key to get travel time and distance in your workflows.",
-                signUpUrl = "https://api.openrouteservice.org/",
-                steps = listOf(
-                    "Open the link below and create a free account",
-                    "Go to your dashboard and create a new token/key",
-                    "Copy the generated API key",
-                    "Paste it here and tap Save"
-                )
-            )
+        val BUILT_IN_SERVICE_KEYS = listOf(
+            ServiceKeyInfo("openweathermap", "OpenWeatherMap", "Weather data for workflows",
+                "Create a free API key to fetch current weather conditions.",
+                "https://home.openweathermap.org/api_keys",
+                listOf("Create a free account at OpenWeatherMap", "Go to 'API keys'", "Copy the key", "Paste here")),
+            ServiceKeyInfo("openrouteservice", "OpenRouteService", "Route and commute time data",
+                "Create a free API key to get travel time and distance.",
+                "https://api.openrouteservice.org/",
+                listOf("Create a free account", "Create a token", "Copy the API key", "Paste here")),
+            ServiceKeyInfo("newsapi", "NewsAPI", "News headlines and articles",
+                "Fetch top headlines and search news.",
+                "https://newsapi.org/register",
+                listOf("Register at NewsAPI.org", "Copy your API key", "Paste here")),
+            ServiceKeyInfo("serpapi", "SerpApi", "Web search results",
+                "Fetch Google search results.",
+                "https://serpapi.com/manage-api-key",
+                listOf("Sign up at serpapi.com", "Copy your API key", "Paste here"))
         )
+        val SERVICE_KEYS get() = BUILT_IN_SERVICE_KEYS
+        private const val CUSTOM_SERVICE_KEYS_PREF = "custom_service_key_ids"
     }
 
     data class ServiceKeyInfo(
-        val id: String,
-        val displayName: String,
-        val description: String,
-        val helpText: String = "",
-        val signUpUrl: String = "",
-        val steps: List<String> = emptyList()
+        val id: String, val displayName: String, val description: String,
+        val helpText: String = "", val signUpUrl: String = "", val steps: List<String> = emptyList()
     )
 
     private val _state = MutableStateFlow(VaultUiState())
@@ -91,203 +83,217 @@ class VaultViewModel @Inject constructor(
 
     init {
         loadAllStatus()
-        autoMigrateLegacyProvider()
+        viewModelScope.launch { profiles.collect { list -> _state.update { it.copy(profiles = list) } } }
         viewModelScope.launch {
-            profiles.collect { profileList ->
-                _state.update { it.copy(profiles = profileList) }
+            settingsRepository.setupProgress.collect { p ->
+                _state.update { it.copy(setupProviderDone = p.providerDone, setupProfileDone = p.profileDone, setupDefaultDone = p.defaultDone, setupWorkflowDone = p.workflowDone) }
             }
-        }
-        viewModelScope.launch {
-            settingsRepository.settings.collect { settings ->
-                _state.update { it.copy(activeProvider = settings.activeProvider) }
-            }
-        }
-        viewModelScope.launch {
-            workflowRepository.getAllTemplates().collect { templates ->
-                _state.update { it.copy(hasAnyWorkflow = templates.isNotEmpty()) }
-            }
-        }
-    }
-
-    /**
-     * Auto-create a provider profile from the legacy activeProvider if:
-     * - No profiles exist yet
-     * - The legacy activeProvider is a real cloud provider (not FAKE)
-     * - That provider has an API key configured
-     *
-     * This runs once on Settings open and creates a smooth migration path.
-     */
-    private fun autoMigrateLegacyProvider() {
-        viewModelScope.launch {
-            val existingProfiles = workflowRepository.getAllProfiles().first()
-            if (existingProfiles.isNotEmpty()) return@launch
-
-            val settings = settingsRepository.settings.first()
-            val provider = settings.activeProvider
-            if (provider == ProviderType.FAKE) return@launch
-
-            val hasKey = !secureStorage.getApiKey(provider).isNullOrBlank()
-            if (!hasKey) return@launch
-
-            val defaultModel = ProviderModels.defaultModelFor(provider)
-            val now = System.currentTimeMillis()
-
-            val profile = ProviderProfile(
-                id = UUID.randomUUID().toString(),
-                name = "${provider.displayName} (Migrated)",
-                providerType = provider,
-                modelId = defaultModel,
-                isDefault = true,
-                isEnabled = true,
-                createdAtMillis = now,
-                updatedAtMillis = now
-            )
-
-            workflowRepository.saveProfile(profile)
         }
     }
 
     private fun loadAllStatus() {
         viewModelScope.launch {
-            // Provider API keys
             val providerStatus = mutableMapOf<ProviderType, Boolean>()
-            ProviderType.entries.filter { it != ProviderType.FAKE }.forEach { provider ->
-                providerStatus[provider] = !secureStorage.getApiKey(provider).isNullOrBlank()
+            ProviderType.entries.filter { it != ProviderType.FAKE && it != ProviderType.OPENAI_COMPATIBLE }.forEach {
+                providerStatus[it] = !secureStorage.getApiKey(it).isNullOrBlank()
             }
-
-            // Service keys
             val serviceStatus = mutableMapOf<String, Boolean>()
-            SERVICE_KEYS.forEach { info ->
-                serviceStatus[info.id] = !secureStorage.getServiceKey(info.id).isNullOrBlank()
-            }
-
-            _state.update { it.copy(providerKeyStatus = providerStatus, serviceKeyStatus = serviceStatus) }
+            BUILT_IN_SERVICE_KEYS.forEach { serviceStatus[it.id] = !secureStorage.getServiceKey(it.id).isNullOrBlank() }
+            val customIds = loadCustomServiceKeyIds()
+            customIds.forEach { serviceStatus[it] = !secureStorage.getServiceKey(it).isNullOrBlank() }
+            _state.update { it.copy(providerKeyStatus = providerStatus, serviceKeyStatus = serviceStatus, customServiceKeys = customIds) }
         }
     }
 
-    // ── Provider API Keys ──
-
-    fun setActiveProvider(provider: ProviderType) {
-        viewModelScope.launch { settingsRepository.setActiveProvider(provider) }
+    private suspend fun loadCustomServiceKeyIds(): List<String> {
+        val raw = secureStorage.getServiceKey(CUSTOM_SERVICE_KEYS_PREF)
+        return if (raw.isNullOrBlank()) emptyList() else raw.split(",").filter { it.isNotBlank() }
     }
-
-    fun saveProviderKey(provider: ProviderType, key: String) {
-        viewModelScope.launch {
-            secureStorage.saveApiKey(provider, key)
-            loadAllStatus()
-        }
-    }
-
-    fun removeProviderKey(provider: ProviderType) {
-        viewModelScope.launch {
-            secureStorage.clearApiKey(provider)
-            if (_state.value.activeProvider == provider) {
-                settingsRepository.setActiveProvider(ProviderType.FAKE)
-            }
-            loadAllStatus()
-        }
+    private suspend fun saveCustomServiceKeyIds(ids: List<String>) {
+        secureStorage.saveServiceKey(CUSTOM_SERVICE_KEYS_PREF, ids.joinToString(","))
     }
 
     // ── Service Keys ──
-
-    fun saveServiceKey(serviceId: String, key: String) {
+    fun saveServiceKey(id: String, key: String) { viewModelScope.launch { secureStorage.saveServiceKey(id, key); loadAllStatus() } }
+    fun removeServiceKey(id: String) { viewModelScope.launch { secureStorage.clearServiceKey(id); loadAllStatus() } }
+    fun addCustomServiceKey(id: String, key: String) {
         viewModelScope.launch {
-            secureStorage.saveServiceKey(serviceId, key)
+            val s = id.trim().lowercase().replace(Regex("[^a-z0-9_-]"), "_"); if (s.isBlank()) return@launch
+            secureStorage.saveServiceKey(s, key)
+            val ids = loadCustomServiceKeyIds().toMutableList(); if (s !in ids) { ids.add(s); saveCustomServiceKeyIds(ids) }
             loadAllStatus()
         }
     }
-
-    fun removeServiceKey(serviceId: String) {
+    fun removeCustomServiceKey(id: String) {
         viewModelScope.launch {
-            secureStorage.clearServiceKey(serviceId)
-            loadAllStatus()
+            secureStorage.clearServiceKey(id)
+            val ids = loadCustomServiceKeyIds().toMutableList(); ids.remove(id); saveCustomServiceKeyIds(ids); loadAllStatus()
         }
     }
 
-    // ── Provider Profiles ──
+    // ── Profile Editor ──
 
     fun openNewProfile() {
+        val entry = ProviderCatalog.ALL_ENTRIES.first() // OpenAI
         _state.update {
             it.copy(
-                isProfileEditorOpen = true,
-                editingProfile = null,
-                profileEditorName = "",
-                profileEditorProvider = ProviderType.OPENAI,
-                profileEditorModel = ProviderModels.defaultModelFor(ProviderType.OPENAI),
-                profileEditorError = null
+                isProfileEditorOpen = true, editingProfile = null, editorName = "",
+                editorCatalogEntry = entry, editorModel = entry.defaultModel,
+                editorCustomModel = "", editorUseCustomModel = false,
+                editorCustomBaseUrl = entry.presetBaseUrl, editorCustomProviderName = "",
+                editorApiKey = "", editorHasExistingKey = false, editorError = null
             )
         }
+        checkEditorKey(entry)
     }
 
     fun openEditProfile(profile: ProviderProfile) {
+        val entry = ProviderCatalog.resolveForProfile(profile)
+        val builtInModels = entry.suggestedModels.map { it.first }
+        val modelInList = profile.modelId in builtInModels
         _state.update {
             it.copy(
-                isProfileEditorOpen = true,
-                editingProfile = profile,
-                profileEditorName = profile.name,
-                profileEditorProvider = profile.providerType,
-                profileEditorModel = profile.modelId,
-                profileEditorError = null
+                isProfileEditorOpen = true, editingProfile = profile, editorName = profile.name,
+                editorCatalogEntry = entry,
+                editorModel = if (modelInList) profile.modelId else (entry.defaultModel),
+                editorCustomModel = if (!modelInList) profile.modelId else "",
+                editorUseCustomModel = !modelInList && entry.suggestedModels.isNotEmpty(),
+                editorCustomBaseUrl = profile.customBaseUrl.ifBlank { entry.presetBaseUrl },
+                editorCustomProviderName = if (entry.category == CatalogCategory.CUSTOM) profile.name else "",
+                editorApiKey = "", editorHasExistingKey = false, editorError = null
             )
         }
+        viewModelScope.launch {
+            val hasKey = if (profile.usesPerProfileKey) secureStorage.hasProfileKey(profile.customApiKeyId)
+            else if (entry.category == CatalogCategory.NATIVE && profile.providerType != ProviderType.FAKE) !secureStorage.getApiKey(profile.providerType).isNullOrBlank()
+            else profile.providerType == ProviderType.FAKE
+            _state.update { it.copy(editorHasExistingKey = hasKey) }
+        }
     }
 
-    fun closeProfileEditor() {
-        _state.update { it.copy(isProfileEditorOpen = false, profileEditorError = null) }
+    fun closeProfileEditor() { _state.update { it.copy(isProfileEditorOpen = false, editorError = null) } }
+
+    fun selectCatalogEntry(entry: CatalogEntry) {
+        _state.update {
+            it.copy(
+                editorCatalogEntry = entry, editorModel = entry.defaultModel,
+                editorCustomModel = "", editorUseCustomModel = false,
+                editorCustomBaseUrl = entry.presetBaseUrl, editorCustomProviderName = "",
+                editorApiKey = "", editorHasExistingKey = false
+            )
+        }
+        checkEditorKey(entry)
     }
 
-    fun updateProfileName(name: String) = _state.update { it.copy(profileEditorName = name) }
-    fun updateProfileProvider(provider: ProviderType) = _state.update {
-        it.copy(
-            profileEditorProvider = provider,
-            profileEditorModel = ProviderModels.defaultModelFor(provider)
-        )
+    private fun checkEditorKey(entry: CatalogEntry) {
+        viewModelScope.launch {
+            val hasKey = when {
+                entry.runtimeType == ProviderType.FAKE -> true
+                entry.category == CatalogCategory.NATIVE -> !secureStorage.getApiKey(entry.runtimeType).isNullOrBlank()
+                else -> false // preset/custom always per-profile, new profile has no key yet
+            }
+            _state.update { it.copy(editorHasExistingKey = hasKey) }
+        }
     }
-    fun updateProfileModel(model: String) = _state.update { it.copy(profileEditorModel = model) }
+
+    fun updateEditorName(n: String) = _state.update { it.copy(editorName = n) }
+    fun updateEditorModel(m: String) = _state.update { it.copy(editorModel = m) }
+    fun updateEditorCustomModel(m: String) = _state.update { it.copy(editorCustomModel = m) }
+    fun toggleEditorCustomModel(use: Boolean) = _state.update { it.copy(editorUseCustomModel = use) }
+    fun updateEditorCustomBaseUrl(u: String) = _state.update { it.copy(editorCustomBaseUrl = u) }
+    fun updateEditorCustomProviderName(n: String) = _state.update { it.copy(editorCustomProviderName = n) }
+    fun updateEditorApiKey(k: String) = _state.update { it.copy(editorApiKey = k) }
+
+    fun removeKeyForCurrentEditor() {
+        viewModelScope.launch {
+            val s = _state.value; val existing = s.editingProfile
+            if (existing != null && existing.usesPerProfileKey) secureStorage.clearProfileKey(existing.customApiKeyId)
+            else if (s.editorCatalogEntry.category == CatalogCategory.NATIVE && s.editorCatalogEntry.runtimeType != ProviderType.FAKE)
+                secureStorage.clearApiKey(s.editorCatalogEntry.runtimeType)
+            _state.update { it.copy(editorHasExistingKey = false, editorApiKey = "") }
+            loadAllStatus()
+        }
+    }
 
     fun saveProfile() {
-        val current = _state.value
-        if (current.profileEditorName.isBlank()) {
-            _state.update { it.copy(profileEditorError = "Name is required.") }
-            return
-        }
+        val s = _state.value
+        val entry = s.editorCatalogEntry
+        if (s.editorName.isBlank()) { _state.update { it.copy(editorError = "Name is required.") }; return }
+
+        val isCustom = entry.category == CatalogCategory.CUSTOM
+        val isPreset = entry.category == CatalogCategory.PRESET
+        val needsBaseUrl = isCustom || isPreset
+        val needsModel = entry.runtimeType != ProviderType.FAKE
+
+        // Resolve model
+        val finalModel = if (s.editorUseCustomModel || entry.suggestedModels.isEmpty()) {
+            val m = s.editorCustomModel.trim()
+            if (needsModel && m.isBlank()) { _state.update { it.copy(editorError = "Model is required.") }; return }
+            m
+        } else s.editorModel
+
+        // Resolve base URL
+        val finalBaseUrl = if (needsBaseUrl) {
+            val u = s.editorCustomBaseUrl.trim()
+            if (u.isBlank()) { _state.update { it.copy(editorError = "Base URL is required.") }; return }
+            u
+        } else ""
 
         viewModelScope.launch {
             val now = System.currentTimeMillis()
-            val existing = current.editingProfile
+            val existing = s.editingProfile
+            val usesPerProfile = entry.usesPerProfileKey
+
+            // Handle key
+            val apiKeyId: String
+            if (usesPerProfile) {
+                apiKeyId = existing?.customApiKeyId?.takeIf { it.isNotBlank() }
+                    ?: "profile_${existing?.id ?: UUID.randomUUID().toString()}"
+                if (s.editorApiKey.isNotBlank()) secureStorage.saveProfileKey(apiKeyId, s.editorApiKey)
+                if (s.editorApiKey.isNotBlank()) settingsRepository.markProviderSetupDone()
+            } else if (entry.runtimeType != ProviderType.FAKE) {
+                apiKeyId = ""
+                if (s.editorApiKey.isNotBlank()) {
+                    secureStorage.saveApiKey(entry.runtimeType, s.editorApiKey)
+                    settingsRepository.markProviderSetupDone()
+                }
+            } else { apiKeyId = ""; settingsRepository.markProviderSetupDone() }
 
             val profile = ProviderProfile(
                 id = existing?.id ?: UUID.randomUUID().toString(),
-                name = current.profileEditorName.trim(),
-                providerType = current.profileEditorProvider,
-                modelId = current.profileEditorModel,
-                isDefault = existing?.isDefault ?: (current.profiles.isEmpty()),
+                name = s.editorName.trim(),
+                providerType = entry.runtimeType,
+                modelId = if (entry.runtimeType == ProviderType.FAKE) "fake-demo" else finalModel,
+                isDefault = existing?.isDefault ?: (s.profiles.isEmpty()),
+                isFallback = existing?.isFallback ?: false,
                 isEnabled = true,
                 createdAtMillis = existing?.createdAtMillis ?: now,
-                updatedAtMillis = now
+                updatedAtMillis = now,
+                customBaseUrl = finalBaseUrl,
+                customApiKeyId = apiKeyId,
+                providerPresetId = entry.id
             )
 
             workflowRepository.saveProfile(profile)
-            _state.update { it.copy(isProfileEditorOpen = false, profileEditorError = null) }
+            settingsRepository.markProfileSetupDone()
+            if (profile.isDefault) settingsRepository.markDefaultSetupDone()
+
+            _state.update { it.copy(isProfileEditorOpen = false, editorError = null) }
+            loadAllStatus()
         }
     }
 
     fun deleteProfile(id: String) {
-        viewModelScope.launch { workflowRepository.deleteProfile(id) }
-    }
-
-    fun setDefaultProfile(id: String) {
-        viewModelScope.launch { workflowRepository.setDefaultProfile(id) }
-    }
-
-    fun toggleProfileEnabled(profile: ProviderProfile) {
         viewModelScope.launch {
-            workflowRepository.saveProfile(
-                profile.copy(
-                    isEnabled = !profile.isEnabled,
-                    updatedAtMillis = System.currentTimeMillis()
-                )
-            )
+            val p = workflowRepository.getProfileById(id)
+            if (p?.usesPerProfileKey == true && p.customApiKeyId.isNotBlank()) secureStorage.clearProfileKey(p.customApiKeyId)
+            workflowRepository.deleteProfile(id)
         }
     }
+    fun setDefaultProfile(id: String) { viewModelScope.launch { workflowRepository.setDefaultProfile(id); settingsRepository.markDefaultSetupDone() } }
+    fun setFallbackProfile(id: String) { viewModelScope.launch { workflowRepository.setFallbackProfile(id) } }
+    fun toggleProfileEnabled(p: ProviderProfile) {
+        viewModelScope.launch { workflowRepository.saveProfile(p.copy(isEnabled = !p.isEnabled, updatedAtMillis = System.currentTimeMillis())) }
+    }
+    fun markWorkflowSetupDone() { viewModelScope.launch { settingsRepository.markWorkflowSetupDone() } }
 }
