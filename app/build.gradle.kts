@@ -140,6 +140,17 @@ dependencies {
     // Billing
     implementation(libs.billing)
 
+    // Google AI Edge — AICore (on-device Gemini Nano via Android system service)
+    // RELEASE NOTE: This is an experimental library (0.0.1-exp01). The API surface is
+    // small and stable for our use (GenerativeModel, prepareInferenceEngine, generateContent),
+    // but it may change in future releases. The feature is fully optional and gated:
+    //   - Requires Android 14+ (API 34) at runtime; all call sites guard with Build.VERSION check
+    //   - Only executes on AICore-capable devices (Pixel 8+, Galaxy S24+)
+    //   - Unsupported devices receive OfflineModelStatus.UNSUPPORTED gracefully, no crash
+    //   - AndroidManifest uses tools:overrideLibrary to resolve library minSdk 31 vs app minSdk 26
+    //   - Cloud/API provider paths are completely unaffected
+    implementation(libs.google.ai.edge.aicore)
+
     // Google Drive + Auth (Cloud Sync)
     implementation(libs.google.api.drive) {
         exclude(group = "org.apache.httpcomponents")
