@@ -39,6 +39,26 @@ class KeystoreSecureStorage @Inject constructor(
         }
     }
 
+    // Per-profile API keys (for custom / OPENAI_COMPATIBLE providers)
+    override suspend fun saveProfileKey(keyId: String, key: String) {
+        val prefKey = stringPreferencesKey("profile_key_$keyId")
+        context.secureDataStore.edit { prefs -> prefs[prefKey] = key }
+    }
+
+    override suspend fun getProfileKey(keyId: String): String? {
+        val prefKey = stringPreferencesKey("profile_key_$keyId")
+        return context.secureDataStore.data.first()[prefKey]
+    }
+
+    override suspend fun clearProfileKey(keyId: String) {
+        val prefKey = stringPreferencesKey("profile_key_$keyId")
+        context.secureDataStore.edit { prefs -> prefs.remove(prefKey) }
+    }
+
+    override suspend fun hasProfileKey(keyId: String): Boolean {
+        return !getProfileKey(keyId).isNullOrBlank()
+    }
+
     // External service API keys
     override suspend fun saveServiceKey(service: String, key: String) {
         val prefKey = stringPreferencesKey("service_key_$service")

@@ -86,6 +86,13 @@ class FakeWorkflowRepository : WorkflowRepository {
         profiles.value = profiles.value.map { it.copy(isDefault = it.id == id) }
     }
 
+    override suspend fun getFallbackProfile(): ProviderProfile? =
+        profiles.value.find { it.isFallback }
+
+    override suspend fun setFallbackProfile(id: String) {
+        profiles.value = profiles.value.map { it.copy(isFallback = it.id == id) }
+    }
+
     // ── Notes ──
 
     override fun getAllNotes(): Flow<List<SavedNote>> = notes

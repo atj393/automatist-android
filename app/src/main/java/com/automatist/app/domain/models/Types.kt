@@ -21,9 +21,10 @@ enum class TransformType(val displayName: String) {
 
 enum class ProviderType(val displayName: String) {
     FAKE("Local Fake Demo"),
-    OPENAI("OpenAI API"),
-    ANTHROPIC("Anthropic API"),
-    GEMINI("Google Gemini API")
+    OPENAI("OpenAI"),
+    ANTHROPIC("Anthropic"),
+    GEMINI("Google Gemini"),
+    OPENAI_COMPATIBLE("OpenAI-Compatible")
 }
 
 @Serializable

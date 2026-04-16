@@ -84,31 +84,38 @@ data class ProviderProfileEntity(
     val providerType: String,   // ProviderType.name
     val modelId: String,
     val isDefault: Boolean,
+    val isFallback: Boolean = false,
     val isEnabled: Boolean,
     val createdAtMillis: Long,
-    val updatedAtMillis: Long
+    val updatedAtMillis: Long,
+    val customBaseUrl: String = "",
+    val customApiKeyId: String = "",
+    val providerPresetId: String = ""
 )
 
 fun ProviderProfileEntity.toDomain() = ProviderProfile(
     id = id,
     name = name,
-    providerType = ProviderType.valueOf(providerType),
+    providerType = try { ProviderType.valueOf(providerType) } catch (_: Exception) { ProviderType.FAKE },
     modelId = modelId,
     isDefault = isDefault,
+    isFallback = isFallback,
     isEnabled = isEnabled,
     createdAtMillis = createdAtMillis,
-    updatedAtMillis = updatedAtMillis
+    updatedAtMillis = updatedAtMillis,
+    customBaseUrl = customBaseUrl,
+    customApiKeyId = customApiKeyId,
+    providerPresetId = providerPresetId
 )
 
 fun ProviderProfile.toEntity() = ProviderProfileEntity(
-    id = id,
-    name = name,
-    providerType = providerType.name,
-    modelId = modelId,
-    isDefault = isDefault,
-    isEnabled = isEnabled,
+    id = id, name = name, providerType = providerType.name, modelId = modelId,
+    isDefault = isDefault, isFallback = isFallback, isEnabled = isEnabled,
     createdAtMillis = createdAtMillis,
-    updatedAtMillis = updatedAtMillis
+    updatedAtMillis = updatedAtMillis,
+    customBaseUrl = customBaseUrl,
+    customApiKeyId = customApiKeyId,
+    providerPresetId = providerPresetId
 )
 
 // ── Saved Note Entity ──
