@@ -30,9 +30,11 @@ interface WorkflowRepository {
     fun getAllProfiles(): Flow<List<ProviderProfile>>
     suspend fun getProfileById(id: String): ProviderProfile?
     suspend fun getDefaultProfile(): ProviderProfile?
+    suspend fun getFallbackProfile(): ProviderProfile?
     suspend fun saveProfile(profile: ProviderProfile)
     suspend fun deleteProfile(id: String)
     suspend fun setDefaultProfile(id: String)
+    suspend fun setFallbackProfile(id: String)
 
     // Saved Notes
     fun getAllNotes(): Flow<List<SavedNote>>

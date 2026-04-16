@@ -3,6 +3,25 @@ package com.automatist.app.data.local
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE provider_profiles ADD COLUMN providerPresetId TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE provider_profiles ADD COLUMN customBaseUrl TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE provider_profiles ADD COLUMN customApiKeyId TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE provider_profiles ADD COLUMN isFallback INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 val MIGRATION_11_12 = object : Migration(11, 12) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE workflow_runs ADD COLUMN synthesisInput TEXT NOT NULL DEFAULT ''")

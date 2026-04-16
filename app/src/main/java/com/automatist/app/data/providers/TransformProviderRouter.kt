@@ -17,51 +17,55 @@ class TransformProviderRouter @Inject constructor(
     private val fakeProvider: FakeArticleTransformProvider,
     private val openAIProvider: OpenAIArticleTransformProvider,
     private val anthropicProvider: AnthropicArticleTransformProvider,
-    private val geminiProvider: GeminiArticleTransformProvider
+    private val geminiProvider: GeminiArticleTransformProvider,
+    private val openAICompatibleProvider: OpenAICompatibleProvider
 ) : ArticleTransformProvider {
 
     override suspend fun transform(
         input: ArticleInput,
         type: TransformType
     ): Result<TransformResult> {
-        // Resolve provider and model from profile if specified, otherwise fall back to app default
-        val resolved = resolveProviderAndModel(input.profileId)
+        val resolved = resolveProfile(input.profileId)
 
-        val providerType = resolved.first
-        val modelId = input.modelOverride ?: resolved.second
+        val providerType = resolved?.providerType ?: settingsRepository.settings.first().activeProvider
+        val modelId = input.modelOverride ?: resolved?.modelId
 
-        // Create input with model override applied
-        val routedInput = if (modelId != null) input.copy(modelOverride = modelId) else input
+        // For OPENAI_COMPATIBLE, pass custom fields through the input
+        val routedInput = input.copy(
+            modelOverride = modelId,
+            customBaseUrl = resolved?.customBaseUrl,
+            customApiKeyId = resolved?.customApiKeyId
+        )
 
         return when (providerType) {
             ProviderType.FAKE -> fakeProvider.transform(routedInput, type)
             ProviderType.OPENAI -> openAIProvider.transform(routedInput, type)
             ProviderType.ANTHROPIC -> anthropicProvider.transform(routedInput, type)
             ProviderType.GEMINI -> geminiProvider.transform(routedInput, type)
+            ProviderType.OPENAI_COMPATIBLE -> openAICompatibleProvider.transform(routedInput, type)
         }
     }
 
     /**
-     * Resolves provider type and optional model ID from a profile ID.
-     * Falls back to app default provider if profile not found or not specified.
+     * Resolves a provider profile from a profile ID.
+     * Resolution order:
+     * 1. Explicit profile ID from workflow/action
+     * 2. App default profile (isDefault = true)
+     * 3. Fallback profile (isFallback = true)
+     * 4. null (caller uses legacy activeProvider)
      */
-    private suspend fun resolveProviderAndModel(profileId: String?): Pair<ProviderType, String?> {
-        // Try explicit profile ID
+    private suspend fun resolveProfile(profileId: String?): ProviderProfile? {
         if (!profileId.isNullOrBlank()) {
             val profile = workflowRepository.getProfileById(profileId)
-            if (profile != null && profile.isEnabled) {
-                return profile.providerType to profile.modelId
-            }
+            if (profile != null && profile.isEnabled) return profile
         }
 
-        // Try app default profile
         val defaultProfile = workflowRepository.getDefaultProfile()
-        if (defaultProfile != null && defaultProfile.isEnabled) {
-            return defaultProfile.providerType to defaultProfile.modelId
-        }
+        if (defaultProfile != null && defaultProfile.isEnabled) return defaultProfile
 
-        // Fall back to legacy activeProvider setting
-        val activeProvider = settingsRepository.settings.first().activeProvider
-        return activeProvider to null
+        val fallbackProfile = workflowRepository.getFallbackProfile()
+        if (fallbackProfile != null && fallbackProfile.isEnabled) return fallbackProfile
+
+        return null
     }
 }
