@@ -54,6 +54,10 @@ google-api-drive = { module = "com.google.apis:google-api-services-drive", versi
 google-api-client-android = { module = "com.google.api-client:google-api-client-android", version = "2.7.2" }
 google-play-auth = { module = "com.google.android.gms:play-services-auth", version = "21.3.0" }
 
+# Experimental AICore library for on-device Gemini Nano. Pin to 0.0.1-exp01;
+# test thoroughly before upgrading — API surface may change between experimental releases.
+google-ai-edge-aicore = { module = "com.google.ai.edge.aicore:aicore", version = "0.0.1-exp01" }
+
 junit = { module = "junit:junit", version = "4.13.2" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 

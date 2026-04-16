@@ -85,6 +85,11 @@ object ProviderModels {
         "fake-demo" to "Local Demo"
     )
 
+    /** On-device offline models. IDs match [com.automatist.app.domain.offline.OfflineModelCatalog]. */
+    val LOCAL_AI = listOf(
+        "gemini-nano" to "Gemini Nano"
+    )
+
     /** Whether the given model ID is in the built-in curated list for its provider. */
     fun isBuiltIn(provider: ProviderType, modelId: String): Boolean =
         modelsFor(provider).any { it.first == modelId }
@@ -95,6 +100,7 @@ object ProviderModels {
         ProviderType.GEMINI -> GEMINI
         ProviderType.FAKE -> FAKE
         ProviderType.OPENAI_COMPATIBLE -> emptyList() // custom model only
+        ProviderType.LOCAL_AI -> LOCAL_AI
     }
 
     fun defaultModelFor(provider: ProviderType): String = when (provider) {
@@ -103,8 +109,12 @@ object ProviderModels {
         ProviderType.GEMINI -> "gemini-2.0-flash"
         ProviderType.FAKE -> "fake-demo"
         ProviderType.OPENAI_COMPATIBLE -> ""
+        ProviderType.LOCAL_AI -> "gemini-nano"
     }
 
-    /** Providers that use API keys stored centrally (by ProviderType). */
+    /**
+     * Providers that use API keys stored centrally (by ProviderType).
+     * LOCAL_AI is intentionally excluded — it requires no API key.
+     */
     val BUILT_IN_PROVIDERS = listOf(ProviderType.OPENAI, ProviderType.ANTHROPIC, ProviderType.GEMINI)
 }

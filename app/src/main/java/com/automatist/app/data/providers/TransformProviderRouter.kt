@@ -18,7 +18,8 @@ class TransformProviderRouter @Inject constructor(
     private val openAIProvider: OpenAIArticleTransformProvider,
     private val anthropicProvider: AnthropicArticleTransformProvider,
     private val geminiProvider: GeminiArticleTransformProvider,
-    private val openAICompatibleProvider: OpenAICompatibleProvider
+    private val openAICompatibleProvider: OpenAICompatibleProvider,
+    private val localAIProvider: LocalAIArticleTransformProvider
 ) : ArticleTransformProvider {
 
     override suspend fun transform(
@@ -43,6 +44,7 @@ class TransformProviderRouter @Inject constructor(
             ProviderType.ANTHROPIC -> anthropicProvider.transform(routedInput, type)
             ProviderType.GEMINI -> geminiProvider.transform(routedInput, type)
             ProviderType.OPENAI_COMPATIBLE -> openAICompatibleProvider.transform(routedInput, type)
+            ProviderType.LOCAL_AI -> localAIProvider.transform(routedInput, type)
         }
     }
 
