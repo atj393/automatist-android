@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.automatist.app.BuildConfig
 import com.automatist.app.domain.models.*
+import com.automatist.app.domain.offline.DownloadProgress
 import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelStatus
 
@@ -105,9 +106,11 @@ fun VaultScreen(
                 item(key = SettingsSection.OFFLINE_AI.key) {
                     OnDeviceAISection(
                         statuses = state.offlineModelStatuses,
+                        downloadProgress = state.offlineDownloadProgress,
                         onCheck = viewModel::requestOfflineModelDownload,
                         onRecheck = viewModel::requestOfflineModelDownload,
-                        onRemove = viewModel::removeOfflineModel
+                        onRemove = viewModel::removeOfflineModel,
+                        onCancelDownload = viewModel::cancelOfflineModelDownload
                     )
                 }
 
@@ -286,14 +289,17 @@ private fun PCard(
 @Composable
 private fun OnDeviceAISection(
     statuses: Map<String, OfflineModelStatus>,
+    downloadProgress: Map<String, DownloadProgress>,
     onCheck: (String) -> Unit,
     onRecheck: (String) -> Unit,
-    onRemove: (String) -> Unit
+    onRemove: (String) -> Unit,
+    onCancelDownload: (String) -> Unit
 ) {
     Card2(Icons.Default.PhoneAndroid, "On-device AI", "Run AI offline — no internet or API key required.") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OfflineModelCatalog.ALL_MODELS.forEach { model ->
                 val status = statuses[model.id] ?: OfflineModelStatus.NOT_INSTALLED
+                val progress = downloadProgress[model.id] ?: DownloadProgress()
                 OfflineModelCard(
                     displayName = model.displayName,
                     description = model.description,
@@ -301,9 +307,11 @@ private fun OnDeviceAISection(
                     tags = model.tags,
                     status = status,
                     isSystemManaged = model.isSystemManaged,
+                    downloadProgress = progress,
                     onCheck = { onCheck(model.id) },
                     onRecheck = { onRecheck(model.id) },
-                    onRemove = { onRemove(model.id) }
+                    onRemove = { onRemove(model.id) },
+                    onCancelDownload = { onCancelDownload(model.id) }
                 )
             }
         }
@@ -313,10 +321,10 @@ private fun OnDeviceAISection(
                 Text("About On-device AI", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Gemini Nano runs directly on your device — no internet or API key required. " +
-                    "It's managed by Android system services and available on Pixel 8+ and Galaxy S24+ " +
-                    "devices running Android 14+. Tap \"Check Availability\" to see if your device is supported. " +
-                    "Your existing cloud AI profiles are unaffected.",
+                    "On-device AI models run directly on your device — no internet or API key required. " +
+                    "Gemini Nano is managed by Android system services (Pixel 8+ / Galaxy S24+, Android 14+). " +
+                    "Downloadable models like Gemma 3n E2B work on most modern devices but require " +
+                    "a one-time download. Your existing cloud AI profiles are unaffected.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -333,9 +341,11 @@ private fun OfflineModelCard(
     tags: List<String>,
     status: OfflineModelStatus,
     isSystemManaged: Boolean,
+    downloadProgress: DownloadProgress = DownloadProgress(),
     onCheck: () -> Unit,
     onRecheck: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onCancelDownload: () -> Unit = {}
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
@@ -370,11 +380,48 @@ private fun OfflineModelCard(
                     }
                 }
                 OfflineModelStatus.DOWNLOADING -> {
-                    val label = if (isSystemManaged) "Checking…" else "Downloading…"
-                    OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(6.dp))
-                        Text(label)
+                    if (isSystemManaged) {
+                        // System-managed: indeterminate spinner ("Checking…")
+                        OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Checking…")
+                        }
+                    } else {
+                        // Downloadable: show progress bar with percentage + cancel button
+                        val pct = downloadProgress.percent
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (pct >= 0) {
+                                LinearProgressIndicator(
+                                    progress = { pct / 100f },
+                                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                                )
+                                val downloadedMb = downloadProgress.bytesDownloaded / 1_000_000
+                                val totalMb = downloadProgress.totalBytes / 1_000_000
+                                Text(
+                                    "Downloading… $pct% ($downloadedMb / $totalMb MB)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                // Total size truly unknown — show indeterminate bar with downloaded bytes
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(6.dp))
+                                val downloadedMb = downloadProgress.bytesDownloaded / 1_000_000
+                                Text(
+                                    "Downloading… $downloadedMb MB",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = onCancelDownload,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Cancel")
+                            }
+                        }
                     }
                 }
                 OfflineModelStatus.INSTALLED -> {

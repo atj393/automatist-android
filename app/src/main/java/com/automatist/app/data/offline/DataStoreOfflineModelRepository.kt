@@ -8,12 +8,18 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.google.ai.edge.aicore.GenerativeAIException
 import com.google.ai.edge.aicore.GenerativeModel
 import com.google.ai.edge.aicore.generationConfig
+import com.automatist.app.domain.offline.DownloadProgress
+import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelRepository
 import com.automatist.app.domain.offline.OfflineModelStatus
+import com.automatist.app.domain.offline.OfflineRuntimeType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -27,18 +33,30 @@ private val Context.offlineModelDataStore by preferencesDataStore(name = "offlin
  *
  * Persists each model's [OfflineModelStatus] as a string keyed by model ID.
  *
- * For Gemini Nano via Android AICore (the current single offline model):
- * - [requestDownload] performs an AICore availability check via [GenerativeModel.prepareInferenceEngine].
- * - Requires Android 14+ (API 34) and a supported device (Pixel 8+, Galaxy S24+).
- * - On unsupported devices or Android < 14, sets [OfflineModelStatus.UNSUPPORTED] without
- *   touching the AICore library at all.
- * - [removeModel] resets status to [OfflineModelStatus.NOT_INSTALLED] for re-checking.
- *   (Gemini Nano is system-managed; there is no app-owned binary to delete.)
+ * Dispatches availability checks and downloads based on [OfflineRuntimeType]:
+ * - **AICORE**: Probes the Android AICore system service for Gemini Nano availability.
+ * - **DOWNLOADABLE**: Downloads model file via [ModelDownloadManager] to app-internal storage.
+ *
+ * For system-managed models (AICORE):
+ * - [removeModel] resets status to NOT_INSTALLED for re-checking (no file to delete).
+ *
+ * For app-managed models (DOWNLOADABLE):
+ * - [removeModel] deletes the model file from storage and resets status.
  */
 @Singleton
 class DataStoreOfflineModelRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val modelDownloadManager: ModelDownloadManager
 ) : OfflineModelRepository {
+
+    /** Per-model download progress. Only meaningful during DOWNLOADING state for DOWNLOADABLE models. */
+    private val progressFlows = mutableMapOf<String, MutableStateFlow<DownloadProgress>>()
+
+    private fun progressFlow(modelId: String): MutableStateFlow<DownloadProgress> =
+        progressFlows.getOrPut(modelId) { MutableStateFlow(DownloadProgress()) }
+
+    override fun getDownloadProgress(modelId: String): StateFlow<DownloadProgress> =
+        progressFlow(modelId)
 
     private fun statusKey(modelId: String) = stringPreferencesKey("model_status_$modelId")
 
@@ -50,46 +68,74 @@ class DataStoreOfflineModelRepository @Inject constructor(
         }
 
     /**
-     * Checks whether Gemini Nano is available on this device via Android AICore.
+     * Initiates availability check or download for the specified model.
      *
-     * Sequence:
-     * 1. Sets status to [OfflineModelStatus.DOWNLOADING] ("Checking…" in the UI).
-     * 2. Guards against Android < 14 — AICore requires API 34.
-     * 3. Calls [GenerativeModel.prepareInferenceEngine] which connects to the AICore system
-     *    service. If the service binds and the model is ready, the call returns successfully.
-     *    If not, it throws [GenerativeAIException].
-     * 4. Maps the result to [OfflineModelStatus] and persists it.
+     * Dispatches based on the model's [OfflineRuntimeType]:
+     * - **AICORE**: Probes the AICore system service for Gemini Nano availability.
+     * - **DOWNLOADABLE**: Downloads the model file via [ModelDownloadManager].
      *
-     * Result codes:
-     * - [OfflineModelStatus.INSTALLED]    — AICore responded and Gemini Nano is ready.
-     * - [OfflineModelStatus.UNSUPPORTED]  — AICore is not available or model is not on device.
-     * - [OfflineModelStatus.FAILED]       — Unexpected non-AICore exception during the check.
+     * Sets status to [OfflineModelStatus.DOWNLOADING] immediately so the UI shows progress,
+     * then updates to the final status when the operation completes.
      */
     override suspend fun requestDownload(modelId: String) {
-        // Transition to DOWNLOADING immediately so UI shows "Checking…" spinner
+        val entry = OfflineModelCatalog.findById(modelId)
+        // Initialize progress with the catalog's known size so the UI can show
+        // a determinate progress bar immediately (before the first HTTP chunk arrives).
+        val knownTotal = if (entry != null && entry.downloadSizeBytes > 0) {
+            entry.downloadSizeBytes
+        } else {
+            -1L
+        }
+        progressFlow(modelId).value = DownloadProgress(bytesDownloaded = 0, totalBytes = knownTotal)
         setStatus(modelId, OfflineModelStatus.DOWNLOADING)
         try {
-            val result = checkAICoreAvailability()
+            val result = when (entry?.runtimeType) {
+                OfflineRuntimeType.DOWNLOADABLE -> {
+                    if (entry.downloadUrl == null) {
+                        OfflineModelStatus.FAILED
+                    } else {
+                        modelDownloadManager.downloadModel(entry) { bytesDownloaded, totalBytes ->
+                            progressFlow(modelId).value = DownloadProgress(bytesDownloaded, totalBytes)
+                        }
+                    }
+                }
+                OfflineRuntimeType.AICORE, null -> checkAICoreAvailability()
+            }
             setStatus(modelId, result)
         } catch (e: CancellationException) {
-            // Coroutine was cancelled (e.g. ViewModel cleared) while check was in progress.
-            // Reset to NOT_INSTALLED so the UI doesn't get stuck on "Checking…" forever.
-            setStatus(modelId, OfflineModelStatus.NOT_INSTALLED)
+            // Use NonCancellable so the DataStore write completes even though
+            // the coroutine is cancelled (e.g. user tapped Cancel).
+            withContext(NonCancellable) {
+                progressFlow(modelId).value = DownloadProgress()
+                setStatus(modelId, OfflineModelStatus.NOT_INSTALLED)
+            }
             throw e
         }
     }
 
     override suspend fun cancelDownload(modelId: String) {
+        // Cancel the active OkHttp Call so network I/O stops immediately.
+        val entry = OfflineModelCatalog.findById(modelId)
+        if (entry?.runtimeType == OfflineRuntimeType.DOWNLOADABLE) {
+            modelDownloadManager.cancelActiveDownload(entry)
+        }
+        progressFlow(modelId).value = DownloadProgress()
         setStatus(modelId, OfflineModelStatus.NOT_INSTALLED)
     }
 
     /**
-     * Resets the model status to [OfflineModelStatus.NOT_INSTALLED].
+     * Removes a model and resets its status to [OfflineModelStatus.NOT_INSTALLED].
      *
-     * For system-managed models (Gemini Nano via AICore), there is no app-owned file to delete.
-     * Resetting allows the user to re-run the availability check from a clean state.
+     * For system-managed models (AICORE): no file to delete, just resets status.
+     * For downloadable models (DOWNLOADABLE): deletes the model file from storage, then resets status.
      */
     override suspend fun removeModel(modelId: String) {
+        val entry = OfflineModelCatalog.findById(modelId)
+        if (entry?.runtimeType == OfflineRuntimeType.DOWNLOADABLE) {
+            withContext(Dispatchers.IO) {
+                modelDownloadManager.deleteModel(entry)
+            }
+        }
         setStatus(modelId, OfflineModelStatus.NOT_INSTALLED)
     }
 

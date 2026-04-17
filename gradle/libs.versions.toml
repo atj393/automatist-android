@@ -58,6 +58,12 @@ google-play-auth = { module = "com.google.android.gms:play-services-auth", versi
 # test thoroughly before upgrading — API surface may change between experimental releases.
 google-ai-edge-aicore = { module = "com.google.ai.edge.aicore:aicore", version = "0.0.1-exp01" }
 
+# MediaPipe LLM Inference for downloadable offline models (Gemma 3n E2B).
+# Used by MediaPipeInferenceEngine for app-managed model inference.
+# Only invoked when user has downloaded a DOWNLOADABLE model and runs a LOCAL_AI profile.
+# Does not affect cloud/API providers or AICore/Gemini Nano.
+google-mediapipe-tasks-genai = { module = "com.google.mediapipe:tasks-genai", version = "0.10.22" }
+
 junit = { module = "junit:junit", version = "4.13.2" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 
