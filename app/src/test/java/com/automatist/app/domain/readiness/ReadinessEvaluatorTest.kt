@@ -393,4 +393,108 @@ class ReadinessEvaluatorTest {
         assertTrue("Cloud workflow should still be ready regardless of offline model state", result.isFullyReady)
         assertTrue(result.profileIssues.isEmpty())
     }
+
+    // ── Downloadable LOCAL_AI (Gemma 3n E2B) readiness ──
+
+    @Test
+    fun `downloadable LOCAL_AI profile with model installed is ready`() = runTest {
+        offlineRepo.setStatus(OfflineModelCatalog.GEMMA_3N_E2B_ID, OfflineModelStatus.INSTALLED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-gemma", name = "Gemma Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMMA_3N_E2B_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertTrue("Downloadable LOCAL_AI workflow with installed model should be ready", result.isFullyReady)
+        assertTrue(result.profileIssues.isEmpty())
+    }
+
+    @Test
+    fun `downloadable LOCAL_AI profile with model NOT_INSTALLED suggests download`() = runTest {
+        // Gemma 3n E2B defaults to NOT_INSTALLED
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-gemma", name = "Gemma Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMMA_3N_E2B_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse("Downloadable LOCAL_AI workflow without download should NOT be ready", result.isFullyReady)
+        assertTrue("Should report issue", result.profileIssues.isNotEmpty())
+        assertTrue(
+            "NOT_INSTALLED issue for downloadable model should mention Download",
+            result.profileIssues.any { it.contains("Download") }
+        )
+    }
+
+    @Test
+    fun `downloadable LOCAL_AI profile does not require API key`() = runTest {
+        offlineRepo.setStatus(OfflineModelCatalog.GEMMA_3N_E2B_ID, OfflineModelStatus.INSTALLED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-gemma", name = "Gemma Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMMA_3N_E2B_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertTrue("Downloadable LOCAL_AI profile should not need an API key", result.isFullyReady)
+        assertTrue(result.profileIssues.none { it.contains("API key") })
+    }
+
+    @Test
+    fun `downloadable LOCAL_AI and system-managed LOCAL_AI coexist independently`() = runTest {
+        // Gemini Nano installed, Gemma 3n E2B NOT installed
+        offlineRepo.setStatus(OfflineModelCatalog.GEMINI_NANO_ID, OfflineModelStatus.INSTALLED)
+        // Gemma 3n E2B defaults to NOT_INSTALLED
+
+        // Profile uses Gemma 3n E2B — should not be ready
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-gemma", name = "Gemma Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMMA_3N_E2B_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse(
+            "Gemma 3n E2B profile should not be ready just because Gemini Nano is installed",
+            result.isFullyReady
+        )
+    }
 }

@@ -5,14 +5,19 @@ import android.os.Build
 import com.google.ai.edge.aicore.GenerativeAIException
 import com.google.ai.edge.aicore.GenerativeModel
 import com.google.ai.edge.aicore.generationConfig
+import com.automatist.app.data.offline.MediaPipeInferenceEngine
+import com.automatist.app.data.offline.ModelInferenceException
+import com.automatist.app.data.offline.ModelNotAvailableException
 import com.automatist.app.domain.engine.DiagnosticException
 import com.automatist.app.domain.models.ArticleInput
 import com.automatist.app.domain.models.ProviderType
 import com.automatist.app.domain.models.TransformResult
 import com.automatist.app.domain.models.TransformType
 import com.automatist.app.domain.offline.OfflineModelCatalog
+import com.automatist.app.domain.offline.OfflineModelEntry
 import com.automatist.app.domain.offline.OfflineModelRepository
 import com.automatist.app.domain.offline.OfflineModelStatus
+import com.automatist.app.domain.offline.OfflineRuntimeType
 import com.automatist.app.domain.providers.ArticleTransformProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -24,34 +29,38 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * On-device AI provider using Gemini Nano via Android AICore.
+ * Local AI provider that dispatches to the correct inference runtime based on model metadata.
  *
- * ## Device requirements
- * - Android 14+ (API 34) — AICore requires UPSIDE_DOWN_CAKE or higher.
- * - Supported hardware — currently Pixel 8 / 8a / 9 series, Samsung Galaxy S24+ (select regions).
- * - Gemini Nano must be confirmed available through [OfflineModelRepository.requestDownload]
- *   before this provider can execute inference.
+ * Supports two runtime paths under a single [ProviderType.LOCAL_AI]:
  *
- * ## Behaviour by [OfflineModelStatus]
- * - NOT_INSTALLED / FAILED → clear "not available" diagnostic; direct user to Settings → On-device AI.
- * - DOWNLOADING             → "check in progress" diagnostic; user should wait.
- * - UNSUPPORTED             → "device not compatible" diagnostic; no crash.
- * - INSTALLED               → real AICore inference via [GenerativeModel.generateContent].
+ * ## A. AICore / Gemini Nano (system-managed)
+ * - Android 14+ (API 34), Pixel 8+ / Galaxy S24+
+ * - No app-managed model download; system-managed by Android
+ * - Inference via [GenerativeModel.generateContent]
+ *
+ * ## B. MediaPipe LLM Inference (downloadable)
+ * - Android 8+ (API 26), broader device support
+ * - App-managed model file downloaded by user from Settings
+ * - Inference via [MediaPipeInferenceEngine]
+ *
+ * ## Dispatch logic
+ * The selected model ID (from the profile's `modelId` field) determines which runtime is used.
+ * The model's [OfflineModelEntry.runtimeType] controls the dispatch:
+ * - [OfflineRuntimeType.AICORE] → [runAICoreInference]
+ * - [OfflineRuntimeType.DOWNLOADABLE] → [runDownloadableInference]
  *
  * ## Prompt safety
- * Fetched or pasted text is treated as untrusted input. It is wrapped between explicit
- * `---BEGIN CONTENT---` / `---END CONTENT---` delimiters and hard-capped at 3 000 characters
- * to stay within Gemini Nano's context limit and prevent prompt-overflow from hostile content.
- * Output is returned as plain text only — no structured parsing is applied.
+ * Both paths use the same [buildPrompt] method with delimiter-wrapped untrusted content,
+ * per-model character caps, and plain-text-only output.
  *
  * ## Cloud provider isolation
  * This class is only invoked when the active profile's ProviderType is LOCAL_AI.
- * All other provider paths (OpenAI, Anthropic, Gemini, OpenAI-compatible) are completely
- * unaffected and continue to work on all devices.
+ * All other provider paths are completely unaffected.
  */
 @Singleton
 class LocalAIArticleTransformProvider @Inject constructor(
     private val offlineModelRepository: OfflineModelRepository,
+    private val mediaPipeInferenceEngine: MediaPipeInferenceEngine,
     @ApplicationContext private val context: Context
 ) : ArticleTransformProvider {
 
@@ -60,72 +69,150 @@ class LocalAIArticleTransformProvider @Inject constructor(
         type: TransformType
     ): Result<TransformResult> {
         val modelId = input.modelOverride ?: OfflineModelCatalog.GEMINI_NANO_ID
+        val entry = OfflineModelCatalog.findById(modelId)
         val status = offlineModelRepository.getModelStatus(modelId).first()
 
         return when (status) {
-            OfflineModelStatus.NOT_INSTALLED ->
+            OfflineModelStatus.NOT_INSTALLED -> {
+                val action = if (entry?.isSystemManaged == true) "Check Availability" else "Download"
                 Result.failure(
                     DiagnosticException(
-                        message = "Gemini Nano is not yet confirmed available on this device. " +
-                            "Open Settings → On-device AI and tap \"Check Availability\" first.",
-                        rawDetail = "Model '$modelId' status: NOT_INSTALLED (availability check not run)"
+                        message = "${entry?.displayName ?: "On-device AI model"} is not yet available. " +
+                            "Open Settings → On-device AI and tap \"$action\" first.",
+                        rawDetail = "Model '$modelId' status: NOT_INSTALLED"
                     )
                 )
+            }
 
-            OfflineModelStatus.FAILED ->
+            OfflineModelStatus.FAILED -> {
+                val action = if (entry?.isSystemManaged == true) "Retry check" else "Retry download"
                 Result.failure(
                     DiagnosticException(
-                        message = "The on-device AI availability check failed. " +
-                            "Open Settings → On-device AI and tap \"Retry\" to check again.",
-                        rawDetail = "Model '$modelId' status: FAILED (AICore check error)"
+                        message = "The ${entry?.displayName ?: "on-device AI"} setup failed. " +
+                            "Open Settings → On-device AI and tap \"$action\" to try again.",
+                        rawDetail = "Model '$modelId' status: FAILED"
                     )
                 )
+            }
 
-            OfflineModelStatus.DOWNLOADING ->
+            OfflineModelStatus.DOWNLOADING -> {
+                val action = if (entry?.isSystemManaged == true) "checking availability" else "downloading"
                 Result.failure(
                     DiagnosticException(
-                        message = "On-device AI availability check is still in progress. " +
+                        message = "${entry?.displayName ?: "On-device AI"} is still $action. " +
                             "Please wait a moment and try again.",
-                        rawDetail = "Model '$modelId' status: DOWNLOADING (AICore check in progress)"
+                        rawDetail = "Model '$modelId' status: DOWNLOADING"
                     )
                 )
+            }
 
-            OfflineModelStatus.UNSUPPORTED ->
+            OfflineModelStatus.UNSUPPORTED -> {
+                val reason = if (entry?.isSystemManaged == true) {
+                    "It requires Android 14+ and a compatible Pixel 8+ or Galaxy S24+ device."
+                } else {
+                    "This device does not meet the minimum requirements."
+                }
                 Result.failure(
                     DiagnosticException(
-                        message = "On-device AI (Gemini Nano) is not supported on this device. " +
-                            "It requires Android 14+ and a compatible Pixel 8+ or Galaxy S24+ device. " +
-                            "Cloud-based AI profiles work on all devices.",
+                        message = "${entry?.displayName ?: "On-device AI"} is not supported on this device. " +
+                            "$reason Cloud-based AI profiles work on all devices.",
                         rawDetail = "Model '$modelId' status: UNSUPPORTED " +
-                            "(Android API ${Build.VERSION.SDK_INT}, AICore not available)"
+                            "(Android API ${Build.VERSION.SDK_INT})"
                     )
                 )
+            }
 
-            OfflineModelStatus.INSTALLED -> runAICoreInference(input, type, modelId)
+            OfflineModelStatus.INSTALLED -> {
+                when (entry?.runtimeType) {
+                    OfflineRuntimeType.DOWNLOADABLE -> runDownloadableInference(input, type, modelId, entry)
+                    OfflineRuntimeType.AICORE, null -> runAICoreInference(input, type, modelId, entry)
+                }
+            }
         }
     }
 
     private companion object {
-        /** Timeout for the entire AICore inference operation (prepare + generate). */
+        /** Timeout for AICore inference (prepare + generate). */
         const val AICORE_TIMEOUT_MS = 60_000L
     }
 
     /**
+     * Runs inference using a downloadable model via the [MediaPipeInferenceEngine].
+     */
+    private suspend fun runDownloadableInference(
+        input: ArticleInput,
+        type: TransformType,
+        modelId: String,
+        entry: OfflineModelEntry
+    ): Result<TransformResult> {
+        return try {
+            val prompt = buildPrompt(input, type, entry)
+            val result = withTimeoutOrNull(MediaPipeInferenceEngine.INFERENCE_TIMEOUT_MS) {
+                mediaPipeInferenceEngine.generateText(entry, prompt)
+            }
+            if (result == null) {
+                return Result.failure(
+                    DiagnosticException(
+                        message = "${entry.displayName} took too long to respond. " +
+                            "Try again or switch to a cloud-based AI profile.",
+                        rawDetail = "MediaPipe inference timed out after ${MediaPipeInferenceEngine.INFERENCE_TIMEOUT_MS}ms for '$modelId'"
+                    )
+                )
+            }
+            val outputText = result.trim()
+            if (outputText.isBlank()) {
+                Result.failure(
+                    DiagnosticException(
+                        message = "${entry.displayName} returned an empty response. Please try again.",
+                        rawDetail = "MediaPipe inference returned blank output for '$modelId'"
+                    )
+                )
+            } else {
+                Result.success(
+                    TransformResult(
+                        outputText = outputText,
+                        transformType = type,
+                        providerType = ProviderType.LOCAL_AI
+                    )
+                )
+            }
+        } catch (e: ModelNotAvailableException) {
+            Result.failure(
+                DiagnosticException(
+                    message = "${entry.displayName} model file is missing. " +
+                        "Open Settings → On-device AI and download it again.",
+                    rawDetail = "Model file missing for '$modelId': ${e.message}"
+                )
+            )
+        } catch (e: ModelInferenceException) {
+            Result.failure(
+                DiagnosticException(
+                    message = "${entry.displayName} failed to process your request. " +
+                        "Try again or switch to a cloud-based AI profile.",
+                    rawDetail = "MediaPipe inference error for '$modelId': ${e.message}"
+                )
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(
+                DiagnosticException(
+                    message = "${entry.displayName} encountered an unexpected error. " +
+                        "Try again or switch to a cloud-based AI profile.",
+                    rawDetail = "Unexpected error during MediaPipe inference for '$modelId' [${e::class.simpleName}]: ${e.message}"
+                )
+            )
+        }
+    }
+
+    /**
      * Runs Gemini Nano inference via the Android AICore system service.
-     *
-     * A fresh [GenerativeModel] is created per call so concurrent workflow executions
-     * do not share state. The model is closed in a `finally` block to release AICore resources.
-     *
-     * The function guards with an explicit API-level check as a safety net; in practice the
-     * INSTALLED status can only be set on API 34+ by [DataStoreOfflineModelRepository].
-     *
-     * Uses [withTimeoutOrNull] to avoid the `TimeoutCancellationException`-vs-real-cancellation
-     * ambiguity that arises with [withTimeout] and `catch (CancellationException)`.
      */
     private suspend fun runAICoreInference(
         input: ArticleInput,
         type: TransformType,
-        modelId: String
+        modelId: String,
+        entry: OfflineModelEntry?
     ): Result<TransformResult> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             return Result.failure(
@@ -149,7 +236,7 @@ class LocalAIArticleTransformProvider @Inject constructor(
                 val result = withTimeoutOrNull(AICORE_TIMEOUT_MS) {
                     model.prepareInferenceEngine()
 
-                    val prompt = buildPrompt(input, type)
+                    val prompt = buildPrompt(input, type, entry)
                     val response = model.generateContent(prompt)
                     val outputText = response.text?.trim()
                         ?: return@withTimeoutOrNull Result.failure(
@@ -198,19 +285,19 @@ class LocalAIArticleTransformProvider @Inject constructor(
     }
 
     /**
-     * Constructs the prompt sent to Gemini Nano.
+     * Constructs the prompt sent to a local AI model.
      *
      * Safety design:
      * - A per-transform-type instruction header is placed before the content.
      * - User-provided or fetched content is wrapped in explicit `---BEGIN CONTENT---` /
      *   `---END CONTENT---` delimiters to reduce prompt-injection risk from untrusted text.
-     * - Input is hard-capped at 3 000 characters to stay within Gemini Nano's practical
-     *   context limit (≈ 1 000 tokens for the input portion).
+     * - Input is hard-capped at [OfflineModelEntry.contextWindowChars] to stay within the
+     *   model's practical context limit.
      * - Output is plain text; the model is never asked to produce structured data.
      * - For custom workflows, [ArticleInput.systemPromptOverride] is used as the instruction
      *   header directly (still wrapped around content, never mixed into it).
      */
-    private fun buildPrompt(input: ArticleInput, type: TransformType): String {
+    private fun buildPrompt(input: ArticleInput, type: TransformType, entry: OfflineModelEntry?): String {
         val instruction = input.systemPromptOverride ?: when (type) {
             TransformType.SUMMARY ->
                 "Write a concise summary of the following content."
@@ -233,9 +320,10 @@ class LocalAIArticleTransformProvider @Inject constructor(
                 "Process the following content as a helpful AI assistant."
         }
 
-        // Safety cap: Gemini Nano has a limited context window. 3 000 chars is a conservative
-        // upper bound for the input portion; the model's instruction and reasoning add to that.
-        val safeContent = input.text.take(3_000)
+        // Safety cap: on-device models have limited context windows.
+        // The per-model contextWindowChars sets the upper bound for the input portion.
+        val maxChars = entry?.contextWindowChars ?: 3_000
+        val safeContent = input.text.take(maxChars)
 
         return buildString {
             appendLine(instruction)

@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.automatist.app.data.local.SettingsRepository
 import com.automatist.app.domain.models.*
 import kotlinx.coroutines.flow.first
+import com.automatist.app.domain.offline.DownloadProgress
 import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelRepository
 import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.repositories.WorkflowRepository
 import com.automatist.app.platform.security.SecureStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -45,6 +47,8 @@ data class VaultUiState(
     // On-device AI
     /** Current status for each offline model, keyed by model ID. */
     val offlineModelStatuses: Map<String, OfflineModelStatus> = emptyMap(),
+    /** Download progress for each model, keyed by model ID. Only meaningful during DOWNLOADING. */
+    val offlineDownloadProgress: Map<String, DownloadProgress> = emptyMap(),
     /** Shown as a transient info message (e.g. when download not yet available). */
     val offlineInfoMessage: String? = null
 )
@@ -104,11 +108,22 @@ class VaultViewModel @Inject constructor(
 
     // ── On-device AI ──
 
+    /** Active download Jobs keyed by model ID, for cancellation support. */
+    private val downloadJobs = mutableMapOf<String, Job>()
+
     private fun collectOfflineModelStatuses() {
         OfflineModelCatalog.ALL_MODELS.forEach { model ->
             viewModelScope.launch {
                 offlineModelRepository.getModelStatus(model.id).collect { status ->
                     _state.update { it.copy(offlineModelStatuses = it.offlineModelStatuses + (model.id to status)) }
+                }
+            }
+            // Collect download progress for downloadable models
+            if (!model.isSystemManaged) {
+                viewModelScope.launch {
+                    offlineModelRepository.getDownloadProgress(model.id).collect { progress ->
+                        _state.update { it.copy(offlineDownloadProgress = it.offlineDownloadProgress + (model.id to progress)) }
+                    }
                 }
             }
         }
@@ -126,7 +141,21 @@ class VaultViewModel @Inject constructor(
      * no manual UI refresh is required.
      */
     fun requestOfflineModelDownload(modelId: String) {
-        viewModelScope.launch { offlineModelRepository.requestDownload(modelId) }
+        // Cancel any existing download for this model before starting a new one
+        downloadJobs.remove(modelId)?.cancel()
+        downloadJobs[modelId] = viewModelScope.launch {
+            try {
+                offlineModelRepository.requestDownload(modelId)
+            } finally {
+                downloadJobs.remove(modelId)
+            }
+        }
+    }
+
+    /** Cancel an in-progress model download. Stops network I/O and resets state. */
+    fun cancelOfflineModelDownload(modelId: String) {
+        downloadJobs.remove(modelId)?.cancel()
+        viewModelScope.launch { offlineModelRepository.cancelDownload(modelId) }
     }
 
     /** Remove an installed offline model from device storage. */
