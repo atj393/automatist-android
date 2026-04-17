@@ -3,26 +3,42 @@ package com.automatist.app.domain.offline
 /**
  * Lifecycle state of a single offline AI model on this device.
  *
- * For AICore / Gemini Nano, state transitions work as follows:
+ * State transitions differ by [OfflineRuntimeType]:
+ *
+ * **AICORE (system-managed)**:
  *   NOT_INSTALLED → DOWNLOADING (checking AICore availability) → INSTALLED or UNSUPPORTED
  *                ↘ FAILED  (if AICore check throws)
- *   INSTALLED → NOT_INSTALLED (on status reset)
- *   Any state → UNSUPPORTED (if device is below Android 14 or not AICore-capable)
  *
- * Note: For system-managed models (Gemini Nano via AICore), DOWNLOADING represents
- * "checking system availability" rather than a file download operation.
+ * **DOWNLOADABLE (app-managed)**:
+ *   NOT_INSTALLED → DOWNLOADING (HTTP download in progress) → INSTALLED or FAILED
+ *   INSTALLED → NOT_INSTALLED (on user-triggered removal, file deleted)
+ *   Any state → UNSUPPORTED (if device lacks minimum requirements)
  */
 enum class OfflineModelStatus {
-    /** Model has not been checked or is not yet available. Default for new installs. */
+    /** Model has not been checked/downloaded or was removed. Default for new installs. */
     NOT_INSTALLED,
-    /** Availability check in progress. For AICore: checking system service status. */
+    /** Availability check or download in progress. */
     DOWNLOADING,
-    /** Model is available and ready to use. For AICore: Gemini Nano confirmed available. */
+    /** Model is available and ready to use. */
     INSTALLED,
-    /** Availability check failed due to an unexpected error. */
+    /** Availability check or download failed due to an error. */
     FAILED,
-    /** This device does not meet the requirements for on-device AI (Android 14+ / AICore-capable hardware). */
+    /** This device does not meet the minimum requirements for this model. */
     UNSUPPORTED
+}
+
+/**
+ * Identifies the inference runtime used by an offline model.
+ *
+ * Each runtime has distinct availability-checking, download, and inference mechanics.
+ * The [LocalAIArticleTransformProvider][com.automatist.app.data.providers.LocalAIArticleTransformProvider]
+ * dispatches to the correct inference path based on this type.
+ */
+enum class OfflineRuntimeType {
+    /** Android AICore system service (Gemini Nano). System-managed, no app download. */
+    AICORE,
+    /** App-managed downloadable model using MediaPipe LLM Inference. */
+    DOWNLOADABLE
 }
 
 /**
@@ -33,6 +49,15 @@ enum class OfflineModelStatus {
  *
  * @param isSystemManaged True if the model is managed by the Android system (e.g. AICore / Gemini Nano)
  *   rather than downloaded directly by this app. System-managed models cannot be manually removed.
+ * @param runtimeType The inference runtime used by this model.
+ * @param downloadUrl URL for downloading app-managed models. Null for system-managed models.
+ * @param downloadSizeBytes Approximate download size in bytes. 0 for system-managed models.
+ * @param fileSha256 SHA-256 hex digest of the downloaded model file for integrity verification.
+ *   Null for system-managed models.
+ * @param modelFileName File name used when storing the model in app-internal storage.
+ *   Null for system-managed models.
+ * @param contextWindowChars Maximum input characters this model can handle in the prompt.
+ *   Used by the prompt builder to cap user content.
  */
 data class OfflineModelEntry(
     /** Stable identifier used for storage keys and profile model IDs. */
@@ -41,34 +66,54 @@ data class OfflineModelEntry(
     val displayName: String,
     /** Short description shown in the On-device AI settings section. */
     val description: String,
-    /** Human-readable size/availability hint (e.g. "~800 MB" or "System-managed"). */
+    /** Human-readable size/availability hint (e.g. "~1.2 GB" or "System-managed"). */
     val sizeLabel: String,
     /** True if this model supports text-only tasks. */
     val isTextOnly: Boolean = true,
     /** Minimum Android API level required to run this model. */
     val minimumAndroidApiLevel: Int = 26,
-    /** Optional tags displayed as chips (e.g. "Google", "Android 14+"). */
+    /** Optional tags displayed as chips (e.g. "Google", "On-device", "Downloadable"). */
     val tags: List<String> = emptyList(),
     /**
      * True if the model is managed by Android system services (AICore).
      * System-managed models are checked for availability rather than downloaded.
      * The model binary is owned and updated by the OS, not by this app.
      */
-    val isSystemManaged: Boolean = false
+    val isSystemManaged: Boolean = false,
+    /** The inference runtime used by this model. */
+    val runtimeType: OfflineRuntimeType = OfflineRuntimeType.AICORE,
+    /** URL for downloading app-managed models. Null for system-managed models. */
+    val downloadUrl: String? = null,
+    /** Approximate download size in bytes. 0 for system-managed models. */
+    val downloadSizeBytes: Long = 0L,
+    /** SHA-256 hex digest for integrity verification. Null for system-managed models. */
+    val fileSha256: String? = null,
+    /** File name used in app-internal storage. Null for system-managed models. */
+    val modelFileName: String? = null,
+    /** Maximum input characters for prompt building. Defaults to Gemini Nano's limit. */
+    val contextWindowChars: Int = 3_000,
+    /** Minimum device RAM in MB required to run this model. 0 means no check. */
+    val minimumRamMb: Int = 0
 )
 
 /**
  * Static catalog of offline AI models available in this release.
  *
- * Currently contains exactly one model: Gemini Nano, accessed via Android AICore.
+ * Contains two models:
+ * - **Gemini Nano**: system-managed via Android AICore (Pixel 8+, Android 14+)
+ * - **Gemma 3n E2B**: app-managed downloadable via MediaPipe LLM Inference (broader device support)
  *
- * Extensibility: to add a future model, insert a new [OfflineModelEntry] into [ALL_MODELS].
- * No changes to the routing, profile, or readiness infrastructure are required.
+ * Extensibility: to add a future model, insert a new [OfflineModelEntry] into [ALL_MODELS]
+ * and add the model ID to [ProviderModels.LOCAL_AI][com.automatist.app.domain.models.ProviderModels].
+ * No changes to routing, profile, or readiness infrastructure are required.
  */
 object OfflineModelCatalog {
 
     /** Stable ID for the Gemini Nano on-device model (available via Android AICore). */
     const val GEMINI_NANO_ID = "gemini-nano"
+
+    /** Stable ID for the Gemma 3n E2B downloadable offline model. */
+    const val GEMMA_3N_E2B_ID = "gemma-3n-e2b"
 
     /**
      * All offline models available in this release.
@@ -83,9 +128,30 @@ object OfflineModelCatalog {
                 "no manual download required. Runs fully offline without an internet connection or API key.",
             sizeLabel = "System-managed",
             isTextOnly = true,
-            minimumAndroidApiLevel = 34, // Android 14 required for AICore
+            minimumAndroidApiLevel = 34,
             tags = listOf("Google", "On-device", "Android 14+"),
-            isSystemManaged = true
+            isSystemManaged = true,
+            runtimeType = OfflineRuntimeType.AICORE,
+            contextWindowChars = 3_000
+        ),
+        OfflineModelEntry(
+            id = GEMMA_3N_E2B_ID,
+            displayName = "Gemma 3n E2B",
+            description = "Google's compact offline AI model. Download once, then run fully offline — " +
+                "no internet or API key required. Works on most modern Android devices. " +
+                "Best for quick summaries and bullet points.",
+            sizeLabel = "~529 MB download",
+            isTextOnly = true,
+            minimumAndroidApiLevel = 26,
+            tags = listOf("Google", "Downloadable", "Offline"),
+            isSystemManaged = false,
+            runtimeType = OfflineRuntimeType.DOWNLOADABLE,
+            downloadUrl = "https://github.com/atj393/automatist-models/releases/download/offline-models-v1/gemma3-1b-it-int4.task",
+            downloadSizeBytes = 554_661_243L, // ~529 MB
+            fileSha256 = "e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee",
+            modelFileName = "gemma3-1b-it-int4.task",
+            contextWindowChars = 4_000, // Gemma 3n E2B supports a larger context than Gemini Nano
+            minimumRamMb = 3_000 // 3 GB minimum RAM
         )
     )
 

@@ -151,6 +151,11 @@ dependencies {
     //   - Cloud/API provider paths are completely unaffected
     implementation(libs.google.ai.edge.aicore)
 
+    // MediaPipe LLM Inference — downloadable offline models (Gemma 3n E2B)
+    // Only used when user has downloaded a DOWNLOADABLE model. Does not affect
+    // cloud/API providers or the AICore/Gemini Nano path.
+    implementation(libs.google.mediapipe.tasks.genai)
+
     // Google Drive + Auth (Cloud Sync)
     implementation(libs.google.api.drive) {
         exclude(group = "org.apache.httpcomponents")
