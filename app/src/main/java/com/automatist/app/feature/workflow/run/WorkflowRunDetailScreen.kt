@@ -111,14 +111,27 @@ fun WorkflowRunDetailScreen(
                 }
             }
 
-            // Token usage
+            // Token usage. For historical runs we don't persist isUsageEstimated
+            // separately, so infer it from providerType: LOCAL_AI and FAKE always
+            // produce estimated numbers, everything else is authoritative.
             if (r.promptTokens != null || r.completionTokens != null || r.totalTokens != null) {
-                Text("Token Usage", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                val isEstimated = r.providerType == com.automatist.app.domain.models.ProviderType.LOCAL_AI ||
+                    r.providerType == com.automatist.app.domain.models.ProviderType.FAKE
+                val label = if (isEstimated) "Token Usage (estimated)" else "Token Usage"
+                Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
                         MetadataRow("Prompt", r.promptTokens?.toString() ?: "—")
                         MetadataRow("Completion", r.completionTokens?.toString() ?: "—")
                         MetadataRow("Total", r.totalTokens?.toString() ?: "—")
+                        if (isEstimated) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Usage is estimated for on-device models.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }

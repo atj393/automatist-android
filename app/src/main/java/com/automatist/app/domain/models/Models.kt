@@ -29,7 +29,31 @@ data class TransformResult(
     val transformType: TransformType,
     val providerType: ProviderType,
     val promptTokens: Int? = null,
-    val completionTokens: Int? = null
+    val completionTokens: Int? = null,
+    // ── Honest-usage metadata ────────────────────────────────────────────────
+    /**
+     * True when [promptTokens] / [completionTokens] are best-effort estimates
+     * rather than authoritative counts from the provider. Local and Fake
+     * providers set this to `true`; cloud providers leave it `false` because
+     * their token counts come from the API response.
+     */
+    val isUsageEstimated: Boolean = false,
+    /** Actual prompt character count (after provider-side truncation). */
+    val inputChars: Int? = null,
+    /** Actual output character count. */
+    val outputChars: Int? = null,
+    /**
+     * True if the provider truncated or compressed the caller's input before
+     * running inference (e.g. input exceeded the local model's context window).
+     * Null when the provider does not perform such truncation (cloud providers).
+     */
+    val wasTruncated: Boolean? = null,
+    /**
+     * Input-token ceiling enforced by the provider. Meaningful for on-device
+     * models with tight context budgets; null for cloud providers whose
+     * effective ceilings are much larger than any prompt we send.
+     */
+    val contextCeilingTokens: Int? = null
 )
 
 data class HistoryItem(
