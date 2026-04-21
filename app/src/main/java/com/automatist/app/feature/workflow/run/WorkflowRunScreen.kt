@@ -237,6 +237,16 @@ fun WorkflowRunScreen(
 
             // Full error report copy — includes execution log + all metadata
             if (state.isFailed) {
+                // Retry button — prominent, above the copy report button
+                Button(
+                    onClick = { viewModel.retryRun() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Retry")
+                }
+
                 OutlinedButton(
                     onClick = {
                         val report = FullErrorReportBuilder.fromRunUiState(state)

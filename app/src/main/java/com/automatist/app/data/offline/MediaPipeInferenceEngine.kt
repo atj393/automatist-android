@@ -31,7 +31,7 @@ import javax.inject.Singleton
  *
  * ## Current limitations
  * - No streaming output (returns full text when complete)
- * - GPU backend selection is handled by MediaPipe defaults
+ * - Uses CPU backend explicitly (broadest device compatibility; GPU can be faster but not universally supported)
  * - Model load time adds ~5-15 seconds per call depending on device
  */
 @Singleton
@@ -83,6 +83,7 @@ class MediaPipeInferenceEngine @Inject constructor(
             .setModelPath(modelFile.absolutePath)
             .setMaxTokens(MAX_TOKENS)
             .setMaxTopK(TOP_K)
+            .setPreferredBackend(LlmInference.Backend.CPU)
             .build()
 
         val llm: LlmInference

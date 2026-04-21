@@ -222,7 +222,11 @@ fun AutomatistNavGraph(
 
         composable("${Routes.WORKFLOW_RUN_DETAIL}/{runId}", arguments = listOf(navArgument("runId") { type = NavType.LongType })) { backStackEntry ->
             val runId = backStackEntry.arguments?.getLong("runId") ?: return@composable
-            WorkflowRunDetailScreen(runId = runId, onBack = { navController.popBackStack() })
+            WorkflowRunDetailScreen(
+                runId = runId,
+                onBack = { navController.popBackStack() },
+                onRunAgain = { templateId -> navController.navigate("${Routes.WORKFLOW_RUN}/$templateId") }
+            )
         }
 
         // ── Schedule Status (inspect scheduled workflows) ──
