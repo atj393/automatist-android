@@ -50,7 +50,10 @@ data class ActionExportDto(
     val order: Int = 0,
     val isEnabled: Boolean = true,
     val extraConfig: JsonElement? = null,
-    val profileId: String = ""
+    val profileId: String = "",
+    // Per-action compaction; default keeps old exports (without this field)
+    // behaving with the same default as fresh workflows.
+    val compaction: InputCompactionMode = InputCompactionMode.AGGRESSIVE
 )
 
 // ── References (safe metadata only — never contains secrets) ──

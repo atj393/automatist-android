@@ -83,7 +83,12 @@ class FakeArticleTransformProvider @Inject constructor() : ArticleTransformProvi
                 transformType = type,
                 providerType = ProviderType.FAKE,
                 promptTokens = input.text.length / 4,
-                completionTokens = output.length / 4
+                completionTokens = output.length / 4,
+                // Fake provider's "tokens" are a char-based simulation — honestly
+                // flag them as estimated so the UI doesn't claim exact counts.
+                isUsageEstimated = true,
+                inputChars = input.text.length,
+                outputChars = output.length
             )
         )
     }

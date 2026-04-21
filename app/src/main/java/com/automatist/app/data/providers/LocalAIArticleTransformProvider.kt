@@ -162,6 +162,16 @@ class LocalAIArticleTransformProvider @Inject constructor(
         entry: OfflineModelEntry
     ): Result<TransformResult> {
         return try {
+            // Track whether any truncation happened before the native call so we can
+            // honestly report it in provider details. Three cases count as "truncated":
+            //   (a) raw input text longer than the model's contextWindowChars
+            //   (b) systemPromptOverride longer than LocalPromptBuilder.INSTRUCTION_CHARS
+            //   (c) the retry path below fired (first build overshot the token ceiling)
+            val contentTruncated = input.text.length > entry.contextWindowChars
+            val instructionTruncated = (input.systemPromptOverride?.length ?: 0) >
+                LocalPromptBuilder.INSTRUCTION_CHARS
+            var retriedAfterOvershoot = false
+
             // Build once with normal sizing. LocalPromptBuilder is input-budget-aware
             // for the downloadable path: it shrinks the system instruction and content
             // caps so the estimated tokenised prompt fits MAX_INPUT_TOKENS on the
@@ -180,7 +190,10 @@ class LocalAIArticleTransformProvider @Inject constructor(
                     entry,
                     instructionCap = LocalPromptBuilder.FALLBACK_INSTRUCTION_CHARS
                 )
+                retriedAfterOvershoot = true
             }
+
+            val wasTruncated = contentTruncated || instructionTruncated || retriedAfterOvershoot
 
             val result = withTimeoutOrNull(MediaPipeInferenceEngine.INFERENCE_TIMEOUT_MS) {
                 mediaPipeInferenceEngine.generateText(entry, prompt)
@@ -211,11 +224,24 @@ class LocalAIArticleTransformProvider @Inject constructor(
                     )
                 )
             } else {
+                // Honest usage accounting. MediaPipe doesn't return authoritative
+                // token counts; we estimate from char length using the same heuristic
+                // the engine's preflight uses, and mark the result as estimated so
+                // the UI can surface that clearly.
+                val estPromptTokens = MediaPipeInferenceEngine.estimateTokens(prompt)
+                val estCompletionTokens = MediaPipeInferenceEngine.estimateTokens(outputText)
                 Result.success(
                     TransformResult(
                         outputText = outputText,
                         transformType = type,
-                        providerType = ProviderType.LOCAL_AI
+                        providerType = ProviderType.LOCAL_AI,
+                        promptTokens = estPromptTokens,
+                        completionTokens = estCompletionTokens,
+                        isUsageEstimated = true,
+                        inputChars = prompt.length,
+                        outputChars = outputText.length,
+                        wasTruncated = wasTruncated,
+                        contextCeilingTokens = MediaPipeInferenceEngine.MAX_INPUT_TOKENS
                     )
                 )
             }
