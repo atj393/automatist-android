@@ -119,6 +119,40 @@ class OfflineModelCatalogTest {
     }
 
     @Test
+    fun `downloadable entry display name matches the shipped model file`() {
+        // NAME HONESTY: the bundled .task file is gemma3-1b-it-int4. The user-visible
+        // displayName must not claim a different model (e.g. "Gemma 3n E2B").
+        val model = OfflineModelCatalog.findById(OfflineModelCatalog.GEMMA_3N_E2B_ID)!!
+        assertEquals("gemma3-1b-it-int4.task", model.modelFileName)
+        assertTrue(
+            "Display name '${model.displayName}' should reference Gemma 3 1B (matching the file)",
+            model.displayName.contains("Gemma 3 1B")
+        )
+        assertFalse(
+            "Display name must not claim Gemma 3n E2B when the file is Gemma 3 1B",
+            model.displayName.contains("3n E2B", ignoreCase = true)
+        )
+    }
+
+    @Test
+    fun `downloadable context window is tuned for mobile CPU inference`() {
+        // Context cap affects prefill latency. For a 1B int4 model on CPU, ~2500 chars
+        // leaves enough of the 120s inference budget for generation without truncating
+        // real-world article summaries.
+        val model = OfflineModelCatalog.findById(OfflineModelCatalog.GEMMA_3N_E2B_ID)!!
+        assertTrue(
+            "Downloadable context window ${model.contextWindowChars} should be <= 3000 " +
+                "to keep prefill fast on mobile CPU",
+            model.contextWindowChars <= 3_000
+        )
+        assertTrue(
+            "Downloadable context window ${model.contextWindowChars} should be >= 1500 " +
+                "to handle typical article-summary inputs",
+            model.contextWindowChars >= 1_500
+        )
+    }
+
+    @Test
     fun `system-managed models have no download metadata`() {
         OfflineModelCatalog.ALL_MODELS.filter { it.isSystemManaged }.forEach { model ->
             assertNull("System-managed model '${model.id}' should have no download URL", model.downloadUrl)

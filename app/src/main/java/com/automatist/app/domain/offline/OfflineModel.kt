@@ -101,7 +101,7 @@ data class OfflineModelEntry(
  *
  * Contains two models:
  * - **Gemini Nano**: system-managed via Android AICore (Pixel 8+, Android 14+)
- * - **Gemma 3n E2B**: app-managed downloadable via MediaPipe LLM Inference (broader device support)
+ * - **Gemma 3 1B (int4)**: app-managed downloadable via MediaPipe LLM Inference (broader device support)
  *
  * Extensibility: to add a future model, insert a new [OfflineModelEntry] into [ALL_MODELS]
  * and add the model ID to [ProviderModels.LOCAL_AI][com.automatist.app.domain.models.ProviderModels].
@@ -112,8 +112,15 @@ object OfflineModelCatalog {
     /** Stable ID for the Gemini Nano on-device model (available via Android AICore). */
     const val GEMINI_NANO_ID = "gemini-nano"
 
-    /** Stable ID for the Gemma 3n E2B downloadable offline model. */
+    /**
+     * Stable ID for the downloadable offline model. Historical value kept for
+     * compatibility with existing user profiles and storage keys; the model it
+     * refers to is actually Gemma 3 1B int4, not Gemma 3n E2B. See [DOWNLOADABLE_MODEL_ID_ALIAS].
+     */
     const val GEMMA_3N_E2B_ID = "gemma-3n-e2b"
+
+    /** Preferred alias for the same downloadable entry — use in new code. */
+    const val DOWNLOADABLE_MODEL_ID_ALIAS = GEMMA_3N_E2B_ID
 
     /**
      * All offline models available in this release.
@@ -136,10 +143,12 @@ object OfflineModelCatalog {
         ),
         OfflineModelEntry(
             id = GEMMA_3N_E2B_ID,
-            displayName = "Gemma 3n E2B",
-            description = "Google's compact offline AI model. Download once, then run fully offline — " +
-                "no internet or API key required. Works on most modern Android devices. " +
-                "Best for quick summaries and bullet points.",
+            // NAME HONESTY: the bundled file is gemma3-1b-it-int4.task (Gemma 3 1B int4),
+            // not the larger Gemma 3n E2B. Display name now matches the file.
+            displayName = "Gemma 3 1B (int4)",
+            description = "Compact 1B-parameter offline AI model (int4-quantized). Download once, " +
+                "then run fully offline — no internet or API key required. Best for quick " +
+                "summaries and bullet points on most modern Android devices.",
             sizeLabel = "~529 MB download",
             isTextOnly = true,
             minimumAndroidApiLevel = 26,
@@ -150,7 +159,10 @@ object OfflineModelCatalog {
             downloadSizeBytes = 554_661_243L, // ~529 MB
             fileSha256 = "e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee",
             modelFileName = "gemma3-1b-it-int4.task",
-            contextWindowChars = 4_000, // Gemma 3n E2B supports a larger context than Gemini Nano
+            // Reduced from 4000 → 2500 chars to keep prefill fast on a 1B model running
+            // on mobile CPU. Generation is the main cost; a smaller context reduces
+            // prefill latency and leaves more of the 120s budget for generation.
+            contextWindowChars = 2_500,
             minimumRamMb = 3_000 // 3 GB minimum RAM
         )
     )
