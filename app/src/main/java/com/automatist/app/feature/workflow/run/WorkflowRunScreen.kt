@@ -171,11 +171,7 @@ fun WorkflowRunScreen(
                             Spacer(Modifier.height(6.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             Spacer(Modifier.height(6.dp))
-                            val usage = state.tokenUsage!!
-                            val estimatedLabel = if (usage.isEstimated) " (estimated)" else ""
-                            TokenRow("Prompt tokens$estimatedLabel", usage.promptTokens)
-                            TokenRow("Completion tokens$estimatedLabel", usage.completionTokens)
-                            TokenRow("Total tokens$estimatedLabel", usage.totalTokens)
+                            UsageSection(state.tokenUsage!!)
                         }
                     }
                 }
@@ -185,11 +181,7 @@ fun WorkflowRunScreen(
                 Text("Token Usage", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
-                        val usage = state.tokenUsage!!
-                        val estimatedLabel = if (usage.isEstimated) " (estimated)" else ""
-                        TokenRow("Prompt tokens$estimatedLabel", usage.promptTokens)
-                        TokenRow("Completion tokens$estimatedLabel", usage.completionTokens)
-                        TokenRow("Total tokens$estimatedLabel", usage.totalTokens)
+                        UsageSection(state.tokenUsage!!)
                     }
                 }
             }
@@ -290,6 +282,58 @@ private fun TokenRow(label: String, value: String) {
     ) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+    }
+}
+
+/**
+ * Renders token/usage metadata honestly:
+ *  - Cloud providers: exact counts as before (no "(estimated)" suffix, no extras).
+ *  - Local/Fake providers: counts marked estimated; extra rows show char-level
+ *    metrics the provider actually knows; an honesty note explains the caveats;
+ *    an explicit truncation warning appears when input was shortened to fit the
+ *    on-device model's context window.
+ */
+@Composable
+private fun UsageSection(usage: com.automatist.app.domain.models.TokenUsage) {
+    val estimatedLabel = if (usage.isEstimated) " (estimated)" else ""
+    TokenRow("Prompt tokens$estimatedLabel", usage.promptTokens)
+    TokenRow("Completion tokens$estimatedLabel", usage.completionTokens)
+    TokenRow("Total tokens$estimatedLabel", usage.totalTokens)
+
+    // Char-level metrics — only rendered when the provider reported them
+    // (local/fake). Cloud providers leave these null and we skip the rows.
+    val hasChars = usage.inputChars != null || usage.outputChars != null
+    if (hasChars || usage.contextCeilingTokens != null) {
+        Spacer(Modifier.height(6.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        Spacer(Modifier.height(6.dp))
+        usage.inputChars?.let { TokenRow("Prompt chars", it) }
+        usage.outputChars?.let { TokenRow("Output chars", it) }
+        usage.contextCeilingTokens?.let { TokenRow("Context ceiling (tokens)", it) }
+    }
+
+    // Truncation warning — stronger copy when we know input was shortened.
+    if (usage.wasTruncated == true) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Input was shortened to fit the on-device model's context window.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.tertiary,
+            fontWeight = FontWeight.Medium
+        )
+    }
+
+    // Estimation note — softer copy when usage is estimated but we don't know
+    // (or have ruled out) truncation. Helps users understand why counts are
+    // approximate without implying something went wrong.
+    if (usage.isEstimated && usage.wasTruncated != true) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Usage is estimated for on-device models. Long inputs may be shortened " +
+                "before generation to fit the model's context window.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
