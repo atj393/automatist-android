@@ -1,5 +1,6 @@
 package com.automatist.app.feature.workflow.run
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,10 +13,12 @@ import com.automatist.app.domain.readiness.ReadinessEvaluator
 import com.automatist.app.domain.readiness.WorkflowReadiness
 import com.automatist.app.domain.repositories.WorkflowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class RunUiState(
@@ -64,6 +67,10 @@ class WorkflowRunViewModel @Inject constructor(
     private val readinessEvaluator: ReadinessEvaluator,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    private companion object {
+        private const val TAG = "WorkflowRunVM"
+    }
 
     private val templateId: Long = savedStateHandle.get<Long>("templateId") ?: -1L
 
@@ -143,6 +150,7 @@ class WorkflowRunViewModel @Inject constructor(
 
     private fun startRun(template: WorkflowTemplate) {
         viewModelScope.launch {
+            Log.d(TAG, "startRun() launched thread=${Thread.currentThread().name}")
             _state.update { it.copy(isRunning = true, outputFormat = template.outputConfig.outputFormat) }
 
             // Create run record
@@ -283,43 +291,51 @@ class WorkflowRunViewModel @Inject constructor(
                 val effectiveFormat = if (executionState.isSocialOutput) OutputFormat.JSON
                     else template.outputConfig.outputFormat
 
-                // Persist stage history
-                val persistedStagesJson = stagesToJson(_state.value.stages)
+                // Snapshot stages before the async block so we serialise a stable value,
+                // not whatever the state happens to be when Default picks up the work.
+                val stagesSnapshot = _state.value.stages
 
-                // Update run record
-                repository.updateRun(
-                    WorkflowRun(
-                        id = runId,
-                        templateId = template.id,
-                        templateName = template.name,
-                        triggerType = "manual",
-                        status = WorkflowRunStatus.COMPLETED,
-                        currentStage = "Completed",
-                        outputText = executionState.outputText,
-                        outputFormat = effectiveFormat,
-                        providerType = executionState.providerType,
-                        promptTokens = executionState.tokenUsage.promptTokens,
-                        completionTokens = executionState.tokenUsage.completionTokens,
-                        totalTokens = executionState.tokenUsage.totalTokens,
-                        durationMs = executionState.durationMs,
-                        completedAtMillis = System.currentTimeMillis(),
-                        profileName = executionState.profileName,
-                        modelId = executionState.modelId,
-                        isSocialOutput = executionState.isSocialOutput,
-                        stagesJson = persistedStagesJson,
-                        synthesisInput = executionState.synthesisInput,
-                        versionsJson = OutputVersion.toJson(executionState.versions)
-                    )
-                )
+                // Move JSON serialisation + redaction + Room writes OFF Main. For a
+                // typical run with ~5 stages and a few KB of actionData each, stagesToJson
+                // + ErrorRedactor.redact can take 10–50 ms of CPU work; doing it on
+                // Main.immediate (viewModelScope default) adds avoidable jank.
+                withContext(Dispatchers.Default) {
+                    val persistedStagesJson = stagesToJson(stagesSnapshot)
+                    val versionsJson = OutputVersion.toJson(executionState.versions)
 
-                // Update template last run
-                repository.updateTemplate(
-                    template.copy(
-                        lastRunAtMillis = System.currentTimeMillis(),
-                        lastRunStatus = WorkflowRunStatus.COMPLETED,
-                        updatedAtMillis = System.currentTimeMillis()
+                    repository.updateRun(
+                        WorkflowRun(
+                            id = runId,
+                            templateId = template.id,
+                            templateName = template.name,
+                            triggerType = "manual",
+                            status = WorkflowRunStatus.COMPLETED,
+                            currentStage = "Completed",
+                            outputText = executionState.outputText,
+                            outputFormat = effectiveFormat,
+                            providerType = executionState.providerType,
+                            promptTokens = executionState.tokenUsage.promptTokens,
+                            completionTokens = executionState.tokenUsage.completionTokens,
+                            totalTokens = executionState.tokenUsage.totalTokens,
+                            durationMs = executionState.durationMs,
+                            completedAtMillis = System.currentTimeMillis(),
+                            profileName = executionState.profileName,
+                            modelId = executionState.modelId,
+                            isSocialOutput = executionState.isSocialOutput,
+                            stagesJson = persistedStagesJson,
+                            synthesisInput = executionState.synthesisInput,
+                            versionsJson = versionsJson
+                        )
                     )
-                )
+
+                    repository.updateTemplate(
+                        template.copy(
+                            lastRunAtMillis = System.currentTimeMillis(),
+                            lastRunStatus = WorkflowRunStatus.COMPLETED,
+                            updatedAtMillis = System.currentTimeMillis()
+                        )
+                    )
+                }
             }
 
             is ExecutionState.Failed -> {
@@ -344,24 +360,25 @@ class WorkflowRunViewModel @Inject constructor(
                     )
                 }
 
-                // Persist stage history
-                val persistedStagesJson = stagesToJson(_state.value.stages)
-
-                // Update run record
-                repository.updateRun(
-                    WorkflowRun(
-                        id = runId,
-                        templateId = template.id,
-                        templateName = template.name,
-                        triggerType = "manual",
-                        status = WorkflowRunStatus.FAILED,
-                        currentStage = executionState.stage,
-                        errorMessage = executionState.error,
-                        errorDetail = rawForStorage,
-                        completedAtMillis = System.currentTimeMillis(),
-                        stagesJson = persistedStagesJson
+                // Snapshot + persist off Main (same reasoning as Completed path)
+                val stagesSnapshot = _state.value.stages
+                withContext(Dispatchers.Default) {
+                    val persistedStagesJson = stagesToJson(stagesSnapshot)
+                    repository.updateRun(
+                        WorkflowRun(
+                            id = runId,
+                            templateId = template.id,
+                            templateName = template.name,
+                            triggerType = "manual",
+                            status = WorkflowRunStatus.FAILED,
+                            currentStage = executionState.stage,
+                            errorMessage = executionState.error,
+                            errorDetail = rawForStorage,
+                            completedAtMillis = System.currentTimeMillis(),
+                            stagesJson = persistedStagesJson
+                        )
                     )
-                )
+                }
             }
         }
     }
