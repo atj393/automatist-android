@@ -2,9 +2,11 @@ package com.automatist.app.data.providers
 
 import android.content.Context
 import android.os.Build
+import android.util.Log
 import com.google.ai.edge.aicore.GenerativeAIException
 import com.google.ai.edge.aicore.GenerativeModel
 import com.google.ai.edge.aicore.generationConfig
+import com.automatist.app.data.offline.InputTooLargeException
 import com.automatist.app.data.offline.MediaPipeInferenceEngine
 import com.automatist.app.data.offline.ModelInferenceException
 import com.automatist.app.data.offline.ModelNotAvailableException
@@ -131,10 +133,8 @@ class LocalAIArticleTransformProvider @Inject constructor(
         }
     }
 
-    private companion object {
-        /** Timeout for AICore inference (prepare + generate). */
-        const val AICORE_TIMEOUT_MS = 60_000L
-    }
+    // companion object is declared at the bottom of the class (Kotlin only allows one
+    // per class) — see LOCAL_INSTRUCTION_CHARS et al. below.
 
     /**
      * Runs inference using a downloadable model via the [MediaPipeInferenceEngine].
@@ -145,8 +145,43 @@ class LocalAIArticleTransformProvider @Inject constructor(
         modelId: String,
         entry: OfflineModelEntry
     ): Result<TransformResult> {
+        // Defence-in-depth dispatcher switch. The engine path arrives here already on
+        // Dispatchers.IO (via .flowOn(IO)), but the regenerate path enters on Main
+        // (viewModelScope.launch → engine.regenerate → transform directly). Inference
+        // work must never run on Main, so we force a switch here regardless of caller.
+        return withContext(Dispatchers.Default) {
+            Log.d(TAG, "runDownloadableInference entry thread=${Thread.currentThread().name} modelId=$modelId")
+            runDownloadableInferenceInternal(input, type, modelId, entry)
+        }
+    }
+
+    private suspend fun runDownloadableInferenceInternal(
+        input: ArticleInput,
+        type: TransformType,
+        modelId: String,
+        entry: OfflineModelEntry
+    ): Result<TransformResult> {
         return try {
-            val prompt = buildPrompt(input, type, entry)
+            // Build once with normal sizing. LocalPromptBuilder is input-budget-aware
+            // for the downloadable path: it shrinks the system instruction and content
+            // caps so the estimated tokenised prompt fits MAX_INPUT_TOKENS on the
+            // first attempt for typical inputs.
+            var prompt = LocalPromptBuilder.buildForMediaPipe(input, type, entry)
+
+            // Provider-side preflight. If the first attempt overshoots the input
+            // budget (e.g. unusually dense non-English text that tokenises tighter
+            // than our 3 chars/token heuristic assumes), rebuild once with even
+            // tighter content truncation before calling native inference.
+            if (MediaPipeInferenceEngine.estimateTokens(prompt) > MediaPipeInferenceEngine.MAX_INPUT_TOKENS) {
+                Log.w(TAG, "Prompt over budget on first build (${prompt.length} chars); retruncating")
+                prompt = LocalPromptBuilder.buildForMediaPipe(
+                    input.copy(text = input.text.take(LocalPromptBuilder.FALLBACK_CONTENT_CHARS)),
+                    type,
+                    entry,
+                    instructionCap = LocalPromptBuilder.FALLBACK_INSTRUCTION_CHARS
+                )
+            }
+
             val result = withTimeoutOrNull(MediaPipeInferenceEngine.INFERENCE_TIMEOUT_MS) {
                 mediaPipeInferenceEngine.generateText(entry, prompt)
             }
@@ -190,6 +225,21 @@ class LocalAIArticleTransformProvider @Inject constructor(
                     message = "${entry.displayName} model file is missing. " +
                         "Open Settings → On-device AI and download it again.",
                     rawDetail = "Model file missing for '$modelId': ${e.message}"
+                )
+            )
+        } catch (e: InputTooLargeException) {
+            // Last-line-of-defence — the engine's preflight caught an oversized
+            // prompt despite the provider's own preflight. Never allowed to reach
+            // native inference. Surface a clean, actionable message to the user.
+            Result.failure(
+                DiagnosticException(
+                    message = "${entry.displayName} can't process inputs this long on this " +
+                        "device. Shorten the source material (the on-device model accepts " +
+                        "roughly one long article at a time), or switch to a cloud-based " +
+                        "AI profile for longer inputs.",
+                    rawDetail = "Input too large for local model '$modelId': " +
+                        "estimated ${e.estimatedTokens} tokens exceeds ceiling ${e.maxInputTokens} " +
+                        "(prompt=${e.promptChars} chars)"
                 )
             )
         } catch (e: ModelInferenceException) {
@@ -292,53 +342,14 @@ class LocalAIArticleTransformProvider @Inject constructor(
         }
     }
 
-    /**
-     * Constructs the prompt sent to a local AI model.
-     *
-     * Safety design:
-     * - A per-transform-type instruction header is placed before the content.
-     * - User-provided or fetched content is wrapped in explicit `---BEGIN CONTENT---` /
-     *   `---END CONTENT---` delimiters to reduce prompt-injection risk from untrusted text.
-     * - Input is hard-capped at [OfflineModelEntry.contextWindowChars] to stay within the
-     *   model's practical context limit.
-     * - Output is plain text; the model is never asked to produce structured data.
-     * - For custom workflows, [ArticleInput.systemPromptOverride] is used as the instruction
-     *   header directly (still wrapped around content, never mixed into it).
-     */
-    private fun buildPrompt(input: ArticleInput, type: TransformType, entry: OfflineModelEntry?): String {
-        val instruction = input.systemPromptOverride ?: when (type) {
-            TransformType.SUMMARY ->
-                "Write a concise summary of the following content."
-            TransformType.THREAD ->
-                "Convert the following content into 5–7 short, tweet-sized bullet points. " +
-                    "Each bullet should stand alone and be under 280 characters."
-            TransformType.PRO_POST ->
-                "Rewrite the following as a polished, professional LinkedIn post. " +
-                    "Keep it engaging and under 300 words."
-            TransformType.MEETING_BRIEF ->
-                "Summarize the following meeting notes into a short, structured brief " +
-                    "with key decisions and action items."
-            TransformType.STRATEGIC_QUESTIONS ->
-                "Generate exactly 5 strategic questions based on the following meeting notes. " +
-                    "Each question should provoke deeper thinking about goals or risks."
-            TransformType.MORNING_SUMMARY ->
-                "Summarize the following news items into a concise morning digest. " +
-                    "Group related topics and highlight the most important developments."
-            TransformType.CUSTOM_WORKFLOW ->
-                "Process the following content as a helpful AI assistant."
-        }
+    /** Prompt for the AICore (Gemini Nano) path. Delegates to the shared builder. */
+    private fun buildPrompt(input: ArticleInput, type: TransformType, entry: OfflineModelEntry?): String =
+        LocalPromptBuilder.buildForAICore(input, type, entry)
 
-        // Safety cap: on-device models have limited context windows.
-        // The per-model contextWindowChars sets the upper bound for the input portion.
-        val maxChars = entry?.contextWindowChars ?: 3_000
-        val safeContent = input.text.take(maxChars)
+    private companion object {
+        private const val TAG = "LocalAIProvider"
 
-        return buildString {
-            appendLine(instruction)
-            appendLine()
-            appendLine("---BEGIN CONTENT---")
-            appendLine(safeContent)
-            append("---END CONTENT---")
-        }
+        /** Timeout for AICore inference (prepare + generate). */
+        const val AICORE_TIMEOUT_MS = 60_000L
     }
 }

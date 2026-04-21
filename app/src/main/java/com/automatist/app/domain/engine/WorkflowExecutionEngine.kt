@@ -4,11 +4,13 @@ import com.automatist.app.data.network.RssParser
 import com.automatist.app.domain.models.*
 import com.automatist.app.domain.providers.ArticleTransformProvider
 import com.automatist.app.domain.repositories.WorkflowRepository
+import android.util.Log
 import com.automatist.app.platform.security.SecureStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
@@ -30,6 +32,7 @@ class WorkflowExecutionEngine @Inject constructor(
 ) {
 
     companion object {
+        private const val TAG = "WorkflowEngine"
         private const val MAX_CHARS_PER_ACTION = 4000
         private const val MAX_TOTAL_CHARS = 16000
     }
@@ -37,6 +40,7 @@ class WorkflowExecutionEngine @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true }
 
     fun execute(template: WorkflowTemplate): Flow<ExecutionState> = flow<ExecutionState> {
+        Log.d(TAG, "execute() flow start thread=${Thread.currentThread().name}")
         val startTime = System.currentTimeMillis()
 
         emit(ExecutionState.Preparing)
@@ -219,7 +223,13 @@ class WorkflowExecutionEngine @Inject constructor(
         frozenInput: String,
         template: WorkflowTemplate,
         nextVersion: Int
-    ): Result<OutputVersion> {
+    ): Result<OutputVersion> = withContext(Dispatchers.IO) {
+        // Explicit dispatcher switch: callers dispatch this from viewModelScope, which
+        // defaults to Main.immediate. Without this wrapper the transform() call (and
+        // any inference) would run on Main for the regenerate path, which for local
+        // MediaPipe inference means loading a 529 MB model + running generation on
+        // the UI thread. Always do inference off-Main.
+        Log.d(TAG, "regenerate() thread=${Thread.currentThread().name}")
         val systemPrompt = buildSystemPrompt(template)
         val isSocialMode = isSocialOutputMode(template)
 
@@ -235,7 +245,7 @@ class WorkflowExecutionEngine @Inject constructor(
 
         val transformResult = transformProvider.transform(input, TransformType.CUSTOM_WORKFLOW)
 
-        return transformResult.map { result ->
+        transformResult.map { result ->
             OutputVersion(
                 version = nextVersion,
                 outputText = result.outputText,
