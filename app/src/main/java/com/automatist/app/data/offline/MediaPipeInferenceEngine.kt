@@ -1,6 +1,7 @@
 package com.automatist.app.data.offline
 
 import android.content.Context
+import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import com.automatist.app.domain.offline.OfflineModelEntry
@@ -40,13 +41,42 @@ class MediaPipeInferenceEngine @Inject constructor(
     private val modelDownloadManager: ModelDownloadManager
 ) {
     companion object {
+        private const val TAG = "MediaPipeLLM"
+
         /** Timeout for the entire inference operation (model load + generation). */
         const val INFERENCE_TIMEOUT_MS = 120_000L // 2 minutes — model loading is slow
 
-        private const val MAX_TOKENS = 1024
+        /**
+         * Max output tokens. Tuned for a ~1B-parameter int4 model on mobile CPU where
+         * typical throughput is 5–15 tok/s: at 384 tokens, pure generation fits
+         * comfortably inside [INFERENCE_TIMEOUT_MS] even with a cold model load.
+         * 1024 was the previous value and caused timeouts on real devices.
+         */
+        private const val MAX_TOKENS = 384
         private const val TEMPERATURE = 0.7f
         private const val TOP_K = 40
+
+        /** Timing buckets reported when inference completes (or times out just before). */
+        data class PhaseTimings(
+            val modelLoadMs: Long,
+            val sessionCreateMs: Long,
+            val addQueryChunkMs: Long,
+            val generateResponseMs: Long,
+            val totalMs: Long,
+            val modelCloseMs: Long
+        ) {
+            fun summary(modelFileName: String, promptChars: Int, responseChars: Int): String =
+                "$modelFileName: load=${modelLoadMs}ms session=${sessionCreateMs}ms " +
+                    "prompt=${addQueryChunkMs}ms(${promptChars}ch) " +
+                    "generate=${generateResponseMs}ms(${responseChars}ch) " +
+                    "close=${modelCloseMs}ms total=${totalMs}ms"
+        }
     }
+
+    /** Most recent phase timings, exposed for diagnostic error surfacing. Null until first run. */
+    @Volatile
+    var lastTimings: PhaseTimings? = null
+        private set
 
     /**
      * Runs inference using the specified downloadable model entry.
@@ -79,6 +109,13 @@ class MediaPipeInferenceEngine @Inject constructor(
      * @throws ModelInferenceException on any error (wraps the underlying cause)
      */
     private fun runMediaPipeInference(modelFile: File, prompt: String): String {
+        val totalStart = System.currentTimeMillis()
+        var modelLoadMs = 0L
+        var sessionCreateMs = 0L
+        var addQueryChunkMs = 0L
+        var generateResponseMs = 0L
+        var modelCloseMs = 0L
+
         val modelOptions = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelFile.absolutePath)
             .setMaxTokens(MAX_TOKENS)
@@ -88,29 +125,50 @@ class MediaPipeInferenceEngine @Inject constructor(
 
         val llm: LlmInference
         try {
+            val loadStart = System.currentTimeMillis()
             llm = LlmInference.createFromOptions(context, modelOptions)
+            modelLoadMs = System.currentTimeMillis() - loadStart
+            Log.d(TAG, "${modelFile.name}: model load ${modelLoadMs}ms")
         } catch (e: Exception) {
+            recordTimings(
+                modelFile.name, prompt.length, 0,
+                modelLoadMs, sessionCreateMs, addQueryChunkMs, generateResponseMs,
+                modelCloseMs, totalStart
+            )
             throw ModelInferenceException(
                 "Failed to load ${modelFile.name}: ${e.message}",
                 e
             )
         }
 
+        var responseChars = 0
         try {
             val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
                 .setTemperature(TEMPERATURE)
                 .setTopK(TOP_K)
                 .build()
 
+            val sessionStart = System.currentTimeMillis()
             val session = LlmInferenceSession.createFromOptions(llm, sessionOptions)
+            sessionCreateMs = System.currentTimeMillis() - sessionStart
+            Log.d(TAG, "${modelFile.name}: session create ${sessionCreateMs}ms")
+
             try {
+                val chunkStart = System.currentTimeMillis()
                 session.addQueryChunk(prompt)
+                addQueryChunkMs = System.currentTimeMillis() - chunkStart
+
+                val genStart = System.currentTimeMillis()
                 val response = session.generateResponse()
+                generateResponseMs = System.currentTimeMillis() - genStart
+                Log.d(TAG, "${modelFile.name}: generate ${generateResponseMs}ms (${MAX_TOKENS} max)")
+
                 if (response.isNullOrBlank()) {
                     throw ModelInferenceException(
                         "Model returned an empty response for ${modelFile.name}"
                     )
                 }
+                responseChars = response.length
                 return response
             } finally {
                 session.close()
@@ -123,8 +181,38 @@ class MediaPipeInferenceEngine @Inject constructor(
                 e
             )
         } finally {
+            val closeStart = System.currentTimeMillis()
             llm.close()
+            modelCloseMs = System.currentTimeMillis() - closeStart
+            recordTimings(
+                modelFile.name, prompt.length, responseChars,
+                modelLoadMs, sessionCreateMs, addQueryChunkMs, generateResponseMs,
+                modelCloseMs, totalStart
+            )
         }
+    }
+
+    private fun recordTimings(
+        modelFileName: String,
+        promptChars: Int,
+        responseChars: Int,
+        modelLoadMs: Long,
+        sessionCreateMs: Long,
+        addQueryChunkMs: Long,
+        generateResponseMs: Long,
+        modelCloseMs: Long,
+        totalStart: Long
+    ) {
+        val timings = PhaseTimings(
+            modelLoadMs = modelLoadMs,
+            sessionCreateMs = sessionCreateMs,
+            addQueryChunkMs = addQueryChunkMs,
+            generateResponseMs = generateResponseMs,
+            modelCloseMs = modelCloseMs,
+            totalMs = System.currentTimeMillis() - totalStart
+        )
+        lastTimings = timings
+        Log.i(TAG, timings.summary(modelFileName, promptChars, responseChars))
     }
 }
 
