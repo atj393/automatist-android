@@ -11,6 +11,7 @@ import com.automatist.app.domain.offline.OfflineModelEntry
 import com.automatist.app.domain.offline.OfflineModelRepository
 import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.repositories.WorkflowRepository
+import com.automatist.app.platform.onboarding.DefaultProfilePromoter
 import com.automatist.app.platform.security.SecureStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -59,7 +60,8 @@ class VaultViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val secureStorage: SecureStorage,
     private val workflowRepository: WorkflowRepository,
-    private val offlineModelRepository: OfflineModelRepository
+    private val offlineModelRepository: OfflineModelRepository,
+    private val defaultProfilePromoter: DefaultProfilePromoter
 ) : ViewModel() {
 
     companion object {
@@ -416,7 +418,14 @@ class VaultViewModel @Inject constructor(
 
             workflowRepository.saveProfile(profile)
             settingsRepository.markProfileSetupDone()
-            if (profile.isDefault) settingsRepository.markDefaultSetupDone()
+
+            // Auto-promote this new profile to app default, but only when the current
+            // default is still the seeded Local Fake profile. Never overrides an explicit
+            // user choice. No-op for profile edits.
+            val wasNewProfile = existing == null
+            val promoted = defaultProfilePromoter.maybePromoteOnCreate(profile, wasNewProfile)
+
+            if (profile.isDefault || promoted) settingsRepository.markDefaultSetupDone()
 
             _state.update { it.copy(isProfileEditorOpen = false, editorError = null) }
             loadAllStatus()
