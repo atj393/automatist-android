@@ -116,6 +116,31 @@ class WorkflowRunViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Retry the workflow after a failed run. Resets the UI state and starts a fresh run
+     * using the current workflow definition. Creates a new run record — the failed run
+     * remains intact in history.
+     *
+     * Safe to call multiple times: guards against duplicate in-progress runs.
+     */
+    fun retryRun() {
+        if (_state.value.isRunning) return // prevent duplicate retry
+        viewModelScope.launch {
+            val template = repository.getTemplateById(templateId)
+            if (template == null) {
+                _state.update { it.copy(errorMessage = "Workflow no longer exists. It may have been deleted.") }
+                return@launch
+            }
+            // Reset UI to initial running state
+            _state.value = RunUiState(
+                isLoading = false,
+                templateName = template.name,
+                isRunning = false
+            )
+            startRun(template)
+        }
+    }
+
     private fun startRun(template: WorkflowTemplate) {
         viewModelScope.launch {
             _state.update { it.copy(isRunning = true, outputFormat = template.outputConfig.outputFormat) }

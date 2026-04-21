@@ -7,6 +7,7 @@ import com.automatist.app.domain.models.*
 import kotlinx.coroutines.flow.first
 import com.automatist.app.domain.offline.DownloadProgress
 import com.automatist.app.domain.offline.OfflineModelCatalog
+import com.automatist.app.domain.offline.OfflineModelEntry
 import com.automatist.app.domain.offline.OfflineModelRepository
 import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.repositories.WorkflowRepository
@@ -223,6 +224,32 @@ class VaultViewModel @Inject constructor(
         checkEditorKey(entry)
     }
 
+    /**
+     * Opens the profile editor prefilled for a specific on-device model.
+     * Called from the On-device AI section's "Create Profile" CTA after install.
+     */
+    fun openNewOfflineProfile(modelId: String) {
+        val entry = ProviderCatalog.LOCAL_AI_ENTRY
+        val modelName = ProviderModels.LOCAL_AI.find { it.first == modelId }?.second ?: "On-device AI"
+        _state.update {
+            it.copy(
+                isProfileEditorOpen = true, editingProfile = null,
+                editorName = modelName,
+                editorCatalogEntry = entry, editorModel = modelId,
+                editorCustomModel = "", editorUseCustomModel = false,
+                editorCustomBaseUrl = "", editorCustomProviderName = "",
+                editorApiKey = "", editorHasExistingKey = false, editorError = null
+            )
+        }
+    }
+
+    /** Returns true if a LOCAL_AI profile already exists for the given model ID. */
+    fun hasProfileForModel(modelId: String): Boolean {
+        return _state.value.profiles.any {
+            it.providerType == ProviderType.LOCAL_AI && it.modelId == modelId
+        }
+    }
+
     fun openEditProfile(profile: ProviderProfile) {
         val entry = ProviderCatalog.resolveForProfile(profile)
         val builtInModels = entry.suggestedModels.map { it.first }
@@ -254,8 +281,22 @@ class VaultViewModel @Inject constructor(
     fun closeProfileEditor() { _state.update { it.copy(isProfileEditorOpen = false, editorError = null) } }
 
     fun selectCatalogEntry(entry: CatalogEntry) {
+        val currentName = _state.value.editorName
+        // Auto-prefill profile name for OFFLINE entries when the name is blank
+        // or was previously auto-filled from another provider's display name.
+        val autoName = if (entry.category == CatalogCategory.OFFLINE) {
+            val modelName = entry.suggestedModels
+                .find { it.first == entry.defaultModel }?.second
+                ?: entry.displayName
+            if (currentName.isBlank() || isAutoFilledName(currentName)) modelName else currentName
+        } else {
+            // Clear auto-filled name when switching away from OFFLINE,
+            // but keep user-typed names.
+            if (isAutoFilledName(currentName)) "" else currentName
+        }
         _state.update {
             it.copy(
+                editorName = autoName,
                 editorCatalogEntry = entry, editorModel = entry.defaultModel,
                 editorCustomModel = "", editorUseCustomModel = false,
                 editorCustomBaseUrl = entry.presetBaseUrl, editorCustomProviderName = "",
@@ -263,6 +304,13 @@ class VaultViewModel @Inject constructor(
             )
         }
         checkEditorKey(entry)
+    }
+
+    /** Returns true if the name matches a known auto-filled model/provider name. */
+    private fun isAutoFilledName(name: String): Boolean {
+        val autoNames = ProviderModels.LOCAL_AI.map { it.second }.toSet() +
+            setOf(ProviderCatalog.LOCAL_AI_ENTRY.displayName)
+        return name in autoNames
     }
 
     private fun checkEditorKey(entry: CatalogEntry) {
@@ -278,7 +326,14 @@ class VaultViewModel @Inject constructor(
     }
 
     fun updateEditorName(n: String) = _state.update { it.copy(editorName = n) }
-    fun updateEditorModel(m: String) = _state.update { it.copy(editorModel = m) }
+    fun updateEditorModel(m: String) {
+        val s = _state.value
+        // When switching between on-device models, update the auto-filled name too
+        val newName = if (s.editorCatalogEntry.category == CatalogCategory.OFFLINE && isAutoFilledName(s.editorName)) {
+            ProviderModels.LOCAL_AI.find { it.first == m }?.second ?: s.editorName
+        } else s.editorName
+        _state.update { it.copy(editorModel = m, editorName = newName) }
+    }
     fun updateEditorCustomModel(m: String) = _state.update { it.copy(editorCustomModel = m) }
     fun toggleEditorCustomModel(use: Boolean) = _state.update { it.copy(editorUseCustomModel = use) }
     fun updateEditorCustomBaseUrl(u: String) = _state.update { it.copy(editorCustomBaseUrl = u) }
