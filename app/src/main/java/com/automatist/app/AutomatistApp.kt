@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import com.automatist.app.data.billing.BillingManager
 import com.automatist.app.domain.repositories.WorkflowRepository
+import com.automatist.app.platform.onboarding.FirstRunSeeder
 import com.automatist.app.platform.scheduling.ScheduleManager
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +20,7 @@ class AutomatistApp : Application() {
     @Inject lateinit var scheduleManager: ScheduleManager
     @Inject lateinit var workflowRepository: WorkflowRepository
     @Inject lateinit var billingManager: BillingManager
+    @Inject lateinit var firstRunSeeder: FirstRunSeeder
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -34,6 +36,14 @@ class AutomatistApp : Application() {
         billingManager.queryOwnedPurchases()
 
         appScope.launch {
+            // Seed first-run defaults before schedule reconciliation so a freshly-seeded
+            // workflow is visible to the reconciler. Seeder is fully idempotent.
+            try {
+                firstRunSeeder.seedIfNeeded()
+            } catch (e: Exception) {
+                Log.e("AutomatistApp", "First-run seeding error: ${e.message}", e)
+            }
+
             try {
                 scheduleManager.reconcileSchedules {
                     workflowRepository.getAllTemplates().first()

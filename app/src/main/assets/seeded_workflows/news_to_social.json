@@ -1,0 +1,71 @@
+{
+    "schemaVersion": 1,
+    "type": "automatist-workflow",
+    "exportedAt": "2026-04-21T09:47:07.119558Z",
+    "app": {
+        "name": "Automatist",
+        "exportFormatVersion": 1
+    },
+    "workflow": {
+        "name": "News to Social",
+        "description": "Generate daily social media posts from curated news",
+        "trigger": {
+            "type": "interval",
+            "intervalMinutes": 15
+        },
+        "actions": [
+            {
+                "type": "FETCH_RSS_FEED",
+                "label": "News Feed",
+                "sourceData": "https://techcrunch.com/feed/",
+                "instruction": "Select the most interesting and shareable items from today's feed.",
+                "order": 0,
+                "isEnabled": true,
+                "extraConfig": {},
+                "profileId": ""
+            }
+        ],
+        "globalInstruction": "Focus on the most newsworthy and engaging items. Each platform output should feel native to that platform, not like a copy-paste. Highlight different angles for different audiences.",
+        "outputConfig": {
+            "outputType": "SOCIAL_POST",
+            "outputFormat": "MARKDOWN",
+            "customInstruction": "",
+            "socialPlatforms": [
+                "X",
+                "LINKEDIN"
+            ],
+            "saveToHistory": true,
+            "outputProfileId": "",
+            "socialGlobalInstruction": "Focus on tech and business trends. Keep tone professional but approachable.",
+            "platformInstructions": {
+                "X": "Short, punchy, under 280 chars. Include 1-2 relevant hashtags.",
+                "LinkedIn": "Professional insight with a hook. 2-3 short paragraphs. End with a question or CTA."
+            },
+            "customPlatforms": [],
+            "inputCompaction": "AGGRESSIVE",
+            "numberOfOutputs": 1
+        },
+        "notifyOnCompletion": true,
+        "notifyOnStart": true,
+        "sourceTemplateId": "news_to_social",
+        "category": "Social Media",
+        "customization": {
+            "editableSections": [
+                "BASICS",
+                "TRIGGER",
+                "ACTIONS",
+                "INSTRUCTIONS",
+                "OUTPUT",
+                "NOTIFICATIONS"
+            ],
+            "lockedActionIds": [],
+            "canAddActions": true,
+            "canRemoveActions": true
+        },
+        "defaultProfileId": ""
+    },
+    "references": {
+        "profiles": [],
+        "savedNotes": []
+    }
+}

@@ -1,9 +1,13 @@
 package com.automatist.app.feature.workflow.editor
 
 import android.Manifest
+import android.app.Activity
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import com.automatist.app.feature.onboarding.canRequestNotificationPermission
+import com.automatist.app.feature.onboarding.openAppNotificationSettings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -40,10 +45,16 @@ fun WorkflowEditorScreen(
     val availableWorkflows by viewModel.availableWorkflows.collectAsState()
     val availableProfiles by viewModel.availableProfiles.collectAsState()
 
-    // Notification permission launcher (Android 13+)
+    // Notification permission launcher (Android 13+). We track attempts locally so we
+    // can honestly tell the user when the OS won't show the dialog anymore and they
+    // need to go to system settings.
+    val context = LocalContext.current
+    val activity = context as? Activity
+    var permissionAsked by rememberSaveable { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted ->
+    ) { _ ->
+        permissionAsked = true
         viewModel.checkNotificationPermission()
     }
 
@@ -261,8 +272,15 @@ fun WorkflowEditorScreen(
             // ── Section 6: Notifications ──
             SectionHeader("6", "Notifications")
 
-            // Permission banner
+            // Permission banner. When the OS will still show the runtime dialog, we
+            // use the in-app launcher. When it won't (permanently denied), we route the
+            // user to the system app-notification-settings screen so the state of the
+            // toggles below isn't silently broken.
             if (state.needsNotificationPermission) {
+                val canRequest = activity?.let {
+                    canRequestNotificationPermission(it, permissionAsked)
+                } ?: false
+
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer
@@ -270,29 +288,35 @@ fun WorkflowEditorScreen(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
-                            "Notification permission needed",
+                            if (canRequest) "Notification permission needed"
+                            else "Notifications blocked in system settings",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            "To receive alerts when your scheduled workflows start, complete, or fail, Automatist needs notification permission.",
+                            if (canRequest)
+                                "To receive alerts when your scheduled workflows start, complete, or fail, Automatist needs notification permission."
+                            else
+                                "Notifications are disabled for Automatist at the system level. The toggles below will save, but nothing will be delivered until you re-enable notifications in Settings.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                         Spacer(Modifier.height(8.dp))
                         Button(
                             onClick = {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                if (canRequest && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                     permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    activity?.let { openAppNotificationSettings(it) }
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.tertiary
                             )
                         ) {
-                            Text("Allow Notifications")
+                            Text(if (canRequest) "Allow Notifications" else "Open Settings")
                         }
                     }
                 }
