@@ -341,7 +341,7 @@ private fun OnDeviceAISection(
                 Text(
                     "On-device AI models run directly on your device — no internet or API key required. " +
                     "Gemini Nano is managed by Android system services (Pixel 8+ / Galaxy S24+, Android 14+). " +
-                    "Downloadable models like Gemma 3n E2B work on most modern devices but require " +
+                    "Downloadable models like Gemma 3 1B (int4) work on most modern devices but require " +
                     "a one-time download. Your existing cloud AI profiles are unaffected.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

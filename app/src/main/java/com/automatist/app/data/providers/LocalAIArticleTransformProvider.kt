@@ -151,11 +151,19 @@ class LocalAIArticleTransformProvider @Inject constructor(
                 mediaPipeInferenceEngine.generateText(entry, prompt)
             }
             if (result == null) {
+                // Surface phase breakdown from the last (partial) run so the user sees
+                // whether time was spent loading the model, prefilling, or generating.
+                val timingSummary = mediaPipeInferenceEngine.lastTimings
+                    ?.summary(entry.modelFileName ?: "local", prompt.length, 0)
+                    ?: "no phase timings recorded"
                 return Result.failure(
                     DiagnosticException(
-                        message = "${entry.displayName} took too long to respond. " +
-                            "Try again or switch to a cloud-based AI profile.",
-                        rawDetail = "MediaPipe inference timed out after ${MediaPipeInferenceEngine.INFERENCE_TIMEOUT_MS}ms for '$modelId'"
+                        message = "${entry.displayName} took too long to respond on this device. " +
+                            "Try again with shorter input, or switch to a cloud-based AI profile " +
+                            "for faster results.",
+                        rawDetail = "MediaPipe inference timed out after " +
+                            "${MediaPipeInferenceEngine.INFERENCE_TIMEOUT_MS}ms for '$modelId' " +
+                            "(prompt=${prompt.length}ch). Last timings: $timingSummary"
                     )
                 )
             }

@@ -88,7 +88,9 @@ object ProviderModels {
     /** On-device offline models. IDs match [com.automatist.app.domain.offline.OfflineModelCatalog]. */
     val LOCAL_AI = listOf(
         "gemini-nano" to "Gemini Nano",
-        "gemma-3n-e2b" to "Gemma 3n E2B"
+        // ID is the historical "gemma-3n-e2b" slug but the bundled file is actually
+        // Gemma 3 1B int4; the label matches the file, not the slug.
+        "gemma-3n-e2b" to "Gemma 3 1B (int4)"
     )
 
     /** Whether the given model ID is in the built-in curated list for its provider. */
