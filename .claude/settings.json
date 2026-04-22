@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wait)",
+      "Bash(./gradlew assembleRelease --stacktrace)",
+      "Bash(./gradlew assembleRelease --info)",
+      "Bash(./gradlew assembleRelease bundleRelease)"
+    ]
+  }
+}
