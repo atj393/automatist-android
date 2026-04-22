@@ -91,6 +91,20 @@ class WorkflowExecutionEngine @Inject constructor(
                     // this specific action. Cheap no-op for cloud providers.
                     Log.i(TAG, "action-preprocess-start index=$index label='$label'")
                     transformProvider.resetForNewStage("action-preprocess:$index:${action.id}")
+                    // Surface the upcoming AI preprocessing pass as its own visible
+                    // stage so the user can distinguish source-fetching from the
+                    // action's prompt actually running. Only emitted when there IS
+                    // an instruction to run — no noise for plain fetch actions.
+                    emit(
+                        ExecutionState.ActionPromptStarted(
+                            actionIndex = index,
+                            totalActions = enabledActions.size,
+                            actionLabel = label,
+                            instructionPreview = action.instruction.trim()
+                                .take(120)
+                                .let { if (action.instruction.length > 120) "$it…" else it }
+                        )
+                    )
                     val prep = preprocessActionWithInstruction(action, rawText, template)
                     if (prep != null) {
                         preprocessPromptTokens += prep.promptTokens ?: 0

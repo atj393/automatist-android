@@ -511,6 +511,23 @@ private fun LiveStageRow(
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(stage.label, style = MaterialTheme.typography.bodyMedium)
+
+            // Live "Ns elapsed" for the currently running stage. Ticking is
+            // isolated to this row via rememberRunningElapsedLabel, so the
+            // 1 Hz update doesn't recompose the whole run screen. Rendered
+            // as the first line of the detail area so it never displaces the
+            // existing stage detail or action-data expander.
+            if (stage.status == StageStatus.RUNNING && stage.startedAtMillis > 0L) {
+                val elapsed = rememberRunningElapsedLabel(stage.startedAtMillis)
+                if (elapsed.isNotBlank()) {
+                    Text(
+                        elapsed,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+                }
+            }
+
             if (stage.detail.isNotBlank()) {
                 val parts = stage.detail.split("\n---\n", limit = 2)
                 Text(

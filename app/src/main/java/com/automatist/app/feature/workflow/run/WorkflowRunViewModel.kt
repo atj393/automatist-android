@@ -55,7 +55,15 @@ data class StageInfo(
     val label: String,
     val status: StageStatus,
     val detail: String = "",
-    val actionData: String = "" // full action result text for inspection
+    val actionData: String = "", // full action result text for inspection
+    /**
+     * Wall-clock start time for this stage, stamped only when the stage is
+     * created in [StageStatus.RUNNING]. `0L` means "no timestamp available"
+     * (e.g. for purely decorative completed rows like compaction info that
+     * are inserted already-COMPLETED). The run page uses this to show a
+     * live "Ns elapsed" hint for the currently running row.
+     */
+    val startedAtMillis: Long = 0L
 )
 
 enum class StageStatus { PENDING, RUNNING, COMPLETED, FAILED }
@@ -179,27 +187,42 @@ class WorkflowRunViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         currentStageLabel = "Preparing workflow...",
-                        stages = listOf(StageInfo("Preparing", StageStatus.RUNNING))
+                        stages = listOf(runningStage("Preparing"))
                     )
                 }
             }
 
             is ExecutionState.ValidatingInputs -> {
                 _state.update {
-                    val stages = it.stages.markLastCompleted() + StageInfo(
-                        "Validating ${executionState.totalActions} action(s)", StageStatus.RUNNING
+                    val stages = it.stages.markLastCompleted() + runningStage(
+                        "Validating ${executionState.totalActions} action(s)"
                     )
                     it.copy(currentStageLabel = "Validating inputs...", stages = stages)
                 }
             }
 
             is ExecutionState.ActionStarted -> {
+                val header = "Reading source: ${executionState.actionLabel}"
                 _state.update {
-                    val stages = it.stages.markLastCompleted() + StageInfo(
-                        "Processing: ${executionState.actionLabel}", StageStatus.RUNNING,
-                        "${executionState.actionIndex + 1}/${executionState.totalActions}"
+                    val stages = it.stages.markLastCompleted() + runningStage(
+                        label = header,
+                        detail = "${executionState.actionIndex + 1}/${executionState.totalActions}"
                     )
-                    it.copy(currentStageLabel = "Processing: ${executionState.actionLabel}", stages = stages)
+                    it.copy(currentStageLabel = header, stages = stages)
+                }
+            }
+
+            is ExecutionState.ActionPromptStarted -> {
+                // Action has its own prompt — mark the source-reading row complete
+                // and push a distinct "running action prompt" row so the user sees
+                // that an AI pass is actively running for this action.
+                val header = "Running action prompt: ${executionState.actionLabel}"
+                _state.update {
+                    val stages = it.stages.markLastCompleted() + runningStage(
+                        label = header,
+                        detail = executionState.instructionPreview
+                    )
+                    it.copy(currentStageLabel = header, stages = stages)
                 }
             }
 
@@ -245,21 +268,39 @@ class WorkflowRunViewModel @Inject constructor(
                 _state.update {
                     val stages = it.stages.markLastCompleted() + StageInfo(
                         compactionDetail, StageStatus.COMPLETED
-                    ) + StageInfo("Generating AI output...", StageStatus.RUNNING)
-                    it.copy(currentStageLabel = "Generating output via AI...", stages = stages)
+                    ) + runningStage("Generating final output…")
+                    it.copy(currentStageLabel = "Generating final output…", stages = stages)
                 }
             }
 
             is ExecutionState.GeneratingOutput -> {
-                val label = buildString {
-                    append("Generating output")
-                    if (executionState.providerName.isNotBlank()) append(" via ${executionState.providerName}")
-                    if (executionState.modelId.isNotBlank()) append(" (${executionState.modelId})")
-                    append("...")
+                // Refine the running final-generation stage with profile/model context
+                // so the user sees exactly which AI is producing the result, without
+                // losing the "final output" framing.
+                val headerDetail = buildString {
+                    if (executionState.providerName.isNotBlank()) append(executionState.providerName)
+                    if (executionState.modelId.isNotBlank()) {
+                        if (isNotEmpty()) append(" · ")
+                        append(executionState.modelId)
+                    }
                 }
+                val header = if (headerDetail.isNotBlank())
+                    "Generating final output · $headerDetail"
+                else
+                    "Generating final output…"
                 _state.update {
+                    // Attach provider/model info to the existing running stage so the
+                    // stage row itself shows which AI is working — no noisy new row.
+                    val stages = it.stages.toMutableList()
+                    if (stages.isNotEmpty() && stages.last().status == StageStatus.RUNNING) {
+                        stages[stages.lastIndex] = stages.last().copy(
+                            label = "Generating final output",
+                            detail = headerDetail.ifBlank { stages.last().detail }
+                        )
+                    }
                     it.copy(
-                        currentStageLabel = label,
+                        currentStageLabel = header,
+                        stages = stages,
                         profileName = executionState.profileName,
                         modelId = executionState.modelId
                     )
@@ -456,6 +497,15 @@ class WorkflowRunViewModel @Inject constructor(
         return if (redacted.length <= maxPerAction) redacted
         else redacted.take(maxPerAction - 40) + "\n\n[truncated — ${redacted.length} chars total]"
     }
+
+    /** Factory for a freshly-started running stage that stamps its start time. */
+    private fun runningStage(label: String, detail: String = ""): StageInfo =
+        StageInfo(
+            label = label,
+            status = StageStatus.RUNNING,
+            detail = detail,
+            startedAtMillis = System.currentTimeMillis()
+        )
 
     private fun List<StageInfo>.markLastCompleted(detail: String = "", actionData: String = ""): List<StageInfo> {
         if (isEmpty()) return this
