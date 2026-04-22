@@ -37,7 +37,7 @@ fun WorkflowRunDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Run Detail") },
+                title = { Text("Run Results") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -117,7 +117,7 @@ fun WorkflowRunDetailScreen(
             if (r.promptTokens != null || r.completionTokens != null || r.totalTokens != null) {
                 val isEstimated = r.providerType == com.automatist.app.domain.models.ProviderType.LOCAL_AI ||
                     r.providerType == com.automatist.app.domain.models.ProviderType.FAKE
-                val label = if (isEstimated) "Token Usage (estimated)" else "Token Usage"
+                val label = if (isEstimated) "AI Usage (estimated)" else "AI Usage"
                 Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {

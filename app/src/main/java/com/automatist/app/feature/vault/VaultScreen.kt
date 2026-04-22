@@ -61,7 +61,7 @@ fun VaultScreen(
             TopAppBar(title = {
                 Column {
                     Text("Settings", fontWeight = FontWeight.Bold)
-                    Text("AI profiles, keys, and preferences", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Profiles, API keys, and app settings", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } })
         },
@@ -169,7 +169,7 @@ private fun DefaultProfileSection(profiles: List<ProviderProfile>, onSet: (Strin
     var exp by remember { mutableStateOf(false) }
     val en = profiles.filter { it.isEnabled }; val cur = profiles.find { it.isDefault }
     Card2(Icons.Default.Star, "Default AI Profile", "The primary profile used by all workflows unless overridden.") {
-        if (profiles.isEmpty()) { Text("Create an AI Profile below to set a default.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (profiles.isEmpty()) { Text("Add an AI Profile to set a default.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         else {
             Box {
                 Card(onClick = { if (en.isNotEmpty()) exp = true }, colors = CardDefaults.cardColors(
@@ -204,13 +204,13 @@ private fun ProfilesSection(
     state: VaultUiState, onNew: () -> Unit, onEdit: (ProviderProfile) -> Unit,
     onDel: (String) -> Unit, onSetDef: (String) -> Unit, onSetFb: (String) -> Unit, onToggle: (ProviderProfile) -> Unit
 ) {
-    Card2(Icons.Default.Psychology, "AI Profiles", "Each profile bundles a provider, model, and API key.") {
+    Card2(Icons.Default.Psychology, "AI Profiles", "Connect to an AI provider (OpenAI, Anthropic, Gemini, and more).") {
         if (state.profiles.isEmpty()) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
                 Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.size(24.dp))
                     Spacer(Modifier.height(8.dp)); Text("No profiles yet", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    Text("Tap \"Add AI Profile\" to set up your first provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Tap Add AI Profile to get started.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
@@ -336,13 +336,13 @@ private fun OnDeviceAISection(
         Spacer(Modifier.height(8.dp))
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text("About On-device AI", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                Text("How On-device AI works", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "On-device AI models run directly on your device — no internet or API key required. " +
-                    "Gemini Nano is managed by Android system services (Pixel 8+ / Galaxy S24+, Android 14+). " +
-                    "Downloadable models like Gemma 3 1B (int4) work on most modern devices but require " +
-                    "a one-time download. Your existing cloud AI profiles are unaffected.",
+                    "On-device models run directly on your phone — no internet or API key required. " +
+                    "Gemini Nano is built into select Pixel and Galaxy devices (Android 14+). " +
+                    "Gemma 3 runs on most modern Android phones but needs a one-time download. " +
+                    "Your cloud AI profiles are unaffected.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -551,7 +551,7 @@ private fun ServiceKeysSection(
     onAddCustom: (String, String) -> Unit, onRemoveCustom: (String) -> Unit
 ) {
     var showAdd by remember { mutableStateOf(false) }; var cn by remember { mutableStateOf("") }; var cv by remember { mutableStateOf("") }
-    Card2(Icons.Default.CloudQueue, "Service API Keys", "Keys for external services (weather, routes). Used by workflow actions.") {
+    Card2(Icons.Default.CloudQueue, "Service API Keys", "API keys for weather, mapping, and other services used in your workflows.") {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             VaultViewModel.BUILT_IN_SERVICE_KEYS.forEach { info ->
                 SvcCard(info, state.serviceKeyStatus[info.id] == true, info.id in expanded,
