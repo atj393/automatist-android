@@ -275,7 +275,7 @@ private fun MyWorkflowCard(
                 )
                 AssistChip(
                     onClick = {},
-                    label = { Text("${template.actions.size} action(s)", style = MaterialTheme.typography.labelSmall) },
+                    label = { Text("${template.actions.size} ${if (template.actions.size == 1) "action" else "actions"}", style = MaterialTheme.typography.labelSmall) },
                     modifier = Modifier.height(28.dp)
                 )
                 if (template.lastRunStatus != null) {

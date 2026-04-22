@@ -140,7 +140,7 @@ class FirstRunSeeder @Inject constructor(
             val now = System.currentTimeMillis()
             val profile = ProviderProfile(
                 id = UUID.randomUUID().toString(),
-                name = "Local Fake Demo",
+                name = "Demo Mode",
                 providerType = ProviderType.FAKE,
                 modelId = "fake-demo",
                 isDefault = false,

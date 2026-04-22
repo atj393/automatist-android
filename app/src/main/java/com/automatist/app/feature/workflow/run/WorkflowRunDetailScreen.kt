@@ -139,7 +139,7 @@ fun WorkflowRunDetailScreen(
             // Execution log — persisted step-by-step history
             val stages = r.persistedStages
             if (stages.isNotEmpty()) {
-                Text("Execution Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("Run Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         stages.forEach { stage ->

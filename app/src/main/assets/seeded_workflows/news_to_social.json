@@ -7,7 +7,7 @@
         "exportFormatVersion": 1
     },
     "workflow": {
-        "name": "News to Social",
+        "name": "News to Social Posts",
         "description": "Generate daily social media posts from curated news",
         "trigger": {
             "type": "interval",
