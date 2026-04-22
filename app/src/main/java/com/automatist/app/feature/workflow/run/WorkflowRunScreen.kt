@@ -479,9 +479,6 @@ private fun LiveStageRow(
     context: Context,
     snackbarHostState: SnackbarHostState
 ) {
-    var showData by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
     Row(
         verticalAlignment = Alignment.Top,
         modifier = Modifier.fillMaxWidth()
@@ -547,50 +544,109 @@ private fun LiveStageRow(
                 }
             }
 
-            // Expandable action data
+            // Expandable detail sections — each stage can have up to three
+            // independent expanders. Collapsed by default; heavy text is only
+            // composed when the user expands a given section.
+            if (stage.sourceText.isNotBlank()) {
+                ExpandableDetail(
+                    showLabel = "Show source content",
+                    hideLabel = "Hide source content",
+                    text = stage.sourceText,
+                    clipboardLabel = "Source content",
+                    snackbarText = "Source content copied",
+                    context = context,
+                    snackbarHostState = snackbarHostState
+                )
+            }
+            if (stage.promptText.isNotBlank()) {
+                val isFinalPrompt = stage.label.startsWith("Generating final output")
+                ExpandableDetail(
+                    showLabel = if (isFinalPrompt) "Show final prompt" else "Show prompt",
+                    hideLabel = if (isFinalPrompt) "Hide final prompt" else "Hide prompt",
+                    text = stage.promptText,
+                    clipboardLabel = if (isFinalPrompt) "Final prompt" else "Prompt",
+                    snackbarText = if (isFinalPrompt) "Final prompt copied" else "Prompt copied",
+                    context = context,
+                    snackbarHostState = snackbarHostState
+                )
+            }
             if (stage.actionData.isNotBlank()) {
+                ExpandableDetail(
+                    showLabel = "Show result",
+                    hideLabel = "Hide result",
+                    text = stage.actionData,
+                    clipboardLabel = "Action result",
+                    snackbarText = "Result copied",
+                    context = context,
+                    snackbarHostState = snackbarHostState
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Reusable collapsed-by-default detail card for a single piece of stage text
+ * (source content, prompt, result, final prompt). Heavy text composition only
+ * happens when [expanded] is true, so adding three of these to a stage row
+ * does not render multi-KB blobs unless the user asks for them.
+ *
+ * The character count in the collapsed label is cheap (`text.length` is O(1)
+ * on a String) and helps the user gauge whether the content is worth
+ * expanding.
+ */
+@Composable
+private fun ExpandableDetail(
+    showLabel: String,
+    hideLabel: String,
+    text: String,
+    clipboardLabel: String,
+    snackbarText: String,
+    context: Context,
+    snackbarHostState: SnackbarHostState
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    TextButton(
+        onClick = { expanded = !expanded },
+        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+    ) {
+        Icon(
+            if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            null, modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            if (expanded) hideLabel else "$showLabel (${text.length} chars)",
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
+    if (expanded) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    lineHeight = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp)
+                )
+                Spacer(Modifier.height(4.dp))
                 TextButton(
-                    onClick = { showData = !showData },
-                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText(clipboardLabel, text))
+                        scope.launch { snackbarHostState.showSnackbar(snackbarText) }
+                    },
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                 ) {
-                    Icon(
-                        if (showData) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        null, modifier = Modifier.size(16.dp)
-                    )
+                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(
-                        if (showData) "Hide action data" else "Show action data (${stage.actionData.length} chars)",
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-                if (showData) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Column(modifier = Modifier.padding(8.dp)) {
-                            Text(
-                                stage.actionData,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                lineHeight = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp)
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            TextButton(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Action Data", stage.actionData))
-                                    scope.launch { snackbarHostState.showSnackbar("Action data copied") }
-                                },
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                            ) {
-                                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Copy", style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
+                    Text("Copy", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

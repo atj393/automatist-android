@@ -128,6 +128,7 @@ class WorkflowWorker(
                         is ExecutionState.Preparing -> "Preparing workflow..."
                         is ExecutionState.ValidatingInputs -> "Validating ${state.totalActions} action(s)..."
                         is ExecutionState.ActionStarted -> "Reading source: ${state.actionLabel}"
+                        is ExecutionState.ActionSourceFetched -> "Source ready: ${state.actionLabel}"
                         is ExecutionState.ActionPromptStarted -> "Running action prompt: ${state.actionLabel}"
                         is ExecutionState.ActionCompleted -> "Completed: ${state.actionLabel}"
                         is ExecutionState.ActionFailed -> "Failed: ${state.actionLabel}"
