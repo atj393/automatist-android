@@ -128,7 +128,7 @@ fun ScheduleStatusScreen(
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
                                 Text(
-                                    "You won't receive alerts when scheduled workflows start, complete, or fail.",
+                                    "You won't be notified when workflows run, finish, or fail.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onErrorContainer
                                 )
@@ -326,7 +326,7 @@ fun ScheduleStatusScreen(
                 item {
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Manual Only (${state.manualWorkflows.size})",
+                        "On Demand (${state.manualWorkflows.size})",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -414,8 +414,8 @@ private fun ScheduledWorkflowCard(
         ScheduleState.SUCCEEDED -> "Completed, next run scheduled"
         ScheduleState.FAILED -> "Last run failed"
         ScheduleState.CANCELLED -> "Schedule cancelled"
-        ScheduleState.BLOCKED -> "Blocked (waiting for conditions)"
-        ScheduleState.NOT_SCHEDULED -> "Not registered with system"
+        ScheduleState.BLOCKED -> "Blocked"
+        ScheduleState.NOT_SCHEDULED -> "Not scheduled"
     }
 
     Card(

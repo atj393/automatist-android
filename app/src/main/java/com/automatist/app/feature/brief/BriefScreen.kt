@@ -40,7 +40,7 @@ fun BriefScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Morning Brief Setup") },
+                title = { Text("Morning Brief") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -76,7 +76,7 @@ fun BriefScreen(
                 Tab(
                     selected = selectedTabIndex == 2,
                     onClick = { selectedTabIndex = 2 },
-                    text = { Text("Ongoing Process") }
+                    text = { Text("Live Progress") }
                 )
             }
 
@@ -162,7 +162,7 @@ private fun ConfigLayout(config: BriefConfig, onSaveConfig: (BriefConfig) -> Uni
         Text("5. Alerts", style = MaterialTheme.typography.titleMedium)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = notify, onCheckedChange = { notify = it })
-            Text("Notify me when draft is compiled")
+            Text("Notify me when the brief is ready")
         }
         Spacer(Modifier.height(24.dp))
 
@@ -177,11 +177,11 @@ private fun ConfigLayout(config: BriefConfig, onSaveConfig: (BriefConfig) -> Uni
                     isNotificationsEnabled = notify
                 )
                 onSaveConfig(updatedConfig)
-                Toast.makeText(context, "Automation Job Saved", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Configuration saved", Toast.LENGTH_SHORT).show()
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Save Automation Job")
+            Text("Save Schedule")
         }
     }
 }
@@ -190,7 +190,7 @@ private fun ConfigLayout(config: BriefConfig, onSaveConfig: (BriefConfig) -> Uni
 private fun RecentRunsLayout(runs: List<HistoryItem>) {
     if (runs.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No recent automated runs. Hit the 'Run Now' play icon in the top right toolbar to process a feed manually.")
+            Text("No runs yet. Tap the play button above to run the brief manually.")
         }
         return
     }
@@ -199,7 +199,7 @@ private fun RecentRunsLayout(runs: List<HistoryItem>) {
         items(runs) { item ->
             Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Synthesizer Output", style = MaterialTheme.typography.titleMedium)
+                    Text("Generated Brief", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(4.dp))
                     Text(item.outputText.take(200).replace("\n", " ") + "...", style = MaterialTheme.typography.bodyMedium)
                 }
@@ -212,7 +212,7 @@ private fun RecentRunsLayout(runs: List<HistoryItem>) {
 private fun OngoingProcessLayout(workState: WorkInfo?) {
     if (workState == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No process currently running. Press 'Run Now' to start.")
+            Text("Nothing is running. Tap Run Now to start.")
         }
         return
     }
@@ -226,9 +226,9 @@ private fun OngoingProcessLayout(workState: WorkInfo?) {
         verticalArrangement = Arrangement.Center
     ) {
         if (error != null || workState.state == WorkInfo.State.FAILED) {
-            Text("Error: ${error ?: "Unknown Error"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
+            Text(error ?: "Something went wrong.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleMedium)
         } else if (workState.state == WorkInfo.State.SUCCEEDED) {
-            Text("Job completed successfully!", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+            Text("Brief generated!", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
         } else {
             CircularProgressIndicator()
             Spacer(Modifier.height(24.dp))
