@@ -159,7 +159,7 @@ private fun LoadingContent() {
     ) {
         CircularProgressIndicator()
         Spacer(modifier = Modifier.height(16.dp))
-        Text("Processing using Local Fake Demo...")
+        Text("Processing using Demo Mode...")
     }
 }
 
