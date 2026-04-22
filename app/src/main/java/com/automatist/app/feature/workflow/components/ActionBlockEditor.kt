@@ -121,7 +121,7 @@ fun ActionBlockEditor(
                     OutlinedTextField(
                         value = action.instruction,
                         onValueChange = { onUpdate(action.copy(instruction = it)) },
-                        label = { Text("Per-source instruction (optional)") },
+                        label = { Text("Per-step instruction (optional)") },
                         placeholder = { Text("e.g. Summarize as a market update") },
                         minLines = 2, maxLines = 4,
                         modifier = Modifier.fillMaxWidth()

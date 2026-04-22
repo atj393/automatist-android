@@ -71,7 +71,7 @@ fun WorkflowRunScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "This workflow cannot run because some actions need configuration:",
+                            "Some actions need to be set up before this workflow can run:",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -178,7 +178,7 @@ fun WorkflowRunScreen(
             } else if (state.tokenUsage != null) {
                 // Fallback: show just token usage if no profile info (shouldn't happen normally)
                 Spacer(Modifier.height(4.dp))
-                Text("Token Usage", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("AI Usage", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
                         UsageSection(state.tokenUsage!!)
