@@ -25,7 +25,9 @@ import com.automatist.app.data.billing.PurchaseState
 import com.automatist.app.domain.access.PlanState
 import com.automatist.app.domain.access.ProductAccessRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -51,6 +53,9 @@ class UpgradeViewModel @Inject constructor(
     val isRestoring = billingManager.isRestoring
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    private val _userRestoreInProgress = MutableStateFlow(false)
+    val userRestoreInProgress = _userRestoreInProgress.asStateFlow()
+
     init {
         billingManager.queryProductDetails()
         billingManager.queryOwnedPurchases()
@@ -61,6 +66,7 @@ class UpgradeViewModel @Inject constructor(
     }
 
     fun restorePurchases() {
+        _userRestoreInProgress.value = true
         billingManager.queryOwnedPurchases()
     }
 
@@ -70,6 +76,10 @@ class UpgradeViewModel @Inject constructor(
 
     fun clearPurchaseState() {
         billingManager.clearPurchaseState()
+    }
+
+    fun clearUserRestore() {
+        _userRestoreInProgress.value = false
     }
 
     /**
@@ -95,6 +105,7 @@ fun UpgradeScreen(
     val productDetails by viewModel.productDetails.collectAsState()
     val billingStatus by viewModel.billingStatus.collectAsState()
     val isRestoring by viewModel.isRestoring.collectAsState()
+    val userRestoreInProgress by viewModel.userRestoreInProgress.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
@@ -113,6 +124,14 @@ fun UpgradeScreen(
                 snackbarHostState.showSnackbar("Purchase pending. Pro will unlock once approved.")
             }
             PurchaseState.Idle -> {}
+        }
+    }
+
+    // When a user-initiated restore finishes without finding Pro, show a neutral message
+    LaunchedEffect(isRestoring) {
+        if (!isRestoring && userRestoreInProgress && !planState.isProUnlocked && purchaseState !is PurchaseState.Success) {
+            snackbarHostState.showSnackbar("No previous purchase found for this account.")
+            viewModel.clearUserRestore()
         }
     }
 
