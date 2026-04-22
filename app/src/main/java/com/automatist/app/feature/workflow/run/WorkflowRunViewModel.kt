@@ -132,6 +132,7 @@ class WorkflowRunViewModel @Inject constructor(
      */
     fun retryRun() {
         if (_state.value.isRunning) return // prevent duplicate retry
+        Log.i(TAG, "retryRun requested templateId=$templateId — engine will reset local runtime state at run-start")
         viewModelScope.launch {
             val template = repository.getTemplateById(templateId)
             if (template == null) {

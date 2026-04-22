@@ -40,8 +40,15 @@ class WorkflowExecutionEngine @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true }
 
     fun execute(template: WorkflowTemplate): Flow<ExecutionState> = flow<ExecutionState> {
-        Log.d(TAG, "execute() flow start thread=${Thread.currentThread().name}")
+        Log.i(TAG, "execute() run-start template='${template.name}' id=${template.id} " +
+            "thread=${Thread.currentThread().name}")
         val startTime = System.currentTimeMillis()
+
+        // Stage-boundary reset at run start. Clears any transient on-device runtime
+        // state left behind by a prior run (e.g. MediaPipe diagnostic timings,
+        // partially-consumed session metadata). Cloud providers are stateless so
+        // the router short-circuits this for them — see TransformProviderRouter.
+        transformProvider.resetForNewStage("run-start:${template.id}")
 
         emit(ExecutionState.Preparing)
 
@@ -79,6 +86,11 @@ class WorkflowExecutionEngine @Inject constructor(
                 // workflow prompt stage. The prepared result replaces the raw text
                 // for downstream combination.
                 val (preparedText, instructionApplied) = if (action.instruction.isNotBlank()) {
+                    // Stage-boundary reset before this action's preprocessing pass so
+                    // the local/offline runtime starts with clean transient state for
+                    // this specific action. Cheap no-op for cloud providers.
+                    Log.i(TAG, "action-preprocess-start index=$index label='$label'")
+                    transformProvider.resetForNewStage("action-preprocess:$index:${action.id}")
                     val prep = preprocessActionWithInstruction(action, rawText, template)
                     if (prep != null) {
                         preprocessPromptTokens += prep.promptTokens ?: 0
@@ -125,6 +137,8 @@ class WorkflowExecutionEngine @Inject constructor(
         }
 
         if (actionResults.isEmpty()) {
+            Log.i(TAG, "run-end status=failed stage=actions template='${template.name}'")
+            transformProvider.resetForNewStage("run-end-failed-actions:${template.id}")
             emit(ExecutionState.Failed("All actions failed. No data to process.", "actions"))
             return@flow
         }
@@ -169,6 +183,13 @@ class WorkflowExecutionEngine @Inject constructor(
         val profileName = resolvedProfile?.name ?: "App default"
         val providerName = resolvedProfile?.providerType?.displayName ?: "Fallback"
         val modelId = resolvedProfile?.modelId ?: ""
+
+        // Stage-boundary reset before final generation. Ensures the local/offline
+        // runtime enters the main output pass with clean transient state — no
+        // leftover timings / metadata from the preceding per-action preprocessing
+        // calls. Cheap no-op for cloud providers via the router.
+        Log.i(TAG, "final-generation-start profile='$profileName' provider='$providerName' model='$modelId'")
+        transformProvider.resetForNewStage("final-generation:${template.id}")
 
         emit(ExecutionState.GeneratingOutput(
             profileName = profileName,
@@ -240,6 +261,9 @@ class WorkflowExecutionEngine @Inject constructor(
                 }
                 // If first version fails, fail the whole run
                 if (versions.isEmpty()) {
+                    Log.i(TAG, "run-end status=failed stage=processing template='${template.name}' " +
+                        "profile='$profileName' provider='$providerName' model='$modelId'")
+                    transformProvider.resetForNewStage("run-end-failed-processing:${template.id}")
                     emit(ExecutionState.Failed(
                         error.message ?: "AI processing failed (profile: $profileName, provider: $providerName, model: $modelId)",
                         "processing",
@@ -274,6 +298,12 @@ class WorkflowExecutionEngine @Inject constructor(
             contextCeilingTokens = aggregateContextCeiling,
             wasTruncated = aggregateWasTruncated
         )
+        // Stage-boundary reset at run end. Clears any transient state before the
+        // next run begins so retries / consecutive runs don't inherit diagnostics
+        // from this one. Cheap no-op for cloud providers.
+        Log.i(TAG, "run-end status=completed template='${template.name}' duration=${durationMs}ms")
+        transformProvider.resetForNewStage("run-end-completed:${template.id}")
+
         // outputText = first version for backward compatibility
         emit(
             ExecutionState.Completed(
@@ -304,7 +334,12 @@ class WorkflowExecutionEngine @Inject constructor(
         // any inference) would run on Main for the regenerate path, which for local
         // MediaPipe inference means loading a 529 MB model + running generation on
         // the UI thread. Always do inference off-Main.
-        Log.d(TAG, "regenerate() thread=${Thread.currentThread().name}")
+        Log.i(TAG, "regenerate() start template='${template.name}' id=${template.id} " +
+            "nextVersion=$nextVersion thread=${Thread.currentThread().name}")
+        // Regenerate is a fresh final-generation pass on a frozen input. Reset
+        // the local/offline transient state so the retry starts clean and any
+        // phase timings surfaced in error messages reflect this attempt only.
+        transformProvider.resetForNewStage("regenerate:${template.id}:v$nextVersion")
         val systemPrompt = buildSystemPrompt(template)
         val isSocialMode = isSocialOutputMode(template)
 
@@ -319,6 +354,10 @@ class WorkflowExecutionEngine @Inject constructor(
         )
 
         val transformResult = transformProvider.transform(input, TransformType.CUSTOM_WORKFLOW)
+
+        // Reset again after regenerate so the next stage/run doesn't inherit
+        // this regenerate's transient state. Runs on both success and failure.
+        transformProvider.resetForNewStage("regenerate-end:${template.id}:v$nextVersion")
 
         transformResult.map { result ->
             OutputVersion(
