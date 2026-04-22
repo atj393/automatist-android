@@ -144,6 +144,22 @@ class MediaPipeInferenceEngine @Inject constructor(
         private set
 
     /**
+     * Clears transient diagnostic state held on this singleton. Intended to be
+     * called at stage boundaries (before each action's preprocessing pass,
+     * before final generation, and at workflow-run start / retry) so error
+     * messages emitted for the *current* call never surface timings from a
+     * previous, unrelated run. The model / session are always allocated
+     * per-call — this method does NOT touch any in-flight native resources.
+     */
+    fun resetTransientState(reason: String = "") {
+        val had = lastTimings != null
+        lastTimings = null
+        if (had) {
+            Log.i(TAG, "resetTransientState(reason=$reason) cleared stale phase timings")
+        }
+    }
+
+    /**
      * Runs inference using the specified downloadable model entry.
      *
      * @param entry The offline model entry (must have runtimeType = DOWNLOADABLE)
