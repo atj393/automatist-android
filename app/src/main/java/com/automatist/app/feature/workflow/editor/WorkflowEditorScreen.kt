@@ -1035,7 +1035,7 @@ private fun ReadinessBar(
                     hasActionIssues -> {
                         val setupCount = readiness.needsSetupActions.size
                         Text(
-                            "$setupCount action(s) need setup",
+                            "$setupCount ${if (setupCount == 1) "action needs" else "actions need"} setup",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Medium,
                             color = contentColor

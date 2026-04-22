@@ -206,10 +206,10 @@ class WorkflowRunViewModel @Inject constructor(
             }
 
             is ExecutionState.ValidatingInputs -> {
+                val n = executionState.totalActions
+                val label = "Validating $n ${if (n == 1) "action" else "actions"}"
                 _state.update {
-                    val stages = it.stages.markLastCompleted() + runningStage(
-                        "Validating ${executionState.totalActions} action(s)"
-                    )
+                    val stages = it.stages.markLastCompleted() + runningStage(label)
                     it.copy(currentStageLabel = "Validating inputs...", stages = stages)
                 }
             }
@@ -241,10 +241,10 @@ class WorkflowRunViewModel @Inject constructor(
             }
 
             is ExecutionState.ActionPromptStarted -> {
-                // Action has its own prompt — mark the source-reading row complete
-                // and push a distinct "running action prompt" row so the user sees
+                // Action has its own instruction — mark the source-reading row complete
+                // and push a distinct "Applying instruction" row so the user sees
                 // that an AI pass is actively running for this action.
-                val header = "Running action prompt: ${executionState.actionLabel}"
+                val header = "Applying instruction: ${executionState.actionLabel}"
                 _state.update {
                     val stages = it.stages.markLastCompleted() + runningStage(
                         label = header,

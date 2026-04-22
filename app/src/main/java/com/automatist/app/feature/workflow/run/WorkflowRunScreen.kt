@@ -145,7 +145,7 @@ fun WorkflowRunScreen(
             }
 
             // Progress stages
-            Text("Execution Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text("Run Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
 
             state.stages.forEach { stage ->
                 LiveStageRow(stage = stage, context = context, snackbarHostState = snackbarHostState)
@@ -154,7 +154,7 @@ fun WorkflowRunScreen(
             // Provider / profile info
             if (state.providerType != null || state.profileName.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
-                Text("Provider Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("AI Provider", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
                         if (state.profileName.isNotBlank()) {

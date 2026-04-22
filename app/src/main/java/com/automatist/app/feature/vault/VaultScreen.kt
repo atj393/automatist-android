@@ -141,7 +141,7 @@ fun VaultScreen(
 private fun Banner(s: VaultUiState, onTemplates: () -> Unit) {
     val c = listOf(s.setupProviderDone, s.setupProfileDone, s.setupDefaultDone, s.setupWorkflowDone).count { it }
     Card2(Icons.Default.Lightbulb, "Getting Started", "$c of 4 steps complete") {
-        St(1, if (s.setupProviderDone) "Provider configured" else "Add an API key or choose Local Demo", s.setupProviderDone)
+        St(1, if (s.setupProviderDone) "Provider configured" else "Add an API key or use the built-in demo", s.setupProviderDone)
         St(2, if (s.setupProfileDone) "AI profile created" else "Create an AI profile", s.setupProfileDone)
         St(3, if (s.setupDefaultDone) "Default profile set" else "Set a default AI profile", s.setupDefaultDone)
         St(4, if (s.setupWorkflowDone) "Workflow created" else "Create your first workflow", s.setupWorkflowDone,

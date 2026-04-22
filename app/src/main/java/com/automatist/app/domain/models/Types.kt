@@ -20,7 +20,7 @@ enum class TransformType(val displayName: String) {
 }
 
 enum class ProviderType(val displayName: String) {
-    FAKE("Local Fake Demo"),
+    FAKE("Demo Mode"),
     OPENAI("OpenAI"),
     ANTHROPIC("Anthropic"),
     GEMINI("Google Gemini"),

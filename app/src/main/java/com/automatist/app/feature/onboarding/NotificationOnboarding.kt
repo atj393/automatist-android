@@ -92,7 +92,7 @@ fun NotificationOnboardingGate(
         text = {
             Column {
                 Text(
-                    "Automatist comes with a sample \"News to Social\" workflow that can " +
+                    "Automatist comes with a sample \"News to Social Posts\" workflow that can " +
                         "run on a schedule. Allow notifications so you know when it starts " +
                         "and when a fresh draft is ready."
                 )
