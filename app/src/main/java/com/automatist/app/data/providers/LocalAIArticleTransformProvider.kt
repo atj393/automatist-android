@@ -66,6 +66,21 @@ class LocalAIArticleTransformProvider @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ArticleTransformProvider {
 
+    /**
+     * Local-path stage-boundary reset. Clears the MediaPipe engine's transient
+     * diagnostic state so error surfaces for the *current* call never read
+     * phase timings from a previous, unrelated run. Does not touch in-flight
+     * native resources — model/session are always allocated per-call anyway.
+     *
+     * The AICore path is stateless (the provider creates a fresh [GenerativeModel]
+     * on each [runAICoreInference] call and closes it in `finally`), so there is
+     * nothing to reset for that path.
+     */
+    override suspend fun resetForNewStage(reason: String) {
+        Log.i(TAG, "resetForNewStage reason=$reason")
+        mediaPipeInferenceEngine.resetTransientState(reason)
+    }
+
     override suspend fun transform(
         input: ArticleInput,
         type: TransformType

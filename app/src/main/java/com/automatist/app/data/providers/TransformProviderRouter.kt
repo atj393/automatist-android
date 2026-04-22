@@ -22,6 +22,18 @@ class TransformProviderRouter @Inject constructor(
     private val localAIProvider: LocalAIArticleTransformProvider
 ) : ArticleTransformProvider {
 
+    /**
+     * Stage-boundary reset. Only the local/offline provider holds transient
+     * runtime state that can leak across stages (MediaPipe diagnostic timings,
+     * on-device session metadata). Cloud/API providers are stateless, so we
+     * deliberately do NOT forward resets to them — per product intent this
+     * keeps the reset targeted to the on-device path only, with zero overhead
+     * on cloud runs.
+     */
+    override suspend fun resetForNewStage(reason: String) {
+        localAIProvider.resetForNewStage(reason)
+    }
+
     override suspend fun transform(
         input: ArticleInput,
         type: TransformType
