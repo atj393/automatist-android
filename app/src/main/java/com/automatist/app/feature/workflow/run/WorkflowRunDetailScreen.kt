@@ -26,6 +26,7 @@ import kotlinx.coroutines.launch
 fun WorkflowRunDetailScreen(
     runId: Long,
     onBack: () -> Unit,
+    onRunAgain: (templateId: Long) -> Unit = {},
     viewModel: WorkflowRunDetailViewModel = hiltViewModel()
 ) {
     val run by viewModel.run.collectAsState()
@@ -36,7 +37,7 @@ fun WorkflowRunDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Run Detail") },
+                title = { Text("Run Results") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, "Back")
@@ -110,14 +111,27 @@ fun WorkflowRunDetailScreen(
                 }
             }
 
-            // Token usage
+            // Token usage. For historical runs we don't persist isUsageEstimated
+            // separately, so infer it from providerType: LOCAL_AI and FAKE always
+            // produce estimated numbers, everything else is authoritative.
             if (r.promptTokens != null || r.completionTokens != null || r.totalTokens != null) {
-                Text("Token Usage", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                val isEstimated = r.providerType == com.automatist.app.domain.models.ProviderType.LOCAL_AI ||
+                    r.providerType == com.automatist.app.domain.models.ProviderType.FAKE
+                val label = if (isEstimated) "AI Usage (estimated)" else "AI Usage"
+                Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
                         MetadataRow("Prompt", r.promptTokens?.toString() ?: "—")
                         MetadataRow("Completion", r.completionTokens?.toString() ?: "—")
                         MetadataRow("Total", r.totalTokens?.toString() ?: "—")
+                        if (isEstimated) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Usage is estimated for on-device models.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -125,7 +139,7 @@ fun WorkflowRunDetailScreen(
             // Execution log — persisted step-by-step history
             val stages = r.persistedStages
             if (stages.isNotEmpty()) {
-                Text("Execution Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("Run Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         stages.forEach { stage ->
@@ -262,6 +276,45 @@ fun WorkflowRunDetailScreen(
 
             // Full error report copy — all metadata + technical detail
             if (r.status == WorkflowRunStatus.FAILED) {
+                // Run Again — navigates to a fresh run of the same workflow
+                var workflowExists by remember { mutableStateOf<Boolean?>(null) }
+                LaunchedEffect(r.templateId) {
+                    workflowExists = viewModel.workflowExists()
+                }
+                when (workflowExists) {
+                    true -> {
+                        Button(
+                            onClick = { onRunAgain(r.templateId) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Run Again")
+                        }
+                    }
+                    false -> {
+                        Card(colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(12.dp)
+                            ) {
+                                Icon(Icons.Default.Info, null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "This workflow has been deleted. Run Again is not available.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    null -> { /* loading — show nothing while checking */ }
+                }
+
                 OutlinedButton(
                     onClick = {
                         val report = FullErrorReportBuilder.fromWorkflowRun(r)

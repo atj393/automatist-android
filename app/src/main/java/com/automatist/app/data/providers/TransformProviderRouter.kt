@@ -18,8 +18,21 @@ class TransformProviderRouter @Inject constructor(
     private val openAIProvider: OpenAIArticleTransformProvider,
     private val anthropicProvider: AnthropicArticleTransformProvider,
     private val geminiProvider: GeminiArticleTransformProvider,
-    private val openAICompatibleProvider: OpenAICompatibleProvider
+    private val openAICompatibleProvider: OpenAICompatibleProvider,
+    private val localAIProvider: LocalAIArticleTransformProvider
 ) : ArticleTransformProvider {
+
+    /**
+     * Stage-boundary reset. Only the local/offline provider holds transient
+     * runtime state that can leak across stages (MediaPipe diagnostic timings,
+     * on-device session metadata). Cloud/API providers are stateless, so we
+     * deliberately do NOT forward resets to them — per product intent this
+     * keeps the reset targeted to the on-device path only, with zero overhead
+     * on cloud runs.
+     */
+    override suspend fun resetForNewStage(reason: String) {
+        localAIProvider.resetForNewStage(reason)
+    }
 
     override suspend fun transform(
         input: ArticleInput,
@@ -43,6 +56,7 @@ class TransformProviderRouter @Inject constructor(
             ProviderType.ANTHROPIC -> anthropicProvider.transform(routedInput, type)
             ProviderType.GEMINI -> geminiProvider.transform(routedInput, type)
             ProviderType.OPENAI_COMPATIBLE -> openAICompatibleProvider.transform(routedInput, type)
+            ProviderType.LOCAL_AI -> localAIProvider.transform(routedInput, type)
         }
     }
 

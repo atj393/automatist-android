@@ -3,10 +3,15 @@ package com.automatist.app.domain.readiness
 import com.automatist.app.domain.actions.WorkflowActionRegistry
 import com.automatist.app.domain.actions.WorkflowActionRegistry.RequirementType
 import com.automatist.app.domain.actions.WorkflowActionRegistry.SetupRequirement
+import com.automatist.app.domain.models.ProviderType
 import com.automatist.app.domain.models.WorkflowActionType
 import com.automatist.app.domain.models.WorkflowTemplate
+import com.automatist.app.domain.offline.OfflineModelCatalog
+import com.automatist.app.domain.offline.OfflineModelRepository
+import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.repositories.WorkflowRepository
 import com.automatist.app.platform.security.SecureStorage
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -57,7 +62,8 @@ data class WorkflowReadiness(
 @Singleton
 class ReadinessEvaluator @Inject constructor(
     private val secureStorage: SecureStorage,
-    private val workflowRepository: WorkflowRepository
+    private val workflowRepository: WorkflowRepository,
+    private val offlineModelRepository: OfflineModelRepository
 ) {
 
     /**
@@ -113,10 +119,7 @@ class ReadinessEvaluator @Inject constructor(
                 if (!profile.isEnabled) {
                     profileIssues.add("Profile '${profile.name}' is disabled. Enable it in Settings or choose a different profile.")
                 }
-                val key = secureStorage.getApiKey(profile.providerType)
-                if (key.isNullOrBlank()) {
-                    profileIssues.add("Profile '${profile.name}' uses ${profile.providerType.displayName}, but no API key is configured. Add one in Settings → Provider API Keys.")
-                }
+                profileIssues.addAll(checkProfileReadiness(profile))
             }
         } else {
             // No explicit profile — validate the app default
@@ -125,10 +128,7 @@ class ReadinessEvaluator @Inject constructor(
                 if (!defaultProfile.isEnabled) {
                     profileIssues.add("App default profile '${defaultProfile.name}' is disabled. Enable it in Settings or set a different default.")
                 }
-                val key = secureStorage.getApiKey(defaultProfile.providerType)
-                if (key.isNullOrBlank()) {
-                    profileIssues.add("App default profile '${defaultProfile.name}' uses ${defaultProfile.providerType.displayName}, but no API key is configured. Add one in Settings → Provider API Keys.")
-                }
+                profileIssues.addAll(checkProfileReadiness(defaultProfile, isDefault = true))
             }
             // If no default profile exists, the legacy fallback (FAKE) will be used — that's okay
         }
@@ -141,6 +141,73 @@ class ReadinessEvaluator @Inject constructor(
             hasProviderProfile = hasProfile,
             profileIssues = profileIssues
         )
+    }
+
+    /**
+     * Checks whether a profile's provider is ready to execute.
+     * - Cloud/API providers: verifies an API key is configured.
+     * - LOCAL_AI profiles: verifies the offline model is installed.
+     * Returns a list of human-readable issue strings (empty = ready).
+     */
+    private suspend fun checkProfileReadiness(
+        profile: com.automatist.app.domain.models.ProviderProfile,
+        isDefault: Boolean = false
+    ): List<String> {
+        val label = if (isDefault) "App default profile '${profile.name}'" else "Profile '${profile.name}'"
+        return when (profile.providerType) {
+            ProviderType.LOCAL_AI -> {
+                val modelId = profile.modelId.ifBlank { OfflineModelCatalog.GEMINI_NANO_ID }
+                val entry = OfflineModelCatalog.findById(modelId)
+                val modelName = entry?.displayName ?: "On-device AI"
+                val isDownloadable = entry?.isSystemManaged == false
+                val status = offlineModelRepository.getModelStatus(modelId).first()
+                when (status) {
+                    OfflineModelStatus.INSTALLED -> emptyList()
+                    OfflineModelStatus.NOT_INSTALLED -> {
+                        val action = if (isDownloadable) "Download" else "Check Availability"
+                        listOf(
+                            "$label uses $modelName, but it is not yet available on this device. " +
+                                "Open Settings → On-device AI and tap \"$action\"."
+                        )
+                    }
+                    OfflineModelStatus.UNSUPPORTED -> {
+                        val reason = if (isDownloadable) {
+                            "This device does not meet the minimum requirements for $modelName."
+                        } else {
+                            "$modelName is not supported on this device. " +
+                                "It requires Android 14+ and a compatible Pixel 8+ or Galaxy S24+ device."
+                        }
+                        listOf(
+                            "$label uses $modelName. $reason " +
+                                "Switch to a cloud-based AI profile instead."
+                        )
+                    }
+                    OfflineModelStatus.DOWNLOADING -> {
+                        val action = if (isDownloadable) "downloading" else "checking availability"
+                        listOf(
+                            "$label uses $modelName, which is currently $action. " +
+                                "Please wait a moment and try again."
+                        )
+                    }
+                    OfflineModelStatus.FAILED -> {
+                        val action = if (isDownloadable) "Retry download" else "Retry"
+                        listOf(
+                            "$label uses $modelName, but the setup failed. " +
+                                "Open Settings → On-device AI and tap \"$action\" to try again."
+                        )
+                    }
+                }
+            }
+            ProviderType.FAKE -> emptyList() // no key required
+            else -> {
+                val key = secureStorage.getApiKey(profile.providerType)
+                if (key.isNullOrBlank()) {
+                    listOf("$label uses ${profile.providerType.displayName}, but no API key is configured. Add one in Settings → Provider API Keys.")
+                } else {
+                    emptyList()
+                }
+            }
+        }
     }
 
     /**

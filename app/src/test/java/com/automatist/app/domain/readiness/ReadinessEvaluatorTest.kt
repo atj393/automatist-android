@@ -6,6 +6,9 @@ import com.automatist.app.domain.models.WeatherService
 import com.automatist.app.domain.models.WorkflowAction
 import com.automatist.app.domain.models.WorkflowActionType
 import com.automatist.app.domain.models.WorkflowTemplate
+import com.automatist.app.domain.offline.FakeOfflineModelRepository
+import com.automatist.app.domain.offline.OfflineModelCatalog
+import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.workflow.FakeWorkflowRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -16,13 +19,15 @@ class ReadinessEvaluatorTest {
 
     private lateinit var repo: FakeWorkflowRepository
     private lateinit var storage: FakeSecureStorage
+    private lateinit var offlineRepo: FakeOfflineModelRepository
     private lateinit var evaluator: ReadinessEvaluator
 
     @Before
     fun setUp() {
         repo = FakeWorkflowRepository()
         storage = FakeSecureStorage()
-        evaluator = ReadinessEvaluator(storage, repo)
+        offlineRepo = FakeOfflineModelRepository()
+        evaluator = ReadinessEvaluator(storage, repo, offlineRepo)
     }
 
     // ── Empty workflow (zero actions) ──
@@ -204,5 +209,292 @@ class ReadinessEvaluatorTest {
 
         assertTrue("Fully configured workflow should be ready", result.isFullyReady)
         assertTrue(result.profileIssues.isEmpty())
+    }
+
+    // ── LOCAL_AI (On-device) profile readiness ──
+
+    @Test
+    fun `LOCAL_AI profile with model installed is ready`() = runTest {
+        offlineRepo.setStatus(OfflineModelCatalog.GEMINI_NANO_ID, OfflineModelStatus.INSTALLED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-offline", name = "On-device", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMINI_NANO_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertTrue("LOCAL_AI workflow with installed model should be fully ready", result.isFullyReady)
+        assertTrue("No profile issues expected", result.profileIssues.isEmpty())
+    }
+
+    @Test
+    fun `LOCAL_AI profile with model NOT_INSTALLED is not ready and suggests check`() = runTest {
+        // Model status defaults to NOT_INSTALLED in FakeOfflineModelRepository
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-offline", name = "On-device", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMINI_NANO_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse("LOCAL_AI workflow with unchecked model should NOT be ready", result.isFullyReady)
+        assertTrue("Should report issue", result.profileIssues.isNotEmpty())
+        assertTrue(
+            "NOT_INSTALLED issue should mention availability not checked",
+            result.profileIssues.any { it.contains("not been checked") || it.contains("Check Availability") }
+        )
+    }
+
+    @Test
+    fun `LOCAL_AI profile with UNSUPPORTED model is not ready and explains device requirements`() = runTest {
+        offlineRepo.setStatus(OfflineModelCatalog.GEMINI_NANO_ID, OfflineModelStatus.UNSUPPORTED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-offline", name = "On-device", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMINI_NANO_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse("LOCAL_AI workflow on unsupported device should NOT be ready", result.isFullyReady)
+        assertTrue(
+            "UNSUPPORTED issue should explain device requirements",
+            result.profileIssues.any { it.contains("not supported") && it.contains("Android 14") }
+        )
+        assertTrue(
+            "UNSUPPORTED issue should suggest switching to cloud",
+            result.profileIssues.any { it.contains("cloud-based") }
+        )
+    }
+
+    @Test
+    fun `LOCAL_AI profile with FAILED model is not ready and suggests retry`() = runTest {
+        offlineRepo.setStatus(OfflineModelCatalog.GEMINI_NANO_ID, OfflineModelStatus.FAILED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-offline", name = "On-device", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMINI_NANO_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse("LOCAL_AI workflow with failed check should NOT be ready", result.isFullyReady)
+        assertTrue(
+            "FAILED issue should mention check failed and suggest retry",
+            result.profileIssues.any { it.contains("failed") && it.contains("Retry") }
+        )
+    }
+
+    @Test
+    fun `LOCAL_AI profile with DOWNLOADING model is not ready and asks to wait`() = runTest {
+        offlineRepo.setStatus(OfflineModelCatalog.GEMINI_NANO_ID, OfflineModelStatus.DOWNLOADING)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-offline", name = "On-device", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMINI_NANO_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse("LOCAL_AI workflow with check in progress should NOT be ready", result.isFullyReady)
+        assertTrue(
+            "DOWNLOADING issue should mention checking availability",
+            result.profileIssues.any { it.contains("checking availability") }
+        )
+    }
+
+    @Test
+    fun `LOCAL_AI profile does not require an API key check`() = runTest {
+        offlineRepo.setStatus(OfflineModelCatalog.GEMINI_NANO_ID, OfflineModelStatus.INSTALLED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-offline", name = "On-device", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMINI_NANO_ID, isDefault = true
+            )
+        )
+        // No API key set — should not matter for LOCAL_AI
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertTrue("LOCAL_AI profile should not need an API key", result.isFullyReady)
+        assertTrue(result.profileIssues.none { it.contains("API key") })
+    }
+
+    @Test
+    fun `existing cloud API profile readiness not affected by offline model state`() = runTest {
+        // Cloud profile properly configured
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-cloud", name = "My OpenAI", providerType = ProviderType.OPENAI,
+                modelId = "gpt-4o", isDefault = true
+            )
+        )
+        storage.setApiKey(ProviderType.OPENAI, "sk-test-key")
+        // Offline model NOT installed — must not affect cloud profile evaluation
+
+        val template = WorkflowTemplate(
+            name = "Cloud Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertTrue("Cloud workflow should still be ready regardless of offline model state", result.isFullyReady)
+        assertTrue(result.profileIssues.isEmpty())
+    }
+
+    // ── Downloadable LOCAL_AI (Gemma 3n E2B) readiness ──
+
+    @Test
+    fun `downloadable LOCAL_AI profile with model installed is ready`() = runTest {
+        offlineRepo.setStatus(OfflineModelCatalog.GEMMA_3N_E2B_ID, OfflineModelStatus.INSTALLED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-gemma", name = "Gemma Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMMA_3N_E2B_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertTrue("Downloadable LOCAL_AI workflow with installed model should be ready", result.isFullyReady)
+        assertTrue(result.profileIssues.isEmpty())
+    }
+
+    @Test
+    fun `downloadable LOCAL_AI profile with model NOT_INSTALLED suggests download`() = runTest {
+        // Gemma 3n E2B defaults to NOT_INSTALLED
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-gemma", name = "Gemma Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMMA_3N_E2B_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse("Downloadable LOCAL_AI workflow without download should NOT be ready", result.isFullyReady)
+        assertTrue("Should report issue", result.profileIssues.isNotEmpty())
+        assertTrue(
+            "NOT_INSTALLED issue for downloadable model should mention Download",
+            result.profileIssues.any { it.contains("Download") }
+        )
+    }
+
+    @Test
+    fun `downloadable LOCAL_AI profile does not require API key`() = runTest {
+        offlineRepo.setStatus(OfflineModelCatalog.GEMMA_3N_E2B_ID, OfflineModelStatus.INSTALLED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-gemma", name = "Gemma Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMMA_3N_E2B_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertTrue("Downloadable LOCAL_AI profile should not need an API key", result.isFullyReady)
+        assertTrue(result.profileIssues.none { it.contains("API key") })
+    }
+
+    @Test
+    fun `downloadable LOCAL_AI and system-managed LOCAL_AI coexist independently`() = runTest {
+        // Gemini Nano installed, Gemma 3n E2B NOT installed
+        offlineRepo.setStatus(OfflineModelCatalog.GEMINI_NANO_ID, OfflineModelStatus.INSTALLED)
+        // Gemma 3n E2B defaults to NOT_INSTALLED
+
+        // Profile uses Gemma 3n E2B — should not be ready
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-gemma", name = "Gemma Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = OfflineModelCatalog.GEMMA_3N_E2B_ID, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(
+                WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input")
+            )
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse(
+            "Gemma 3n E2B profile should not be ready just because Gemini Nano is installed",
+            result.isFullyReady
+        )
     }
 }

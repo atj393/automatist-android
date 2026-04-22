@@ -97,7 +97,7 @@ object BuiltInTemplates {
 
     private fun newsToSocial() = BuiltInTemplate(
         id = "news_to_social",
-        name = "News to Social",
+        name = "News to Social Posts",
         description = "Fetch daily news from RSS feeds and generate ready-to-share social media posts for X, LinkedIn, and more. Perfect for content creators and marketers.",
         category = "Social Media",
         useCases = listOf("Daily social content", "Content repurposing", "Multi-platform publishing"),
@@ -108,7 +108,7 @@ object BuiltInTemplates {
             "An AI provider API key is required for content generation"
         ),
         blueprint = WorkflowTemplate(
-            name = "News to Social",
+            name = "News to Social Posts",
             description = "Generate daily social media posts from curated news",
             category = "Social Media",
             sourceTemplateId = "news_to_social",

@@ -120,7 +120,7 @@ private fun NotesList(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Notes are reusable content blocks for your workflows",
+                        "Save reusable text snippets to include in any workflow",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )

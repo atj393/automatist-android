@@ -23,4 +23,13 @@ class WorkflowRunDetailViewModel @Inject constructor(
     // gets updated to COMPLETED/FAILED by the worker.
     val run: StateFlow<WorkflowRun?> = repository.observeRunById(runId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    /**
+     * Checks whether the source workflow still exists in the database.
+     * Used to enable/disable the "Run Again" action on failed run details.
+     */
+    suspend fun workflowExists(): Boolean {
+        val r = run.value ?: return false
+        return repository.getTemplateById(r.templateId) != null
+    }
 }

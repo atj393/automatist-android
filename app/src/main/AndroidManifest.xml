@@ -2,6 +2,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+        AICore (Gemini Nano) declares minSdkVersion 31 in its manifest, but this app
+        targets minSdk 26. The overrideLibrary suppresses the merger error because
+        ALL AICore API calls in DataStoreOfflineModelRepository and
+        LocalAIArticleTransformProvider are guarded by an explicit
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE (API 34) check.
+        Devices below API 34 receive OfflineModelStatus.UNSUPPORTED and never reach
+        any AICore code path.
+    -->
+    <uses-sdk tools:overrideLibrary="com.google.ai.edge.aicore" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

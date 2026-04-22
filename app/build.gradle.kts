@@ -91,6 +91,9 @@ android {
         abortOnError = false
         checkReleaseBuilds = true
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -139,6 +142,22 @@ dependencies {
 
     // Billing
     implementation(libs.billing)
+
+    // Google AI Edge — AICore (on-device Gemini Nano via Android system service)
+    // RELEASE NOTE: This is an experimental library (0.0.1-exp01). The API surface is
+    // small and stable for our use (GenerativeModel, prepareInferenceEngine, generateContent),
+    // but it may change in future releases. The feature is fully optional and gated:
+    //   - Requires Android 14+ (API 34) at runtime; all call sites guard with Build.VERSION check
+    //   - Only executes on AICore-capable devices (Pixel 8+, Galaxy S24+)
+    //   - Unsupported devices receive OfflineModelStatus.UNSUPPORTED gracefully, no crash
+    //   - AndroidManifest uses tools:overrideLibrary to resolve library minSdk 31 vs app minSdk 26
+    //   - Cloud/API provider paths are completely unaffected
+    implementation(libs.google.ai.edge.aicore)
+
+    // MediaPipe LLM Inference — downloadable offline models (Gemma 3n E2B)
+    // Only used when user has downloaded a DOWNLOADABLE model. Does not affect
+    // cloud/API providers or the AICore/Gemini Nano path.
+    implementation(libs.google.mediapipe.tasks.genai)
 
     // Google Drive + Auth (Cloud Sync)
     implementation(libs.google.api.drive) {

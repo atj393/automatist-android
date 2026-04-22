@@ -71,7 +71,7 @@ fun WorkflowRunScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            "This workflow cannot run because some actions need configuration:",
+                            "Some actions need to be set up before this workflow can run:",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -145,7 +145,7 @@ fun WorkflowRunScreen(
             }
 
             // Progress stages
-            Text("Execution Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text("Run Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
 
             state.stages.forEach { stage ->
                 LiveStageRow(stage = stage, context = context, snackbarHostState = snackbarHostState)
@@ -154,7 +154,7 @@ fun WorkflowRunScreen(
             // Provider / profile info
             if (state.providerType != null || state.profileName.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
-                Text("Provider Details", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("AI Provider", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
                         if (state.profileName.isNotBlank()) {
@@ -171,25 +171,17 @@ fun WorkflowRunScreen(
                             Spacer(Modifier.height(6.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                             Spacer(Modifier.height(6.dp))
-                            val usage = state.tokenUsage!!
-                            val estimatedLabel = if (usage.isEstimated) " (estimated)" else ""
-                            TokenRow("Prompt tokens$estimatedLabel", usage.promptTokens)
-                            TokenRow("Completion tokens$estimatedLabel", usage.completionTokens)
-                            TokenRow("Total tokens$estimatedLabel", usage.totalTokens)
+                            UsageSection(state.tokenUsage!!)
                         }
                     }
                 }
             } else if (state.tokenUsage != null) {
                 // Fallback: show just token usage if no profile info (shouldn't happen normally)
                 Spacer(Modifier.height(4.dp))
-                Text("Token Usage", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text("AI Usage", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                     Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
-                        val usage = state.tokenUsage!!
-                        val estimatedLabel = if (usage.isEstimated) " (estimated)" else ""
-                        TokenRow("Prompt tokens$estimatedLabel", usage.promptTokens)
-                        TokenRow("Completion tokens$estimatedLabel", usage.completionTokens)
-                        TokenRow("Total tokens$estimatedLabel", usage.totalTokens)
+                        UsageSection(state.tokenUsage!!)
                     }
                 }
             }
@@ -237,6 +229,16 @@ fun WorkflowRunScreen(
 
             // Full error report copy — includes execution log + all metadata
             if (state.isFailed) {
+                // Retry button — prominent, above the copy report button
+                Button(
+                    onClick = { viewModel.retryRun() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Retry")
+                }
+
                 OutlinedButton(
                     onClick = {
                         val report = FullErrorReportBuilder.fromRunUiState(state)
@@ -280,6 +282,58 @@ private fun TokenRow(label: String, value: String) {
     ) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
+    }
+}
+
+/**
+ * Renders token/usage metadata honestly:
+ *  - Cloud providers: exact counts as before (no "(estimated)" suffix, no extras).
+ *  - Local/Fake providers: counts marked estimated; extra rows show char-level
+ *    metrics the provider actually knows; an honesty note explains the caveats;
+ *    an explicit truncation warning appears when input was shortened to fit the
+ *    on-device model's context window.
+ */
+@Composable
+private fun UsageSection(usage: com.automatist.app.domain.models.TokenUsage) {
+    val estimatedLabel = if (usage.isEstimated) " (estimated)" else ""
+    TokenRow("Prompt tokens$estimatedLabel", usage.promptTokens)
+    TokenRow("Completion tokens$estimatedLabel", usage.completionTokens)
+    TokenRow("Total tokens$estimatedLabel", usage.totalTokens)
+
+    // Char-level metrics — only rendered when the provider reported them
+    // (local/fake). Cloud providers leave these null and we skip the rows.
+    val hasChars = usage.inputChars != null || usage.outputChars != null
+    if (hasChars || usage.contextCeilingTokens != null) {
+        Spacer(Modifier.height(6.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        Spacer(Modifier.height(6.dp))
+        usage.inputChars?.let { TokenRow("Prompt chars", it) }
+        usage.outputChars?.let { TokenRow("Output chars", it) }
+        usage.contextCeilingTokens?.let { TokenRow("Context ceiling (tokens)", it) }
+    }
+
+    // Truncation warning — stronger copy when we know input was shortened.
+    if (usage.wasTruncated == true) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Input was shortened to fit the on-device model's context window.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.tertiary,
+            fontWeight = FontWeight.Medium
+        )
+    }
+
+    // Estimation note — softer copy when usage is estimated but we don't know
+    // (or have ruled out) truncation. Helps users understand why counts are
+    // approximate without implying something went wrong.
+    if (usage.isEstimated && usage.wasTruncated != true) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Usage is estimated for on-device models. Long inputs may be shortened " +
+                "before generation to fit the model's context window.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -425,9 +479,6 @@ private fun LiveStageRow(
     context: Context,
     snackbarHostState: SnackbarHostState
 ) {
-    var showData by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
     Row(
         verticalAlignment = Alignment.Top,
         modifier = Modifier.fillMaxWidth()
@@ -457,6 +508,23 @@ private fun LiveStageRow(
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(stage.label, style = MaterialTheme.typography.bodyMedium)
+
+            // Live "Ns elapsed" for the currently running stage. Ticking is
+            // isolated to this row via rememberRunningElapsedLabel, so the
+            // 1 Hz update doesn't recompose the whole run screen. Rendered
+            // as the first line of the detail area so it never displaces the
+            // existing stage detail or action-data expander.
+            if (stage.status == StageStatus.RUNNING && stage.startedAtMillis > 0L) {
+                val elapsed = rememberRunningElapsedLabel(stage.startedAtMillis)
+                if (elapsed.isNotBlank()) {
+                    Text(
+                        elapsed,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+                }
+            }
+
             if (stage.detail.isNotBlank()) {
                 val parts = stage.detail.split("\n---\n", limit = 2)
                 Text(
@@ -476,50 +544,109 @@ private fun LiveStageRow(
                 }
             }
 
-            // Expandable action data
+            // Expandable detail sections — each stage can have up to three
+            // independent expanders. Collapsed by default; heavy text is only
+            // composed when the user expands a given section.
+            if (stage.sourceText.isNotBlank()) {
+                ExpandableDetail(
+                    showLabel = "Show source content",
+                    hideLabel = "Hide source content",
+                    text = stage.sourceText,
+                    clipboardLabel = "Source content",
+                    snackbarText = "Source content copied",
+                    context = context,
+                    snackbarHostState = snackbarHostState
+                )
+            }
+            if (stage.promptText.isNotBlank()) {
+                val isFinalPrompt = stage.label.startsWith("Generating final output")
+                ExpandableDetail(
+                    showLabel = if (isFinalPrompt) "Show final prompt" else "Show prompt",
+                    hideLabel = if (isFinalPrompt) "Hide final prompt" else "Hide prompt",
+                    text = stage.promptText,
+                    clipboardLabel = if (isFinalPrompt) "Final prompt" else "Prompt",
+                    snackbarText = if (isFinalPrompt) "Final prompt copied" else "Prompt copied",
+                    context = context,
+                    snackbarHostState = snackbarHostState
+                )
+            }
             if (stage.actionData.isNotBlank()) {
+                ExpandableDetail(
+                    showLabel = "Show result",
+                    hideLabel = "Hide result",
+                    text = stage.actionData,
+                    clipboardLabel = "Action result",
+                    snackbarText = "Result copied",
+                    context = context,
+                    snackbarHostState = snackbarHostState
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Reusable collapsed-by-default detail card for a single piece of stage text
+ * (source content, prompt, result, final prompt). Heavy text composition only
+ * happens when [expanded] is true, so adding three of these to a stage row
+ * does not render multi-KB blobs unless the user asks for them.
+ *
+ * The character count in the collapsed label is cheap (`text.length` is O(1)
+ * on a String) and helps the user gauge whether the content is worth
+ * expanding.
+ */
+@Composable
+private fun ExpandableDetail(
+    showLabel: String,
+    hideLabel: String,
+    text: String,
+    clipboardLabel: String,
+    snackbarText: String,
+    context: Context,
+    snackbarHostState: SnackbarHostState
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    TextButton(
+        onClick = { expanded = !expanded },
+        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+    ) {
+        Icon(
+            if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            null, modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            if (expanded) hideLabel else "$showLabel (${text.length} chars)",
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
+    if (expanded) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(8.dp)) {
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    lineHeight = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp)
+                )
+                Spacer(Modifier.height(4.dp))
                 TextButton(
-                    onClick = { showData = !showData },
-                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText(clipboardLabel, text))
+                        scope.launch { snackbarHostState.showSnackbar(snackbarText) }
+                    },
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                 ) {
-                    Icon(
-                        if (showData) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        null, modifier = Modifier.size(16.dp)
-                    )
+                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(
-                        if (showData) "Hide action data" else "Show action data (${stage.actionData.length} chars)",
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-                if (showData) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Column(modifier = Modifier.padding(8.dp)) {
-                            Text(
-                                stage.actionData,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                lineHeight = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp)
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            TextButton(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Action Data", stage.actionData))
-                                    scope.launch { snackbarHostState.showSnackbar("Action data copied") }
-                                },
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                            ) {
-                                Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Copy", style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
+                    Text("Copy", style = MaterialTheme.typography.labelSmall)
                 }
             }
         }

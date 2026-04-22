@@ -24,6 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.automatist.app.BuildConfig
 import com.automatist.app.domain.models.*
+import com.automatist.app.domain.offline.DownloadProgress
+import com.automatist.app.domain.offline.OfflineModelCatalog
+import com.automatist.app.domain.offline.OfflineModelStatus
 
 enum class SettingsSection(val key: String) {
     DEFAULT_PROFILE("section_default_profile"),
@@ -31,6 +34,7 @@ enum class SettingsSection(val key: String) {
     PROFILES("section_profiles"), DEFAULTS("section_defaults"),
     PROVIDER_KEYS("section_provider_keys"),
     SERVICE_KEYS("section_service_keys"),
+    OFFLINE_AI("section_offline_ai"),
     LEGACY("section_legacy")
 }
 
@@ -44,15 +48,25 @@ fun VaultScreen(
     val listState = rememberLazyListState()
     var expandedServiceKeys by remember { mutableStateOf(emptySet<String>()) }
     val showBanner = !(state.setupProviderDone && state.setupProfileDone && state.setupDefaultDone && state.setupWorkflowDone)
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    Scaffold(topBar = {
-        TopAppBar(title = {
-            Column {
-                Text("Settings", fontWeight = FontWeight.Bold)
-                Text("AI profiles, keys, and preferences", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } })
-    }) { padding ->
+    LaunchedEffect(state.offlineInfoMessage) {
+        val msg = state.offlineInfoMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Long)
+        viewModel.clearOfflineInfoMessage()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(title = {
+                Column {
+                    Text("Settings", fontWeight = FontWeight.Bold)
+                    Text("Profiles, API keys, and app settings", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } })
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
         if (state.isProfileEditorOpen) {
             ProfileEditor(state = state, vm = viewModel, modifier = Modifier.padding(padding))
         } else {
@@ -63,7 +77,8 @@ fun VaultScreen(
                     val idx = when (initialSection) {
                         SettingsSection.DEFAULT_PROFILE.key -> 0 + bo
                         SettingsSection.AI_SETUP.key, SettingsSection.PROFILES.key, SettingsSection.DEFAULTS.key, SettingsSection.PROVIDER_KEYS.key, SettingsSection.LEGACY.key -> 1 + bo
-                        SettingsSection.SERVICE_KEYS.key -> { expandedServiceKeys = VaultViewModel.BUILT_IN_SERVICE_KEYS.map { it.id }.toSet(); 2 + bo }
+                        SettingsSection.OFFLINE_AI.key -> 2 + bo
+                        SettingsSection.SERVICE_KEYS.key -> { expandedServiceKeys = VaultViewModel.BUILT_IN_SERVICE_KEYS.map { it.id }.toSet(); 3 + bo }
                         else -> 0
                     }
                     listState.animateScrollToItem(idx)
@@ -80,6 +95,20 @@ fun VaultScreen(
                 item(key = SettingsSection.AI_SETUP.key) {
                     ProfilesSection(state, viewModel::openNewProfile, viewModel::openEditProfile, viewModel::deleteProfile,
                         viewModel::setDefaultProfile, viewModel::setFallbackProfile, viewModel::toggleProfileEnabled)
+                }
+
+                item(key = SettingsSection.OFFLINE_AI.key) {
+                    OnDeviceAISection(
+                        statuses = state.offlineModelStatuses,
+                        downloadProgress = state.offlineDownloadProgress,
+                        profiles = state.profiles,
+                        onCheck = viewModel::requestOfflineModelDownload,
+                        onRecheck = viewModel::requestOfflineModelDownload,
+                        onRemove = viewModel::removeOfflineModel,
+                        onCancelDownload = viewModel::cancelOfflineModelDownload,
+                        onCreateProfile = viewModel::openNewOfflineProfile,
+                        hasProfileForModel = viewModel::hasProfileForModel
+                    )
                 }
 
                 item(key = SettingsSection.SERVICE_KEYS.key) {
@@ -112,7 +141,7 @@ fun VaultScreen(
 private fun Banner(s: VaultUiState, onTemplates: () -> Unit) {
     val c = listOf(s.setupProviderDone, s.setupProfileDone, s.setupDefaultDone, s.setupWorkflowDone).count { it }
     Card2(Icons.Default.Lightbulb, "Getting Started", "$c of 4 steps complete") {
-        St(1, if (s.setupProviderDone) "Provider configured" else "Add an API key or choose Local Demo", s.setupProviderDone)
+        St(1, if (s.setupProviderDone) "Provider configured" else "Add an API key or use the built-in demo", s.setupProviderDone)
         St(2, if (s.setupProfileDone) "AI profile created" else "Create an AI profile", s.setupProfileDone)
         St(3, if (s.setupDefaultDone) "Default profile set" else "Set a default AI profile", s.setupDefaultDone)
         St(4, if (s.setupWorkflowDone) "Workflow created" else "Create your first workflow", s.setupWorkflowDone,
@@ -140,7 +169,7 @@ private fun DefaultProfileSection(profiles: List<ProviderProfile>, onSet: (Strin
     var exp by remember { mutableStateOf(false) }
     val en = profiles.filter { it.isEnabled }; val cur = profiles.find { it.isDefault }
     Card2(Icons.Default.Star, "Default AI Profile", "The primary profile used by all workflows unless overridden.") {
-        if (profiles.isEmpty()) { Text("Create an AI Profile below to set a default.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (profiles.isEmpty()) { Text("Add an AI Profile to set a default.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         else {
             Box {
                 Card(onClick = { if (en.isNotEmpty()) exp = true }, colors = CardDefaults.cardColors(
@@ -175,13 +204,13 @@ private fun ProfilesSection(
     state: VaultUiState, onNew: () -> Unit, onEdit: (ProviderProfile) -> Unit,
     onDel: (String) -> Unit, onSetDef: (String) -> Unit, onSetFb: (String) -> Unit, onToggle: (ProviderProfile) -> Unit
 ) {
-    Card2(Icons.Default.Psychology, "AI Profiles", "Each profile bundles a provider, model, and API key.") {
+    Card2(Icons.Default.Psychology, "AI Profiles", "Connect to an AI provider (OpenAI, Anthropic, Gemini, and more).") {
         if (state.profiles.isEmpty()) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
                 Column(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.size(24.dp))
                     Spacer(Modifier.height(8.dp)); Text("No profiles yet", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    Text("Tap \"Add AI Profile\" to set up your first provider.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Tap Add AI Profile to get started.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
@@ -190,6 +219,7 @@ private fun ProfilesSection(
                     val entry = ProviderCatalog.resolveForProfile(p)
                     val hasKey = when {
                         p.providerType == ProviderType.FAKE -> true
+                        p.providerType == ProviderType.LOCAL_AI -> true // no API key required
                         p.usesPerProfileKey -> true // we can't synchronously check, assume present if ID exists
                         else -> state.providerKeyStatus[p.providerType] == true
                     }
@@ -231,7 +261,7 @@ private fun PCard(
                 }
                 Switch(checked = p.isEnabled, onCheckedChange = { onToggle(p) })
             }
-            if (!hasKey && p.providerType != ProviderType.FAKE) {
+            if (!hasKey && p.providerType != ProviderType.FAKE && p.providerType != ProviderType.LOCAL_AI) {
                 Spacer(Modifier.height(4.dp)); Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(6.dp)); Text("API key missing — edit to add one", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -257,6 +287,261 @@ private fun PCard(
         colors = AssistChipDefaults.assistChipColors(containerColor = color.copy(alpha = 0.15f)), modifier = Modifier.height(24.dp))
 }
 
+// ══════════════════ On-device AI ══════════════════
+
+@Composable
+private fun OnDeviceAISection(
+    statuses: Map<String, OfflineModelStatus>,
+    downloadProgress: Map<String, DownloadProgress>,
+    profiles: List<ProviderProfile>,
+    onCheck: (String) -> Unit,
+    onRecheck: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onCancelDownload: (String) -> Unit,
+    onCreateProfile: (String) -> Unit,
+    hasProfileForModel: (String) -> Boolean
+) {
+    // Auto-check Gemini Nano availability when this section appears, but only once
+    // (only if status is still NOT_INSTALLED, meaning it has never been checked).
+    val nanoStatus = statuses[OfflineModelCatalog.GEMINI_NANO_ID] ?: OfflineModelStatus.NOT_INSTALLED
+    LaunchedEffect(nanoStatus) {
+        if (nanoStatus == OfflineModelStatus.NOT_INSTALLED) {
+            onCheck(OfflineModelCatalog.GEMINI_NANO_ID)
+        }
+    }
+
+    Card2(Icons.Default.PhoneAndroid, "On-device AI", "Run AI offline — no internet or API key required.") {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OfflineModelCatalog.ALL_MODELS.forEach { model ->
+                val status = statuses[model.id] ?: OfflineModelStatus.NOT_INSTALLED
+                val progress = downloadProgress[model.id] ?: DownloadProgress()
+                val hasProfile = hasProfileForModel(model.id)
+                OfflineModelCard(
+                    displayName = model.displayName,
+                    description = model.description,
+                    sizeLabel = model.sizeLabel,
+                    tags = model.tags,
+                    status = status,
+                    isSystemManaged = model.isSystemManaged,
+                    downloadProgress = progress,
+                    hasProfile = hasProfile,
+                    onCheck = { onCheck(model.id) },
+                    onRecheck = { onRecheck(model.id) },
+                    onRemove = { onRemove(model.id) },
+                    onCancelDownload = { onCancelDownload(model.id) },
+                    onCreateProfile = { onCreateProfile(model.id) }
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text("How On-device AI works", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "On-device models run directly on your phone — no internet or API key required. " +
+                    "Gemini Nano is built into select Pixel and Galaxy devices (Android 14+). " +
+                    "Gemma 3 runs on most modern Android phones but needs a one-time download. " +
+                    "Your cloud AI profiles are unaffected.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfflineModelCard(
+    displayName: String,
+    description: String,
+    sizeLabel: String,
+    tags: List<String>,
+    status: OfflineModelStatus,
+    isSystemManaged: Boolean,
+    downloadProgress: DownloadProgress = DownloadProgress(),
+    hasProfile: Boolean = false,
+    onCheck: () -> Unit,
+    onRecheck: () -> Unit,
+    onRemove: () -> Unit,
+    onCancelDownload: () -> Unit = {},
+    onCreateProfile: () -> Unit = {}
+) {
+    var showResetDialog by remember { mutableStateOf(false) }
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(displayName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(sizeLabel, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                OfflineStatusChip(status, isSystemManaged)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (tags.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    tags.forEach { tag ->
+                        AssistChip(onClick = {}, label = { Text(tag, style = MaterialTheme.typography.labelSmall) },
+                            modifier = Modifier.height(22.dp))
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            when (status) {
+                OfflineModelStatus.NOT_INSTALLED -> {
+                    val label = if (isSystemManaged) "Check Availability" else "Download ($sizeLabel)"
+                    val icon = if (isSystemManaged) Icons.Default.Search else Icons.Default.Download
+                    OutlinedButton(onClick = onCheck, modifier = Modifier.fillMaxWidth()) {
+                        Icon(icon, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(label)
+                    }
+                }
+                OfflineModelStatus.DOWNLOADING -> {
+                    if (isSystemManaged) {
+                        // System-managed: indeterminate spinner ("Checking…")
+                        OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Checking…")
+                        }
+                    } else {
+                        // Downloadable: show progress bar with percentage + cancel button
+                        val pct = downloadProgress.percent
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (pct >= 0) {
+                                LinearProgressIndicator(
+                                    progress = { pct / 100f },
+                                    modifier = Modifier.fillMaxWidth().height(6.dp),
+                                )
+                                val downloadedMb = downloadProgress.bytesDownloaded / 1_000_000
+                                val totalMb = downloadProgress.totalBytes / 1_000_000
+                                Text(
+                                    "Downloading… $pct% ($downloadedMb / $totalMb MB)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else {
+                                // Total size truly unknown — show indeterminate bar with downloaded bytes
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(6.dp))
+                                val downloadedMb = downloadProgress.bytesDownloaded / 1_000_000
+                                Text(
+                                    "Downloading… $downloadedMb MB",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = onCancelDownload,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Cancel")
+                            }
+                        }
+                    }
+                }
+                OfflineModelStatus.INSTALLED -> {
+                    val installedLabel = if (isSystemManaged) "Available" else "Installed"
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Card(modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(installedLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        if (isSystemManaged) {
+                            TextButton(onClick = onRecheck) {
+                                Text("Recheck", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        } else {
+                            TextButton(onClick = { showResetDialog = true }) {
+                                Text("Remove", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                    // CTA: create a profile to use this model
+                    if (!hasProfile) {
+                        OutlinedButton(onClick = onCreateProfile, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Create AI Profile")
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                            Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Profile configured — ready to use in workflows.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                OfflineModelStatus.FAILED -> {
+                    val retryLabel = if (isSystemManaged) "Retry check" else "Retry download"
+                    OutlinedButton(onClick = onCheck, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Refresh, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(retryLabel)
+                    }
+                }
+                OfflineModelStatus.UNSUPPORTED -> {
+                    val msg = if (isSystemManaged)
+                        "Not supported — requires Android 14+ and a Pixel 8+ or Galaxy S24+ device"
+                    else
+                        "Not supported on this device"
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f))) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
+                            Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Confirmation dialog for resetting a non-system-managed model
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Remove $displayName?") },
+            text = { Text("The model file will be deleted from this device. You can download it again later.") },
+            confirmButton = { TextButton(onClick = { onRemove(); showResetDialog = false }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun OfflineStatusChip(status: OfflineModelStatus, isSystemManaged: Boolean = false) {
+    val (label, icon, tint) = when (status) {
+        OfflineModelStatus.NOT_INSTALLED ->
+            if (isSystemManaged) Triple("Not checked", Icons.Default.HelpOutline, MaterialTheme.colorScheme.onSurfaceVariant)
+            else Triple("Not installed", Icons.Default.CloudDownload, MaterialTheme.colorScheme.onSurfaceVariant)
+        OfflineModelStatus.DOWNLOADING ->
+            if (isSystemManaged) Triple("Checking", Icons.Default.Sync, MaterialTheme.colorScheme.primary)
+            else Triple("Downloading", Icons.Default.Sync, MaterialTheme.colorScheme.primary)
+        OfflineModelStatus.INSTALLED ->
+            if (isSystemManaged) Triple("Available", Icons.Default.CheckCircle, MaterialTheme.colorScheme.primary)
+            else Triple("Installed", Icons.Default.CheckCircle, MaterialTheme.colorScheme.primary)
+        OfflineModelStatus.FAILED ->
+            if (isSystemManaged) Triple("Check failed", Icons.Default.Warning, MaterialTheme.colorScheme.error)
+            else Triple("Failed", Icons.Default.Warning, MaterialTheme.colorScheme.error)
+        OfflineModelStatus.UNSUPPORTED ->
+            Triple("Unsupported", Icons.Default.Block, MaterialTheme.colorScheme.error)
+    }
+    AssistChip(
+        onClick = {},
+        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+        leadingIcon = { Icon(icon, null, modifier = Modifier.size(14.dp), tint = tint) },
+        modifier = Modifier.height(26.dp)
+    )
+}
+
 // ══════════════════ Service API Keys ══════════════════
 
 @Composable
@@ -266,7 +551,7 @@ private fun ServiceKeysSection(
     onAddCustom: (String, String) -> Unit, onRemoveCustom: (String) -> Unit
 ) {
     var showAdd by remember { mutableStateOf(false) }; var cn by remember { mutableStateOf("") }; var cv by remember { mutableStateOf("") }
-    Card2(Icons.Default.CloudQueue, "Service API Keys", "Keys for external services (weather, routes). Used by workflow actions.") {
+    Card2(Icons.Default.CloudQueue, "Service API Keys", "API keys for weather, mapping, and other services used in your workflows.") {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             VaultViewModel.BUILT_IN_SERVICE_KEYS.forEach { info ->
                 SvcCard(info, state.serviceKeyStatus[info.id] == true, info.id in expanded,
@@ -381,9 +666,10 @@ private fun ProfileEditor(state: VaultUiState, vm: VaultViewModel, modifier: Mod
     val entry = state.editorCatalogEntry
     val isNative = entry.category == CatalogCategory.NATIVE
     val isCustom = entry.category == CatalogCategory.CUSTOM
+    val isOffline = entry.category == CatalogCategory.OFFLINE
     val isFake = entry.runtimeType == ProviderType.FAKE
-    val needsKey = !isFake
-    val needsBaseUrl = !isNative
+    val needsKey = !isFake && !isOffline
+    val needsBaseUrl = !isNative && !isOffline
     val hasModels = entry.suggestedModels.isNotEmpty()
 
     Column(modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -403,24 +689,81 @@ private fun ProfileEditor(state: VaultUiState, vm: VaultViewModel, modifier: Mod
         val catalog = ProviderCatalog.ALL_ENTRIES
         val nativeEntries = catalog.filter { it.category == CatalogCategory.NATIVE && it.runtimeType != ProviderType.FAKE }
         val presetEntries = catalog.filter { it.category == CatalogCategory.PRESET }
+        val offlineEntries = catalog.filter { it.category == CatalogCategory.OFFLINE }
         val fakeEntry = catalog.find { it.runtimeType == ProviderType.FAKE }
         val customEntry = catalog.find { it.category == CatalogCategory.CUSTOM }
 
-        // Native providers
-        nativeEntries.forEach { e -> ProviderRow(e, entry, vm::selectCatalogEntry) }
+        // Track which sections are expanded (On-device expanded by default since it's first)
+        var offlineExpanded by remember { mutableStateOf(true) }
+        var providersExpanded by remember { mutableStateOf(!isOffline) }
 
-        // Divider + presets
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-        Text("More Providers", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(2.dp))
-        presetEntries.forEach { e -> ProviderRow(e, entry, vm::selectCatalogEntry) }
+        // ── On-device AI (FIRST) ──
+        if (offlineEntries.isNotEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable { offlineExpanded = !offlineExpanded }.padding(vertical = 4.dp)
+            ) {
+                Icon(Icons.Default.PhoneAndroid, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("On-device AI", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                Text("No API key needed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(4.dp))
+                Icon(if (offlineExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null,
+                    modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            AnimatedVisibility(visible = offlineExpanded, enter = expandVertically(), exit = shrinkVertically()) {
+                Column {
+                    offlineEntries.forEach { e -> ProviderRow(e, entry, vm::selectCatalogEntry) }
+                    if (isOffline) {
+                        Spacer(Modifier.height(4.dp))
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f))) {
+                            Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.Top) {
+                                Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "Runs fully offline — no API key or internet required. " +
+                                    "Download or check availability in Settings → On-device AI before first use.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+        }
 
-        // Divider + Local Demo + Custom
-        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-        if (fakeEntry != null) ProviderRow(fakeEntry, entry, vm::selectCatalogEntry)
-        if (customEntry != null) ProviderRow(customEntry, entry, vm::selectCatalogEntry)
+        // ── Cloud & API Providers (collapsible) ──
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().clickable { providersExpanded = !providersExpanded }.padding(vertical = 4.dp)
+        ) {
+            Icon(Icons.Default.Cloud, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Cloud & API Providers", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f))
+            Icon(if (providersExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null,
+                modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        AnimatedVisibility(visible = providersExpanded, enter = expandVertically(), exit = shrinkVertically()) {
+            Column {
+                // Native providers
+                nativeEntries.forEach { e -> ProviderRow(e, entry, vm::selectCatalogEntry) }
+                // Presets
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                Text("More Providers", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(2.dp))
+                presetEntries.forEach { e -> ProviderRow(e, entry, vm::selectCatalogEntry) }
+                // Local Demo + Custom
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                if (fakeEntry != null) ProviderRow(fakeEntry, entry, vm::selectCatalogEntry)
+                if (customEntry != null) ProviderRow(customEntry, entry, vm::selectCatalogEntry)
+            }
+        }
 
-        // ── Custom Provider Name ──
+        // ── Custom Provider info ──
         if (isCustom) {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f))) {
                 Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.Top) {
@@ -506,8 +849,11 @@ private fun ProviderRow(e: CatalogEntry, selected: CatalogEntry, onSelect: (Cata
                 color = if (e.category == CatalogCategory.CUSTOM) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurface)
             if (e.description.isNotBlank()) Text(e.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
         }
-        if (e.category == CatalogCategory.NATIVE && e.runtimeType != ProviderType.FAKE) {
-            Text("Native", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        when {
+            e.category == CatalogCategory.NATIVE && e.runtimeType != ProviderType.FAKE ->
+                Text("Native", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            e.category == CatalogCategory.OFFLINE ->
+                Text("Offline", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
         }
     }
 }

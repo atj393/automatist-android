@@ -196,7 +196,7 @@ fun CloudSyncScreen(
             )
 
             Text(
-                "Manually back up and restore your workflows using your Google account. Workflow definitions only — API keys never leave your device.",
+                "Back up your workflows to Google Drive. Only workflow definitions are saved — your API keys always stay on your device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -262,7 +262,7 @@ fun CloudSyncScreen(
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                "${syncStatus.lastBackupWorkflowCount} workflow(s)",
+                                "${syncStatus.lastBackupWorkflowCount} ${if (syncStatus.lastBackupWorkflowCount == 1) "workflow" else "workflows"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

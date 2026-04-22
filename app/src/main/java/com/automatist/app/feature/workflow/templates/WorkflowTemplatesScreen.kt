@@ -218,7 +218,7 @@ private fun TemplateCard(
                 val actionCount = template.blueprint.actions.size
                 val actionTypes = template.blueprint.actions.map { it.type.displayName }.distinct().joinToString(", ")
                 Text(
-                    "$actionCount action(s): $actionTypes",
+                    "$actionCount ${if (actionCount == 1) "action" else "actions"}: $actionTypes",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

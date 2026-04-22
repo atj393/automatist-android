@@ -121,7 +121,7 @@ fun ActionBlockEditor(
                     OutlinedTextField(
                         value = action.instruction,
                         onValueChange = { onUpdate(action.copy(instruction = it)) },
-                        label = { Text("Per-source instruction (optional)") },
+                        label = { Text("Per-step instruction (optional)") },
                         placeholder = { Text("e.g. Summarize as a market update") },
                         minLines = 2, maxLines = 4,
                         modifier = Modifier.fillMaxWidth()
@@ -138,7 +138,70 @@ fun ActionBlockEditor(
                             inheritLabel = "Use workflow default"
                         )
                     }
+
+                    // Collapsible advanced section for per-action input processing
+                    AdvancedActionSection(action = action, onUpdate = onUpdate)
                 }
+            }
+        }
+    }
+}
+
+// ── Advanced (per-action input processing) ──
+
+@Composable
+private fun AdvancedActionSection(
+    action: WorkflowAction,
+    onUpdate: (WorkflowAction) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column {
+        TextButton(
+            onClick = { expanded = !expanded },
+            contentPadding = PaddingValues(0.dp)
+        ) {
+            Icon(
+                if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                null, modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                if (expanded) "Hide advanced options" else "Advanced",
+                style = MaterialTheme.typography.labelMedium
+            )
+        }
+
+        if (expanded) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 4.dp)
+            ) {
+                Text(
+                    "Input compaction",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    "Compacts this action's content before it's passed to the main workflow prompt. Applies only to this action.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    InputCompactionMode.entries.forEach { mode ->
+                        FilterChip(
+                            selected = action.compaction == mode,
+                            onClick = { onUpdate(action.copy(compaction = mode)) },
+                            label = {
+                                Text(mode.displayName, style = MaterialTheme.typography.labelSmall)
+                            }
+                        )
+                    }
+                }
+                Text(
+                    action.compaction.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
             }
         }
     }

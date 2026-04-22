@@ -120,7 +120,11 @@ data class WorkflowAction(
     val order: Int = 0,
     val isEnabled: Boolean = true,
     val extraConfig: String = "",
-    val profileId: String = "" // AI profile override ("" = inherit workflow default)
+    val profileId: String = "", // AI profile override ("" = inherit workflow default)
+    // Per-action text compaction applied to this action's prepared output before
+    // the main workflow prompt stage. Defaults to AGGRESSIVE; old workflows that
+    // pre-date this field deserialize with the default via ignoreUnknownKeys.
+    val compaction: InputCompactionMode = InputCompactionMode.AGGRESSIVE
 )
 
 // ── Per-Action Config Models ──
@@ -472,5 +476,18 @@ data class TokenUsage(
     val promptTokens: Int? = null,
     val completionTokens: Int? = null,
     val totalTokens: Int? = null,
-    val isEstimated: Boolean = false
+    /**
+     * True when the token counts are provider-side estimates (local / fake)
+     * rather than authoritative counts from a cloud API. UI should append
+     * " (estimated)" to labels and surface a clarifying note when this is set.
+     */
+    val isEstimated: Boolean = false,
+    /** Actual prompt character count reported by the provider. */
+    val inputChars: Int? = null,
+    /** Actual output character count reported by the provider. */
+    val outputChars: Int? = null,
+    /** Input-token ceiling, when the provider enforces one. */
+    val contextCeilingTokens: Int? = null,
+    /** True if the provider truncated/compressed input to fit its context window. */
+    val wasTruncated: Boolean? = null
 )
