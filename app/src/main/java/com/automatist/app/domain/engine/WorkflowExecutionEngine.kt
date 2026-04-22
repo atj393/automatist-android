@@ -81,6 +81,22 @@ class WorkflowExecutionEngine @Inject constructor(
             if (result.isSuccess) {
                 val rawText = result.getOrThrow()
 
+                // Surface the raw source text to the run page, but only when we
+                // know it will differ from the final per-action result (i.e.
+                // when there's an instruction that will preprocess it). For
+                // no-instruction actions, the "Show result" expander on
+                // ActionCompleted is enough — no need to duplicate the same text.
+                if (action.instruction.isNotBlank()) {
+                    emit(
+                        ExecutionState.ActionSourceFetched(
+                            actionIndex = index,
+                            totalActions = enabledActions.size,
+                            actionLabel = label,
+                            rawSourceText = rawText
+                        )
+                    )
+                }
+
                 // Pre-source instruction: if the action has a non-blank instruction,
                 // run an AI preprocessing pass on the source content BEFORE the main
                 // workflow prompt stage. The prepared result replaces the raw text
@@ -102,7 +118,8 @@ class WorkflowExecutionEngine @Inject constructor(
                             actionLabel = label,
                             instructionPreview = action.instruction.trim()
                                 .take(120)
-                                .let { if (action.instruction.length > 120) "$it…" else it }
+                                .let { if (action.instruction.length > 120) "$it…" else it },
+                            instructionText = action.instruction
                         )
                     )
                     val prep = preprocessActionWithInstruction(action, rawText, template)
@@ -208,7 +225,13 @@ class WorkflowExecutionEngine @Inject constructor(
         emit(ExecutionState.GeneratingOutput(
             profileName = profileName,
             providerName = providerName,
-            modelId = modelId
+            modelId = modelId,
+            // Expose the full final prompt (system instruction + user content)
+            // so the run page can surface it through a "Show final prompt"
+            // expander. The provider layer remains the authority on what
+            // actually goes to the model — this is read-only UI metadata.
+            systemPrompt = systemPrompt,
+            userContent = combinedInput
         ))
 
         // Detect social output mode

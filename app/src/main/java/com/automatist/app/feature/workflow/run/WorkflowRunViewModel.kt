@@ -63,7 +63,20 @@ data class StageInfo(
      * are inserted already-COMPLETED). The run page uses this to show a
      * live "Ns elapsed" hint for the currently running row.
      */
-    val startedAtMillis: Long = 0L
+    val startedAtMillis: Long = 0L,
+    /**
+     * Raw source content fetched for this action (Reading source stage).
+     * Attached only when meaningfully different from [actionData] — i.e. only
+     * for actions that have a preprocessing instruction. Empty string means
+     * "don't render a source-content expander for this row".
+     */
+    val sourceText: String = "",
+    /**
+     * Prompt text associated with the stage — the action instruction for
+     * action-prompt rows, the combined final prompt for the final-generation
+     * row. Empty string means "don't render a prompt expander for this row".
+     */
+    val promptText: String = ""
 )
 
 enum class StageStatus { PENDING, RUNNING, COMPLETED, FAILED }
@@ -212,6 +225,21 @@ class WorkflowRunViewModel @Inject constructor(
                 }
             }
 
+            is ExecutionState.ActionSourceFetched -> {
+                // Attach the raw source to the still-running "Reading source"
+                // row so the user can expand and inspect exactly what was read.
+                _state.update { s ->
+                    val stages = s.stages.toMutableList()
+                    val lastIdx = stages.lastIndex
+                    if (lastIdx >= 0 && stages[lastIdx].status == StageStatus.RUNNING) {
+                        stages[lastIdx] = stages[lastIdx].copy(
+                            sourceText = executionState.rawSourceText
+                        )
+                    }
+                    s.copy(stages = stages)
+                }
+            }
+
             is ExecutionState.ActionPromptStarted -> {
                 // Action has its own prompt — mark the source-reading row complete
                 // and push a distinct "running action prompt" row so the user sees
@@ -221,6 +249,11 @@ class WorkflowRunViewModel @Inject constructor(
                     val stages = it.stages.markLastCompleted() + runningStage(
                         label = header,
                         detail = executionState.instructionPreview
+                    ).copy(
+                        // Carry the full instruction text for the "Show prompt"
+                        // expander. The short preview stays in `detail` for the
+                        // header / first line of the row.
+                        promptText = executionState.instructionText
                     )
                     it.copy(currentStageLabel = header, stages = stages)
                 }
@@ -288,14 +321,28 @@ class WorkflowRunViewModel @Inject constructor(
                     "Generating final output · $headerDetail"
                 else
                     "Generating final output…"
+                // Combine system prompt + user content into a single inspectable
+                // block for the "Show final prompt" expander. Read-only — the
+                // provider layer is what actually sends text to the model.
+                val finalPrompt = buildString {
+                    if (executionState.systemPrompt.isNotBlank()) {
+                        append(executionState.systemPrompt.trim())
+                    }
+                    if (executionState.userContent.isNotBlank()) {
+                        if (isNotEmpty()) append("\n\n")
+                        append(executionState.userContent)
+                    }
+                }
                 _state.update {
-                    // Attach provider/model info to the existing running stage so the
-                    // stage row itself shows which AI is working — no noisy new row.
+                    // Attach provider/model info + final prompt to the existing
+                    // running stage so the stage row itself shows which AI is
+                    // working and lets the user inspect the prompt.
                     val stages = it.stages.toMutableList()
                     if (stages.isNotEmpty() && stages.last().status == StageStatus.RUNNING) {
                         stages[stages.lastIndex] = stages.last().copy(
                             label = "Generating final output",
-                            detail = headerDetail.ifBlank { stages.last().detail }
+                            detail = headerDetail.ifBlank { stages.last().detail },
+                            promptText = finalPrompt.ifBlank { stages.last().promptText }
                         )
                     }
                     it.copy(
