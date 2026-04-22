@@ -30,7 +30,7 @@ Configure RSS feeds and get AI-generated digests on a schedule:
 Create reusable custom workflow templates with multiple data sources:
 - **Template library** — 7 built-in templates (Morning Commute Brief, Competitor Monitor, Research Digest, etc.)
 - **Multi-step builder** — guided sections for basics, trigger, actions, instructions, and output
-- **9 action types** — Fetch URL, Paste Text, RSS Feed, Multi-RSS, API GET, Saved Notes, Previous Output, Weather, Route Time
+- **11 action types** — Fetch URL, Paste Text, RSS Feed, Multi-RSS, API GET, Saved Notes, Previous Output, Weather, Route Time, Action Output, AI Prompt
 - **Action Catalog** — full-screen categorized browser with search, readiness badges, and detail views
 - **Flexible triggers** — manual, daily schedule, or weekly schedule
 - **Output options** — briefing, social post, both, or custom format
@@ -58,7 +58,7 @@ Create reusable custom workflow templates with multiple data sources:
 - **Saved Notes** — reusable note content that workflows can reference
 - **Readiness System** — dynamic checks for action/workflow prerequisites with setup CTAs
 - **Share Intent** — receive text from any app via Android share sheet
-- **Multi-Provider** — switch between OpenAI, Anthropic, Gemini, or a local demo mode
+- **Multi-Provider** — switch between OpenAI, Anthropic, Gemini, a fully on-device LOCAL_AI mode (Gemini Nano or Gemma 3 1B int4), or a local demo mode
 - **Provider Profiles** — named provider+model configurations, one set as default
 - **Token Usage Tracking** — real token counts from OpenAI, Anthropic, and Gemini APIs
 
@@ -106,8 +106,10 @@ ui/               Theme + navigation graph
 | Billing | Google Play Billing Library v7.0.0 |
 | Cloud Sync | Google Drive API (appDataFolder) |
 | Auth | Google Play Services Auth |
+| On-device AI (system) | Google AI Edge AICore 0.0.1-exp01 (Gemini Nano) |
+| On-device AI (download) | MediaPipe LLM Inference / tasks-genai (Gemma 3 1B int4) |
 
-**Min SDK:** 26 (Android 8.0) | **Target SDK:** 34 (Android 14) | **Java:** 17
+**Min SDK:** 26 (Android 8.0) | **Target SDK:** 35 (Android 15) | **Java:** 17
 
 ---
 
@@ -226,8 +228,9 @@ app/src/main/java/com/automatist/app/
 |----------|--------------|-------|
 | Fake | — | Local mock responses, no API key needed |
 | OpenAI | gpt-3.5-turbo (overridable) | Bearer token auth |
-| Anthropic | claude-3-haiku (overridable) | x-api-key header |
+| Anthropic | claude-3-haiku-20240307 (overridable) | x-api-key header |
 | Gemini | gemini-1.5-flash | API key query param |
+| LOCAL_AI | gemini-nano / gemma-3n-e2b | Fully on-device, no API key or internet needed |
 
 All providers implement the same `ArticleTransformProvider` interface. Create named **provider profiles** (provider + model combinations) in Settings and assign them as defaults or per-workflow overrides.
 

@@ -33,8 +33,10 @@
 | Billing | Google Play Billing Library (v7.0.0) |
 | Cloud Sync | Google Drive API (appDataFolder) |
 | Auth | Google Play Services Auth |
+| On-device AI (system) | Google AI Edge AICore (0.0.1-exp01) — Gemini Nano via Android system service |
+| On-device AI (download) | MediaPipe LLM Inference (tasks-genai) — Gemma 3 1B int4 via app download |
 
-**Build:** Gradle KTS, version catalog (`libs.versions.toml`), compile/target SDK 34, min SDK 26, Java 17.
+**Build:** Gradle KTS, version catalog (`libs.versions.toml`), compile/target SDK 35, min SDK 26, Java 17.
 
 ---
 
@@ -52,15 +54,15 @@
 │  domain/          (interfaces + models)         │
 │   models/  providers/  repositories/  access/   │
 │   actions/  engine/  templates/  readiness/     │
-│   sync/  workflow/                              │
+│   sync/  workflow/  offline/                    │
 ├─────────────────────────────────────────────────┤
 │  data/            (implementations)             │
 │   local/  network/  providers/  repositories/   │
-│   access/  billing/  sync/                      │
+│   access/  billing/  sync/  offline/            │
 ├─────────────────────────────────────────────────┤
 │  platform/        (OS-level concerns)           │
 │   automation/  security/  notifications/        │
-│   scheduling/                                   │
+│   scheduling/  onboarding/                      │
 ├─────────────────────────────────────────────────┤
 │  di/              (Hilt modules)                │
 │  ui/              (theme + navigation)          │
@@ -69,7 +71,7 @@
 
 **Pattern:** MVVM — each screen has a `@HiltViewModel` with `StateFlow`; UI observes state and dispatches intents.
 
-**Provider routing:** `TransformProviderRouter` implements `ArticleTransformProvider` and delegates to the active provider (Fake/OpenAI/Anthropic/Gemini) based on `SettingsRepository.settings`.
+**Provider routing:** `TransformProviderRouter` implements `ArticleTransformProvider` and delegates to the active provider (Fake/OpenAI/Anthropic/Gemini/LOCAL_AI) based on profile resolution order.
 
 ---
 
@@ -166,10 +168,14 @@ app/src/main/java/com/automatist/app/
 │   │   └── WorkflowExecutionEngine.kt # Shared execution pipeline
 │   ├── models/
 │   │   ├── Models.kt                # ArticleInput, BriefConfig, TransformResult, HistoryItem
+│   │   ├── ProviderCatalog.kt       # ProviderModels — known model IDs per provider
 │   │   ├── Settings.kt              # AppSettings (activeProvider)
 │   │   ├── Types.kt                 # WorkflowType, TransformType, ProviderType, etc.
 │   │   ├── WorkflowExportModels.kt  # Portable DTOs for workflow import/export
 │   │   └── WorkflowModels.kt        # WorkflowTemplate, WorkflowRun, WorkflowAction, etc.
+│   ├── offline/
+│   │   ├── OfflineModel.kt          # OfflineModelEntry, OfflineModelCatalog, OfflineRuntimeType
+│   │   └── OfflineModelRepository.kt # Interface: status/progress/download/remove
 │   ├── providers/
 │   │   └── ArticleTransformProvider.kt  # Interface: transform(input, type) → Result
 │   ├── readiness/
@@ -192,18 +198,25 @@ app/src/main/java/com/automatist/app/
 │   ├── billing/
 │   │   └── BillingManager.kt        # Google Play Billing v7 integration
 │   ├── local/
-│   │   ├── AutomatistDatabase.kt    # Room DB (v3, 4 tables)
+│   │   ├── AutomatistDatabase.kt    # Room DB (v3, 5 tables)
 │   │   ├── HistoryDao.kt            # Room DAO
 │   │   ├── HistoryEntity.kt         # Room entity + mapping extensions
 │   │   ├── Migrations.kt            # DB migrations v1→v2, v2→v3
+│   │   ├── SeedingStateStore.kt     # DataStore: seeding version + first-run flags
 │   │   ├── SettingsRepository.kt    # DataStore for AppSettings + BriefConfig
 │   │   ├── WorkflowDao.kt           # Room DAO for workflows
 │   │   └── WorkflowEntities.kt      # Room entities for workflows + runs
 │   ├── network/
 │   │   └── RssParser.kt             # RSS/Atom fetcher + parser
+│   ├── offline/
+│   │   ├── DataStoreOfflineModelRepository.kt  # DataStore-backed offline model state
+│   │   ├── MediaPipeInferenceEngine.kt  # MediaPipe LLM Inference wrapper (downloadable models)
+│   │   └── ModelDownloadManager.kt  # OkHttp download manager with progress, SHA-256 verification
 │   ├── providers/
 │   │   ├── TransformProviderRouter.kt   # Routes to active provider
 │   │   ├── FakeArticleTransformProvider.kt
+│   │   ├── LocalAIArticleTransformProvider.kt  # On-device AI (AICore or MediaPipe)
+│   │   ├── LocalPromptBuilder.kt        # Prompt construction for local models
 │   │   ├── OpenAIArticleTransformProvider.kt
 │   │   ├── AnthropicArticleTransformProvider.kt
 │   │   ├── GeminiArticleTransformProvider.kt
@@ -246,17 +259,24 @@ app/src/main/java/com/automatist/app/
 │   │   └── WorkflowWorker.kt       # WorkManager job for custom workflows
 │   ├── notifications/
 │   │   └── NotificationHelper.kt   # Centralized notification creation
+│   ├── onboarding/
+│   │   └── FirstRunSeeder.kt        # Idempotent first-run seeder (profiles + sample workflow)
 │   ├── scheduling/
 │   │   └── ScheduleManager.kt      # WorkManager schedule orchestration
 │   └── security/
 │       ├── SecureStorage.kt         # Interface
 │       └── KeystoreSecureStorage.kt # DataStore impl (TODO: upgrade to Keystore)
 │
+├── assets/
+│   └── seeded_workflows/
+│       └── news_to_social.json      # Bundled "News to Social Posts" workflow for first-run seeding
+│
 ├── di/
 │   ├── AccessModule.kt              # ProductAccessRepository binding
 │   ├── AppModule.kt                 # Application context
 │   ├── DatabaseModule.kt            # Room DB + DAO + repository binding
 │   ├── NetworkModule.kt             # OkHttp + 3 Retrofit instances
+│   ├── OfflineModule.kt             # OfflineModelRepository binding
 │   ├── ProviderModule.kt            # Router → ArticleTransformProvider binding
 │   ├── SecurityModule.kt            # SecureStorage binding
 │   └── SyncModule.kt                # CloudSyncRepository binding
@@ -291,8 +311,52 @@ app/src/main/java/com/automatist/app/
 | OpenAI | gpt-3.5-turbo (overridable) | Bearer token |
 | Anthropic | claude-3-haiku-20240307 (overridable) | x-api-key header |
 | Gemini | gemini-1.5-flash | API key query param |
+| LOCAL_AI | gemini-nano or gemma-3n-e2b | None (on-device) |
 
-Each provider: fetches key from `SecureStorage` → builds system prompt (or uses `systemPromptOverride`) → calls API → returns `TransformResult`.
+Each cloud provider: fetches key from `SecureStorage` → builds system prompt (or uses `systemPromptOverride`) → calls API → returns `TransformResult`.
+
+LOCAL_AI: dispatches to `AICore` (Gemini Nano, system-managed) or `MediaPipeInferenceEngine` (Gemma 3 1B int4, downloaded). No API key or network needed.
+
+### Local / On-device AI
+
+The `LOCAL_AI` provider (`LocalAIArticleTransformProvider`) runs inference entirely on-device.
+
+**Two runtimes:**
+
+| Runtime | Model | ID | Device Support | Download |
+|---------|-------|----|----------------|---------|
+| AICORE | Gemini Nano | `gemini-nano` | Android 14+ (API 34), Pixel 8+, Galaxy S24+ | System-managed (no download) |
+| DOWNLOADABLE | Gemma 3 1B int4 | `gemma-3n-e2b` | Android 8+ (API 26), ≥3 GB RAM | ~529 MB, app-managed |
+
+**Key facts:**
+- Model catalog is in `OfflineModelCatalog` — add future models there without touching routing logic.
+- The stable ID `gemma-3n-e2b` must not be renamed — it is stored in user `ProviderProfile` rows and DataStore keys. The display name was corrected to "Gemma 3 1B (int4)" but the ID is frozen.
+- The model file `gemma3-1b-it-int4.task` is hosted at `atj393/automatist-models` GitHub Releases, tag `offline-models-v1`. SHA-256: `e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee`.
+- `MediaPipeInferenceEngine` runs on a single dedicated `MediaPipe-Worker` thread (not the shared IO pool) to serialize concurrent inference and avoid multi-GB double allocation.
+- Token budget: `MAX_TOTAL_TOKENS = 1536` (input + output combined). `MAX_INPUT_TOKENS = 1280`. Preflight guard rejects oversized prompts before the native call to prevent JNI crashes.
+- Context window is capped at 2500 chars in `OfflineModelEntry.contextWindowChars` for the downloadable model (reduced from 4000 to keep prefill latency acceptable).
+- Inference timeout: 120 seconds.
+- Model is not kept in memory between calls — loaded fresh per call to avoid holding ~2–3 GB RAM in the background.
+- `LocalPromptBuilder` constructs the prompt and enforces char-level truncation against `contextWindowChars` before reaching the engine's token guard.
+
+**ProGuard / R8:**
+- MediaPipe and AICore classes require explicit keep rules. These are present in `app/proguard-rules.pro`.
+- Do not remove or condense them — R8 will obfuscate native JNI class names, causing runtime crashes.
+
+### First-run Seeding
+
+`FirstRunSeeder` (`platform/onboarding/`) runs idempotently on every app launch. `SeedingStateStore` persists the applied version.
+
+**Current version:** 2
+
+**Version history:**
+- v1: seed "Demo Mode" (FAKE) profile + "News to Social Posts" workflow from bundled asset `seeded_workflows/news_to_social.json`.
+- v2: one-time cleanup of legacy "Article Briefing" workflow left over from pre-v1 app builds (only deletes if name/sourceTemplateId/description match AND `lastRunAtMillis == null`).
+
+**Rules:**
+- Never overwrites an existing FAKE profile or an existing default profile.
+- After seeding, `reflectSetupProgressFromSeededState()` flips Getting Started checklist flags forward (false→true only) so a new user doesn't see "0 of 4 steps" when they already have a working setup.
+- The seeded workflow is imported via `WorkflowPortabilityManager` and arrives disabled — user enables scheduling when ready.
 
 ### Readiness System
 
@@ -317,11 +381,12 @@ Each provider: fetches key from `SecureStorage` → builds system prompt (or use
 
 ### Settings Structure
 
-**Settings (VaultScreen)** organized into 4 sections:
+**Settings (VaultScreen)** organized into 5 sections:
 1. **AI Provider Profiles** — named provider+model configurations (CRUD), one set as default
 2. **Provider API Keys** — per-provider AI keys (OpenAI, Anthropic, Gemini)
 3. **Service API Keys** — external service keys (OpenWeatherMap, OpenRouteService)
-4. **Active Provider (Legacy)** — fallback provider selection for legacy screens
+4. **On-device AI** — offline model status, download/remove, device compatibility info
+5. **Active Provider (Legacy)** — fallback provider selection for legacy screens
 
 ### Transform Types
 
@@ -333,6 +398,7 @@ Each provider: fetches key from `SecureStorage` → builds system prompt (or use
 | `MEETING_BRIEF` | Meeting |
 | `STRATEGIC_QUESTIONS` | Meeting |
 | `MORNING_SUMMARY` | Brief worker |
+| `CUSTOM_WORKFLOW` | Workflow engine |
 
 ### History
 
@@ -370,6 +436,8 @@ Every workflow output can be saved. Stored in Room (`history_items` table) with:
 
 **Integration:** `AutomatistApp.onCreate()` calls `billingManager.queryOwnedPurchases()` on app start.
 
+**Important:** When `queryOwnedPurchases()` finds no purchase for a free user, it emits `PurchaseState.Idle` (not Error). The Error state is reserved for actual billing failures. The UpgradeScreen has separate logic for showing "No previous purchase found" feedback on user-initiated restores.
+
 ### Cloud Sync (Google Drive)
 
 **`CloudSyncManager`** — handles backup/restore of workflows to Google Drive `appDataFolder`.
@@ -390,10 +458,10 @@ Every workflow output can be saved. Stored in Room (`history_items` table) with:
 
 **`UpgradeScreen`** — full-screen purchase flow with:
 - Purchase button (connects to Google Play Billing)
-- Restore purchases button (for existing customers)
-- Debug toggle (`BuildConfig.DEBUG` only) for testing Pro state
+- Restore purchases button (for existing customers) — shows neutral "No previous purchase found" snackbar on user-initiated restore with no purchase (not an error)
+- Debug toggle (`BuildConfig.DEBUG` only) for testing Pro state — compiled out by R8 in release
 
-**`UpgradeViewModel`** — manages `planState`, `purchaseState`, `productDetails`, `billingStatus`.
+**`UpgradeViewModel`** — manages `planState`, `purchaseState`, `productDetails`, `billingStatus`, `userRestoreInProgress`.
 
 ### Secure Storage
 
@@ -433,8 +501,8 @@ Legacy quick-access screens (`article_transformer`, `meeting_strategist`, `morni
 User input (text) → ViewModel → TransformProviderRouter
   → reads activeProvider from SettingsRepository
   → delegates to concrete provider
-  → provider fetches API key from SecureStorage
-  → builds prompt + calls API
+  → provider fetches API key from SecureStorage (cloud) or runs on-device (LOCAL_AI)
+  → builds prompt + calls API or runs MediaPipe/AICore inference
   → returns TransformResult
   → ViewModel updates UI state
   → user reviews → copy / share / save to history
@@ -465,7 +533,10 @@ User creates WorkflowTemplate via editor
   → saves to Room (workflow_templates table)
   → manual run: WorkflowRunViewModel → WorkflowExecutionEngine → Flow<ExecutionState>
   → scheduled run: WorkManager → WorkflowWorker → WorkflowExecutionEngine
-  → engine executes actions (fetch URL / paste text) in order
+  → engine executes actions in order:
+      - per-action preprocessing (AI pass) if action has instruction
+      - per-action compaction (TextCompactor) to fit context window
+      - USE_ACTION_OUTPUT / AI_PROMPT for in-workflow chaining
   → combines results, builds system prompt from config
   → calls TransformProviderRouter with CUSTOM_WORKFLOW + systemPromptOverride
   → saves WorkflowRun to Room (workflow_runs table)
@@ -514,7 +585,7 @@ Users can create workflows from curated templates OR from scratch. Templates are
 
 **Template origin tracking:** `sourceTemplateId` tracks which template a workflow was created from (informational only, not restrictive). All user workflows are fully editable regardless of origin.
 
-**Seeded sample:** "Article Briefing" workflow auto-created for new users as a useful starter.
+**Seeded sample:** "News to Social Posts" workflow auto-created for new users as a useful starter (via `FirstRunSeeder`, version 1+).
 
 ### Built-In Templates (7)
 
@@ -543,7 +614,7 @@ Users can create workflows from curated templates OR from scratch. Templates are
 - `WorkflowAction` — id, type, label, sourceData, instruction, order, extraConfig
 - `WorkflowTrigger` — sealed interface: Manual, Daily, Weekly, NotificationKeyword (future)
 
-**Action types:**
+**Action types (11 total):**
 - `FETCH_URL` — fetches URL content via OkHttp, strips HTML, truncates to 4000 chars
 - `PASTE_TEXT` — user-provided text content
 - `FETCH_RSS_FEED` — pulls RSS/Atom feed items via RssParser, supports keyword filter and maxItems config
@@ -553,6 +624,8 @@ Users can create workflows from curated templates OR from scratch. Templates are
 - `FETCH_RSS_MULTI` — pulls and merges items from multiple RSS/Atom feeds with deduplication, keyword filtering, and configurable item limits
 - `FETCH_WEATHER` — fetches current weather for a location via OpenWeatherMap API; extracts temperature, humidity, conditions into structured text
 - `FETCH_ROUTE_TIME` — fetches travel time and distance between two locations via OpenRouteService API; supports driving, walking, cycling modes with geocoding
+- `USE_ACTION_OUTPUT` — uses the output of a specific earlier action within the same workflow run (in-workflow chaining)
+- `AI_PROMPT` — runs an intermediate AI call mid-workflow (preprocessing pass); output becomes input to the next stage
 
 **External service API keys** stored in `SecureStorage.saveServiceKey(service, key)` — separate from AI provider keys. Services: `openweathermap`, `openrouteservice`.
 
@@ -567,7 +640,14 @@ Users can create workflows from curated templates OR from scratch. Templates are
 
 **Execution engine:** `WorkflowExecutionEngine` — singleton, emits `Flow<ExecutionState>`, shared by both ViewModel (manual runs) and WorkflowWorker (scheduled runs).
 
-**Database:** Room v3 with migrations. Tables: `workflow_templates`, `workflow_runs` (FK cascade on template delete), `saved_notes`.
+**Execution features:**
+- Per-action preprocessing: if an action has an `instruction`, the engine runs an AI pass on the raw source content before the main synthesis step.
+- Per-action compaction: `TextCompactor` enforces per-source limits to keep the combined prompt within the active provider's context window.
+- Output versions: `numberOfOutputs` (1–10) requests multiple generation passes for the final output.
+- Stage granularity: `ExecutionState` emits per-action progress so the UI can show which action is running.
+- `resetForNewStage()` / `resetTransientState()` called at stage boundaries to clear stale diagnostics.
+
+**Database:** Room v3 with migrations. Tables: `workflow_templates`, `workflow_runs` (FK cascade on template delete), `saved_notes`, `history_items`, `provider_profiles`.
 
 **Per-action config:** Stored in `WorkflowAction.extraConfig` as JSON. Each action type has its own config model: `RssFeedConfig`, `ApiGetConfig`, `SavedNoteReference`, `PreviousOutputConfig`.
 
@@ -594,6 +674,10 @@ Users can create workflows from curated templates OR from scratch. Templates are
 - Include API keys or secrets in workflow export/sync payloads (use WorkflowPortabilityManager)
 - Bypass the entitlement system (free tier limits must be enforced via ProductAccessRepository)
 - Change the billing product ID (`automatist_pro`) without explicit request
+- Rename `GEMMA_3N_E2B_ID = "gemma-3n-e2b"` — this ID is stored in user ProviderProfile rows and DataStore keys; changing it breaks existing installs silently
+- Delete or rename the `offline-models-v1` GitHub Release tag — existing installs have this URL hardcoded in `OfflineModelCatalog`; changing it breaks downloads for all users on v1.0.0
+- Change `downloadUrl` or `fileSha256` in `OfflineModelCatalog` without also bumping the catalog entry's ID and adding a migration — these values are trust anchors for download integrity
+- Bypass the `estimateTokens` / `MAX_INPUT_TOKENS` preflight guard in `MediaPipeInferenceEngine` — oversized prompts cause a native JNI crash (SIGABRT), not a graceful exception
 
 ---
 
@@ -603,6 +687,8 @@ Users can create workflows from curated templates OR from scratch. Templates are
 ```bash
 ./gradlew assembleDebug
 ./gradlew installDebug
+./gradlew bundleRelease      # produces signed AAB for Play Store
+./gradlew assembleRelease    # produces signed APK for sideloading / testing
 ```
 
 ### Adding a New AI Provider
@@ -613,11 +699,25 @@ Users can create workflows from curated templates OR from scratch. Templates are
 5. Inject into `TransformProviderRouter` and add routing case
 6. Add API key field in `VaultScreen.kt` / `VaultViewModel.kt`
 
+### Adding a New Offline Model
+1. Add a new `OfflineModelEntry` to `OfflineModelCatalog.ALL_MODELS` in `domain/offline/OfflineModel.kt`
+2. Add the model ID constant to `ProviderModels.LOCAL_AI` in `domain/models/ProviderCatalog.kt`
+3. No changes required to `LocalAIArticleTransformProvider`, routing, or the readiness system — the catalog drives dispatch
+
 ### Adding a New Transform Type
 1. Add enum value to `TransformType` in `domain/models/Types.kt`
 2. Add system prompt case in each provider's `getSystemPrompt()` function
 3. Add mock response in `FakeArticleTransformProvider`
 4. Add UI option in the relevant screen (Article or Meeting)
+
+### ProGuard / R8
+Release builds use R8 with `isMinifyEnabled = true`. Keep rules in `app/proguard-rules.pro` cover:
+- Retrofit, OkHttp, Gson, Room, Hilt, Billing, Google Drive, kotlinx.serialization
+- MediaPipe LLM Inference (`-keep class com.google.mediapipe.** { *; }`)
+- Google AI Edge AICore (`-keep class com.google.ai.edge.aicore.** { *; }`)
+- AutoValue/JavaPoet annotation processor dontwarn entries (prevent R8 build failure from google-api-client transitive deps)
+
+Do not remove the MediaPipe or AICore keep rules — R8 obfuscating these JNI class names causes runtime crashes, not build errors.
 
 ### Release Signing
 - Copy `keystore.properties.example` → `keystore.properties` (gitignored)

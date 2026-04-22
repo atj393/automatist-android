@@ -4,7 +4,8 @@
       "Bash(wait)",
       "Bash(./gradlew assembleRelease --stacktrace)",
       "Bash(./gradlew assembleRelease --info)",
-      "Bash(./gradlew assembleRelease bundleRelease)"
+      "Bash(./gradlew assembleRelease bundleRelease)",
+      "Read(//c/Users/johnson/.claude/projects/**)"
     ]
   }
 }

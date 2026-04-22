@@ -15,7 +15,7 @@ Paste an article, share meeting notes, or pull from RSS feeds, and Automatist ge
 KEY FEATURES
 
 Workflow Builder
-Create custom multi-step workflows from 7 built-in templates or from scratch. Combine 9 action types — fetch URLs, pull RSS feeds, check the weather, get route times, reference saved notes, and more. Set daily or weekly schedules for hands-free execution.
+Create custom multi-step workflows from 7 built-in templates or from scratch. Combine 11 action types — fetch URLs, pull RSS feeds, check the weather, get route times, reference saved notes, chain action outputs, run mid-workflow AI passes, and more. Set daily or weekly schedules for hands-free execution.
 
 Article Transformer
 Paste or share text from any app and transform it into a concise summary, a Twitter/X-style thread draft, or a polished LinkedIn post.
@@ -30,7 +30,7 @@ Cloud Sync
 Back up your workflows to Google Drive and restore them on any device. API keys are never included in backups.
 
 MULTI-PROVIDER AI
-Choose from OpenAI, Anthropic (Claude), or Google Gemini. Create named provider profiles with specific models and assign them per-workflow. A built-in demo mode lets you explore without an API key.
+Choose from OpenAI, Anthropic (Claude), Google Gemini, or fully on-device AI — no internet or API key required. The on-device option uses Gemini Nano (via Android AICore on supported Pixel/Galaxy devices) or a downloadable Gemma 3 1B model that runs locally on any modern Android phone. Create named provider profiles with specific models and assign them per-workflow. A built-in demo mode lets you explore without any API key.
 
 PRIVACY FIRST
 All data stays on your device. No backend server, no analytics, no tracking. API keys are stored locally and never uploaded. Cloud sync is optional and uses your private Google Drive folder.

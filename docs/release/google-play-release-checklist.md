@@ -1,4 +1,4 @@
-# Google Play Release Checklist — Automatist v1.0.0
+# Google Play Release Checklist — Automatist v1.0.0 (versionCode 2)
 
 Status key: [x] done | [ ] manual action needed | [~] not applicable
 
@@ -9,9 +9,9 @@ Status key: [x] done | [ ] manual action needed | [~] not applicable
 - [x] App icons — launcher icons in all mipmap densities + adaptive icon with foreground/background/monochrome layers (see "App Icon Assets" section in README)
 - [x] `strings.xml` created with `app_name`
 - [x] `AndroidManifest.xml` uses `@string/app_name` (not hardcoded)
-- [x] `versionCode = 1`, `versionName = "1.0.0"` set in `build.gradle.kts`
+- [x] `versionCode = 2`, `versionName = "1.0.0"` set in `build.gradle.kts`
 - [x] Release build: minification + resource shrinking enabled
-- [x] ProGuard/R8 rules cover all dependencies (Retrofit, Room, Hilt, Billing, Drive, Serialization)
+- [x] ProGuard/R8 rules cover all dependencies (Retrofit, Room, Hilt, Billing, Drive, Serialization, MediaPipe LLM Inference, Google AI Edge AICore)
 - [x] Signing config reads from `keystore.properties` (gitignored)
 - [x] `network_security_config.xml` enforces HTTPS only
 - [x] `data_extraction_rules.xml` + `backup_rules.xml` exclude sensitive DataStore files
@@ -108,6 +108,19 @@ the wrong package name causes `DEVELOPER_ERROR` (code 10) at sign-in.
 - [ ] Select countries/regions for distribution
 - [ ] Set managed publishing or immediate publishing preference
 - [ ] Submit for review
+
+---
+
+## Offline Model Hosting
+
+The downloadable Gemma 3 1B int4 model is hosted on GitHub Releases:
+- **Repo:** `atj393/automatist-models`
+- **Tag:** `offline-models-v1`
+- **File:** `gemma3-1b-it-int4.task` (~529 MB)
+- **SHA-256:** `e3d981c01aeaaac69a84ffa0d4be13281b3176731063f1bea1c9fe6887bd9dee`
+
+- [ ] Verify the release tag and file are publicly accessible before shipping
+- [ ] Do not delete or rename the `offline-models-v1` tag after release — existing installs have this URL hardcoded
 
 ---
 

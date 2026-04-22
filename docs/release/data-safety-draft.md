@@ -66,6 +66,12 @@ Yes
 - Only the text content and system prompt are sent — no device IDs, no user identity
 - Each provider has its own privacy policy and data handling practices
 
+**LOCAL_AI (On-device)**
+- If the user selects LOCAL_AI (Gemini Nano or Gemma 3 1B), all processing occurs on-device
+- No text content leaves the device for AI processing
+- Gemini Nano is managed by Android system services (AICore)
+- Gemma 3 1B is downloaded once (~529 MB) and stored in app-internal storage
+
 **Google Drive**
 - Optional feature — user must explicitly sign in and initiate backup
 - Uses `appDataFolder` scope (private, app-scoped storage invisible to user in Drive UI)

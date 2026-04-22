@@ -32,9 +32,13 @@ All core app data is stored locally on your device using Android's Room database
 
 This data is not transmitted to any server except as described below.
 
+### Data processed entirely on-device
+
+If you select the **LOCAL_AI** provider (Gemini Nano or Gemma 3 1B), your text is processed entirely on your device. No content is sent to any external server. The Gemini Nano model is managed by the Android system (AICore). The Gemma 3 1B model is downloaded once and stored in app-internal storage; after download, it runs without internet access.
+
 ### Data sent to third-party AI providers
 
-When you run a workflow or transform content, the text you provide is sent to the AI provider you selected:
+When you run a workflow or transform content using a cloud AI provider, the text you provide is sent to the provider you selected:
 
 - **OpenAI** (api.openai.com) — governed by [OpenAI's privacy policy](https://openai.com/privacy)
 - **Anthropic** (api.anthropic.com) — governed by [Anthropic's privacy policy](https://www.anthropic.com/privacy)
