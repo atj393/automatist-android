@@ -126,8 +126,10 @@ class WorkflowWorker(
 
                     val stageLabel = when (state) {
                         is ExecutionState.Preparing -> "Preparing workflow..."
-                        is ExecutionState.ValidatingInputs -> "Validating ${state.totalActions} action(s)..."
-                        is ExecutionState.ActionStarted -> "Processing: ${state.actionLabel}"
+                        is ExecutionState.ValidatingInputs -> { val n = state.totalActions; "Validating $n ${if (n == 1) "action" else "actions"}..." }
+                        is ExecutionState.ActionStarted -> "Reading source: ${state.actionLabel}"
+                        is ExecutionState.ActionSourceFetched -> "Source ready: ${state.actionLabel}"
+                        is ExecutionState.ActionPromptStarted -> "Applying instruction: ${state.actionLabel}"
                         is ExecutionState.ActionCompleted -> "Completed: ${state.actionLabel}"
                         is ExecutionState.ActionFailed -> "Failed: ${state.actionLabel}"
                         is ExecutionState.ProcessingStarted -> {
@@ -137,7 +139,7 @@ class WorkflowWorker(
                                 "Processing ${state.combinedInputLength} chars..."
                             }
                         }
-                        is ExecutionState.GeneratingOutput -> "Generating output via ${state.providerName.ifBlank { "AI" }}..."
+                        is ExecutionState.GeneratingOutput -> "Generating final output via ${state.providerName.ifBlank { "AI" }}..."
                         is ExecutionState.Completed -> "Completed"
                         is ExecutionState.Failed -> "Failed: ${state.error}"
                     }

@@ -117,7 +117,8 @@ class WorkflowPortabilityManager @Inject constructor(
                 order = action.order,
                 isEnabled = action.isEnabled,
                 extraConfig = config,
-                profileId = action.profileId
+                profileId = action.profileId,
+                compaction = action.compaction
             )
         }
 
@@ -227,7 +228,8 @@ class WorkflowPortabilityManager @Inject constructor(
                 order = actionDto.order,
                 isEnabled = actionDto.isEnabled,
                 extraConfig = extraConfigStr,
-                profileId = resolveProfileId(actionDto.profileId)
+                profileId = resolveProfileId(actionDto.profileId),
+                compaction = actionDto.compaction
             )
         }
 

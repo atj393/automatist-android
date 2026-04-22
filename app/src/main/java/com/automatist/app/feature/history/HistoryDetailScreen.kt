@@ -59,7 +59,7 @@ fun HistoryDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Result Detail") },
+                title = { Text("Result") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")

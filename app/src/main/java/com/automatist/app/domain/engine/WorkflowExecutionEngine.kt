@@ -4,11 +4,13 @@ import com.automatist.app.data.network.RssParser
 import com.automatist.app.domain.models.*
 import com.automatist.app.domain.providers.ArticleTransformProvider
 import com.automatist.app.domain.repositories.WorkflowRepository
+import android.util.Log
 import com.automatist.app.platform.security.SecureStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
@@ -30,6 +32,7 @@ class WorkflowExecutionEngine @Inject constructor(
 ) {
 
     companion object {
+        private const val TAG = "WorkflowEngine"
         private const val MAX_CHARS_PER_ACTION = 4000
         private const val MAX_TOTAL_CHARS = 16000
     }
@@ -37,7 +40,15 @@ class WorkflowExecutionEngine @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true }
 
     fun execute(template: WorkflowTemplate): Flow<ExecutionState> = flow<ExecutionState> {
+        Log.i(TAG, "execute() run-start template='${template.name}' id=${template.id} " +
+            "thread=${Thread.currentThread().name}")
         val startTime = System.currentTimeMillis()
+
+        // Stage-boundary reset at run start. Clears any transient on-device runtime
+        // state left behind by a prior run (e.g. MediaPipe diagnostic timings,
+        // partially-consumed session metadata). Cloud providers are stateless so
+        // the router short-circuits this for them — see TransformProviderRouter.
+        transformProvider.resetForNewStage("run-start:${template.id}")
 
         emit(ExecutionState.Preparing)
 
@@ -54,6 +65,12 @@ class WorkflowExecutionEngine @Inject constructor(
         val actionResults = mutableListOf<ActionResult>()
         val actionResultMap = mutableMapOf<String, String>() // action ID → output text
 
+        // Accumulate usage from per-action preprocessing passes so totals are honest.
+        var preprocessPromptTokens = 0
+        var preprocessCompletionTokens = 0
+        var preprocessIsEstimated = false
+        var preprocessWasTruncated: Boolean? = null
+
         for ((index, action) in enabledActions.withIndex()) {
             val label = action.label.ifBlank { "${action.type.displayName} #${index + 1}" }
 
@@ -62,14 +79,75 @@ class WorkflowExecutionEngine @Inject constructor(
             val result = executeAction(action, actionResultMap, template)
 
             if (result.isSuccess) {
-                val text = result.getOrThrow()
-                actionResults.add(ActionResult(action, text))
-                actionResultMap[action.id] = text
+                val rawText = result.getOrThrow()
+
+                // Surface the raw source text to the run page, but only when we
+                // know it will differ from the final per-action result (i.e.
+                // when there's an instruction that will preprocess it). For
+                // no-instruction actions, the "Show result" expander on
+                // ActionCompleted is enough — no need to duplicate the same text.
+                if (action.instruction.isNotBlank()) {
+                    emit(
+                        ExecutionState.ActionSourceFetched(
+                            actionIndex = index,
+                            totalActions = enabledActions.size,
+                            actionLabel = label,
+                            rawSourceText = rawText
+                        )
+                    )
+                }
+
+                // Pre-source instruction: if the action has a non-blank instruction,
+                // run an AI preprocessing pass on the source content BEFORE the main
+                // workflow prompt stage. The prepared result replaces the raw text
+                // for downstream combination.
+                val (preparedText, instructionApplied) = if (action.instruction.isNotBlank()) {
+                    // Stage-boundary reset before this action's preprocessing pass so
+                    // the local/offline runtime starts with clean transient state for
+                    // this specific action. Cheap no-op for cloud providers.
+                    Log.i(TAG, "action-preprocess-start index=$index label='$label'")
+                    transformProvider.resetForNewStage("action-preprocess:$index:${action.id}")
+                    // Surface the upcoming AI preprocessing pass as its own visible
+                    // stage so the user can distinguish source-fetching from the
+                    // action's prompt actually running. Only emitted when there IS
+                    // an instruction to run — no noise for plain fetch actions.
+                    emit(
+                        ExecutionState.ActionPromptStarted(
+                            actionIndex = index,
+                            totalActions = enabledActions.size,
+                            actionLabel = label,
+                            instructionPreview = action.instruction.trim()
+                                .take(120)
+                                .let { if (action.instruction.length > 120) "$it…" else it },
+                            instructionText = action.instruction
+                        )
+                    )
+                    val prep = preprocessActionWithInstruction(action, rawText, template)
+                    if (prep != null) {
+                        preprocessPromptTokens += prep.promptTokens ?: 0
+                        preprocessCompletionTokens += prep.completionTokens ?: 0
+                        if (prep.isUsageEstimated) preprocessIsEstimated = true
+                        prep.wasTruncated?.let { t ->
+                            preprocessWasTruncated = (preprocessWasTruncated ?: false) || t
+                        }
+                        prep.outputText to true
+                    } else {
+                        // Preprocessing failed — fall back to raw content so the run
+                        // still produces an output. Error is logged; user-facing
+                        // surfacing stays minimal because the action itself succeeded.
+                        rawText to false
+                    }
+                } else {
+                    rawText to false
+                }
+
+                actionResults.add(ActionResult(action, preparedText, instructionApplied))
+                actionResultMap[action.id] = preparedText
                 emit(
                     ExecutionState.ActionCompleted(
                         index, enabledActions.size, label,
-                        text.take(100) + if (text.length > 100) "..." else "",
-                        fullResultText = text
+                        preparedText.take(100) + if (preparedText.length > 100) "..." else "",
+                        fullResultText = preparedText
                     )
                 )
             } else {
@@ -90,17 +168,30 @@ class WorkflowExecutionEngine @Inject constructor(
         }
 
         if (actionResults.isEmpty()) {
+            Log.i(TAG, "run-end status=failed stage=actions template='${template.name}'")
+            transformProvider.resetForNewStage("run-end-failed-actions:${template.id}")
             emit(ExecutionState.Failed("All actions failed. No data to process.", "actions"))
             return@flow
         }
 
-        // Combine action outputs (with compaction applied to auto-collected text)
-        val compactionMode = template.outputConfig.inputCompaction
+        // Combine action outputs (per-action compaction applied to each action's content).
         val (combinedInput, originalLen) = buildCombinedInput(actionResults, template)
+        // Derive a human-readable compaction label from the per-action settings for
+        // the ProcessingStarted event. If all actions use the same mode, show it;
+        // otherwise show "Mixed". Pure NONE across the board shows as blank.
+        val compactionLabel = run {
+            val modes = actionResults.map { it.action.compaction }.toSet()
+            when {
+                modes.isEmpty() -> ""
+                modes.size == 1 && modes.first() == InputCompactionMode.NONE -> ""
+                modes.size == 1 -> modes.first().displayName
+                else -> "Mixed"
+            }
+        }
         emit(ExecutionState.ProcessingStarted(
             combinedInputLength = combinedInput.length,
             originalInputLength = originalLen,
-            compactionMode = if (compactionMode != InputCompactionMode.NONE) compactionMode.displayName else ""
+            compactionMode = compactionLabel
         ))
 
         // Build prompt
@@ -124,10 +215,23 @@ class WorkflowExecutionEngine @Inject constructor(
         val providerName = resolvedProfile?.providerType?.displayName ?: "Fallback"
         val modelId = resolvedProfile?.modelId ?: ""
 
+        // Stage-boundary reset before final generation. Ensures the local/offline
+        // runtime enters the main output pass with clean transient state — no
+        // leftover timings / metadata from the preceding per-action preprocessing
+        // calls. Cheap no-op for cloud providers via the router.
+        Log.i(TAG, "final-generation-start profile='$profileName' provider='$providerName' model='$modelId'")
+        transformProvider.resetForNewStage("final-generation:${template.id}")
+
         emit(ExecutionState.GeneratingOutput(
             profileName = profileName,
             providerName = providerName,
-            modelId = modelId
+            modelId = modelId,
+            // Expose the full final prompt (system instruction + user content)
+            // so the run page can surface it through a "Show final prompt"
+            // expander. The provider layer remains the authority on what
+            // actually goes to the model — this is read-only UI metadata.
+            systemPrompt = systemPrompt,
+            userContent = combinedInput
         ))
 
         // Detect social output mode
@@ -145,6 +249,14 @@ class WorkflowExecutionEngine @Inject constructor(
         var totalPromptTokens = 0
         var totalCompletionTokens = 0
         var lastProviderType: ProviderType = ProviderType.FAKE
+        // Honest-usage metadata aggregated across versions. Any version being
+        // estimated / truncated flips the aggregate flag to true; chars are summed
+        // across versions; ceiling comes from the last provider that reported one.
+        var aggregateIsEstimated = false
+        var aggregateWasTruncated: Boolean? = null
+        var aggregateInputChars: Int? = null
+        var aggregateOutputChars: Int? = null
+        var aggregateContextCeiling: Int? = null
 
         for (v in 1..numVersions) {
             val transformResult = transformProvider.transform(input, TransformType.CUSTOM_WORKFLOW)
@@ -159,6 +271,16 @@ class WorkflowExecutionEngine @Inject constructor(
                 totalPromptTokens += result.promptTokens ?: 0
                 totalCompletionTokens += result.completionTokens ?: 0
                 lastProviderType = result.providerType
+                // Aggregate the honest-usage fields. Null-safe additions: if a
+                // provider doesn't report chars (cloud path), we leave the
+                // aggregate null rather than lying about zero.
+                if (result.isUsageEstimated) aggregateIsEstimated = true
+                result.wasTruncated?.let { truncated ->
+                    aggregateWasTruncated = (aggregateWasTruncated ?: false) || truncated
+                }
+                result.inputChars?.let { aggregateInputChars = (aggregateInputChars ?: 0) + it }
+                result.outputChars?.let { aggregateOutputChars = (aggregateOutputChars ?: 0) + it }
+                result.contextCeilingTokens?.let { aggregateContextCeiling = it }
             } else {
                 val error = transformResult.exceptionOrNull()!!
                 val rawDetail = when (error) {
@@ -176,6 +298,9 @@ class WorkflowExecutionEngine @Inject constructor(
                 }
                 // If first version fails, fail the whole run
                 if (versions.isEmpty()) {
+                    Log.i(TAG, "run-end status=failed stage=processing template='${template.name}' " +
+                        "profile='$profileName' provider='$providerName' model='$modelId'")
+                    transformProvider.resetForNewStage("run-end-failed-processing:${template.id}")
                     emit(ExecutionState.Failed(
                         error.message ?: "AI processing failed (profile: $profileName, provider: $providerName, model: $modelId)",
                         "processing",
@@ -189,12 +314,33 @@ class WorkflowExecutionEngine @Inject constructor(
         }
 
         val durationMs = System.currentTimeMillis() - startTime
+        // Fold preprocessing-pass tokens into final totals so usage is honest.
+        val combinedPromptTokens = totalPromptTokens + preprocessPromptTokens
+        val combinedCompletionTokens = totalCompletionTokens + preprocessCompletionTokens
+        if (preprocessIsEstimated) aggregateIsEstimated = true
+        preprocessWasTruncated?.let { t ->
+            aggregateWasTruncated = (aggregateWasTruncated ?: false) || t
+        }
         val tokenUsage = TokenUsage(
-            promptTokens = totalPromptTokens,
-            completionTokens = totalCompletionTokens,
-            totalTokens = totalPromptTokens + totalCompletionTokens,
-            isEstimated = lastProviderType == ProviderType.FAKE
+            promptTokens = combinedPromptTokens,
+            completionTokens = combinedCompletionTokens,
+            totalTokens = combinedPromptTokens + combinedCompletionTokens,
+            // Providers are now the source of truth for whether their counts are
+            // estimated (via TransformResult.isUsageEstimated). We keep the legacy
+            // "FAKE means estimated" fallback in case a future provider forgets to
+            // set the flag, but the flag itself is authoritative when present.
+            isEstimated = aggregateIsEstimated || lastProviderType == ProviderType.FAKE,
+            inputChars = aggregateInputChars,
+            outputChars = aggregateOutputChars,
+            contextCeilingTokens = aggregateContextCeiling,
+            wasTruncated = aggregateWasTruncated
         )
+        // Stage-boundary reset at run end. Clears any transient state before the
+        // next run begins so retries / consecutive runs don't inherit diagnostics
+        // from this one. Cheap no-op for cloud providers.
+        Log.i(TAG, "run-end status=completed template='${template.name}' duration=${durationMs}ms")
+        transformProvider.resetForNewStage("run-end-completed:${template.id}")
+
         // outputText = first version for backward compatibility
         emit(
             ExecutionState.Completed(
@@ -219,7 +365,18 @@ class WorkflowExecutionEngine @Inject constructor(
         frozenInput: String,
         template: WorkflowTemplate,
         nextVersion: Int
-    ): Result<OutputVersion> {
+    ): Result<OutputVersion> = withContext(Dispatchers.IO) {
+        // Explicit dispatcher switch: callers dispatch this from viewModelScope, which
+        // defaults to Main.immediate. Without this wrapper the transform() call (and
+        // any inference) would run on Main for the regenerate path, which for local
+        // MediaPipe inference means loading a 529 MB model + running generation on
+        // the UI thread. Always do inference off-Main.
+        Log.i(TAG, "regenerate() start template='${template.name}' id=${template.id} " +
+            "nextVersion=$nextVersion thread=${Thread.currentThread().name}")
+        // Regenerate is a fresh final-generation pass on a frozen input. Reset
+        // the local/offline transient state so the retry starts clean and any
+        // phase timings surfaced in error messages reflect this attempt only.
+        transformProvider.resetForNewStage("regenerate:${template.id}:v$nextVersion")
         val systemPrompt = buildSystemPrompt(template)
         val isSocialMode = isSocialOutputMode(template)
 
@@ -235,7 +392,11 @@ class WorkflowExecutionEngine @Inject constructor(
 
         val transformResult = transformProvider.transform(input, TransformType.CUSTOM_WORKFLOW)
 
-        return transformResult.map { result ->
+        // Reset again after regenerate so the next stage/run doesn't inherit
+        // this regenerate's transient state. Runs on both success and failure.
+        transformProvider.resetForNewStage("regenerate-end:${template.id}:v$nextVersion")
+
+        transformResult.map { result ->
             OutputVersion(
                 version = nextVersion,
                 outputText = result.outputText,
@@ -950,28 +1111,36 @@ class WorkflowExecutionEngine @Inject constructor(
 
     /**
      * Combines action results into a single input string for AI synthesis.
-     * Compaction is applied only to auto-collected action text, never to
-     * labels, per-source instructions, or other user-authored content.
+     * Per-action compaction is applied to each action's prepared content.
+     * Labels and instructions are never compacted.
      *
-     * @return Pair of (compacted combined text, original total text length before compaction)
+     * If an action's instruction was already applied as a preprocessing step,
+     * the "[Per-source instruction: ...]" annotation is omitted — the content
+     * already reflects the instruction, so repeating it would be redundant and
+     * could confuse the model.
+     *
+     * @return Pair of (combined text, original total text length before compaction)
      */
     private fun buildCombinedInput(
         results: List<ActionResult>,
         template: WorkflowTemplate
     ): Pair<String, Int> {
-        val mode = template.outputConfig.inputCompaction
         val builder = StringBuilder()
         var originalTextLength = 0
 
         for ((i, ar) in results.withIndex()) {
             val label = ar.action.label.ifBlank { "${ar.action.type.displayName} #${i + 1}" }
             builder.appendLine("=== Source ${i + 1}: $label ===")
-            if (ar.action.instruction.isNotBlank()) {
+            // Only surface the instruction as a hint if preprocessing did NOT
+            // already consume it. Otherwise the downstream prompt sees content
+            // that already reflects the instruction.
+            if (ar.action.instruction.isNotBlank() && !ar.instructionApplied) {
                 builder.appendLine("[Per-source instruction: ${ar.action.instruction}]")
             }
 
-            // Compact only the auto-collected action text, not labels/instructions
+            // Compact only the auto-collected action text, not labels/instructions.
             originalTextLength += ar.text.length
+            val mode = ar.action.compaction
             val actionText = if (mode != InputCompactionMode.NONE) {
                 TextCompactor.compact(ar.text, mode).text
             } else {
@@ -983,6 +1152,50 @@ class WorkflowExecutionEngine @Inject constructor(
 
         val combined = builder.toString().take(MAX_TOTAL_CHARS)
         return combined to originalTextLength
+    }
+
+    /**
+     * Runs the action's pre-source instruction as a real preprocessing AI pass on
+     * the raw action content. Returns the transform result on success, or null
+     * if the call failed (caller falls back to raw content).
+     *
+     * The profile used is: action.profileId > template.defaultProfileId > app default.
+     * This matches the routing rules for the main output pass.
+     */
+    private suspend fun preprocessActionWithInstruction(
+        action: WorkflowAction,
+        rawText: String,
+        template: WorkflowTemplate
+    ): TransformResult? {
+        return try {
+            val profileId = action.profileId.ifBlank {
+                template.defaultProfileId.ifBlank { null }
+            }
+            val systemPrompt = buildString {
+                append("You are preparing an input for a downstream AI workflow. ")
+                append("Apply the following instruction to the source content and return ")
+                append("only the transformed result. Do not add commentary, headings, ")
+                append("or explanations — just the prepared text.\n\n")
+                append("Instruction: ")
+                append(action.instruction.trim())
+            }
+            val preparedInput = ArticleInput(
+                text = rawText.take(MAX_CHARS_PER_ACTION),
+                systemPromptOverride = systemPrompt,
+                profileId = profileId
+            )
+            val result = transformProvider.transform(preparedInput, TransformType.CUSTOM_WORKFLOW)
+            if (result.isSuccess) {
+                result.getOrThrow()
+            } else {
+                val err = result.exceptionOrNull()
+                Log.w(TAG, "Pre-source instruction failed for action '${action.label}': ${err?.message}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Pre-source instruction threw for action '${action.label}'", e)
+            null
+        }
     }
 
     /** Returns true when the workflow should produce structured multi-platform social outputs. */
@@ -1102,6 +1315,7 @@ class WorkflowExecutionEngine @Inject constructor(
 
     private data class ActionResult(
         val action: WorkflowAction,
-        val text: String
+        val text: String,
+        val instructionApplied: Boolean = false
     )
 }

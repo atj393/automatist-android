@@ -250,8 +250,8 @@ private fun DashboardWorkflowCard(
                     template.lastRunStatus?.let { status ->
                         Text(
                             when (status) {
-                                WorkflowRunStatus.COMPLETED -> "Last: OK"
-                                WorkflowRunStatus.FAILED -> "Last: Failed"
+                                WorkflowRunStatus.COMPLETED -> "Completed"
+                                WorkflowRunStatus.FAILED -> "Failed"
                                 WorkflowRunStatus.RUNNING -> "Running"
                             },
                             style = MaterialTheme.typography.labelSmall,

@@ -5,9 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.automatist.app.data.local.SettingsRepository
 import com.automatist.app.domain.models.*
 import kotlinx.coroutines.flow.first
+import com.automatist.app.domain.offline.DownloadProgress
+import com.automatist.app.domain.offline.OfflineModelCatalog
+import com.automatist.app.domain.offline.OfflineModelEntry
+import com.automatist.app.domain.offline.OfflineModelRepository
+import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.repositories.WorkflowRepository
+import com.automatist.app.platform.onboarding.DefaultProfilePromoter
 import com.automatist.app.platform.security.SecureStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -37,14 +44,24 @@ data class VaultUiState(
     val setupProviderDone: Boolean = false,
     val setupProfileDone: Boolean = false,
     val setupDefaultDone: Boolean = false,
-    val setupWorkflowDone: Boolean = false
+    val setupWorkflowDone: Boolean = false,
+
+    // On-device AI
+    /** Current status for each offline model, keyed by model ID. */
+    val offlineModelStatuses: Map<String, OfflineModelStatus> = emptyMap(),
+    /** Download progress for each model, keyed by model ID. Only meaningful during DOWNLOADING. */
+    val offlineDownloadProgress: Map<String, DownloadProgress> = emptyMap(),
+    /** Shown as a transient info message (e.g. when download not yet available). */
+    val offlineInfoMessage: String? = null
 )
 
 @HiltViewModel
 class VaultViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val secureStorage: SecureStorage,
-    private val workflowRepository: WorkflowRepository
+    private val workflowRepository: WorkflowRepository,
+    private val offlineModelRepository: OfflineModelRepository,
+    private val defaultProfilePromoter: DefaultProfilePromoter
 ) : ViewModel() {
 
     companion object {
@@ -89,12 +106,74 @@ class VaultViewModel @Inject constructor(
                 _state.update { it.copy(setupProviderDone = p.providerDone, setupProfileDone = p.profileDone, setupDefaultDone = p.defaultDone, setupWorkflowDone = p.workflowDone) }
             }
         }
+        collectOfflineModelStatuses()
     }
+
+    // ── On-device AI ──
+
+    /** Active download Jobs keyed by model ID, for cancellation support. */
+    private val downloadJobs = mutableMapOf<String, Job>()
+
+    private fun collectOfflineModelStatuses() {
+        OfflineModelCatalog.ALL_MODELS.forEach { model ->
+            viewModelScope.launch {
+                offlineModelRepository.getModelStatus(model.id).collect { status ->
+                    _state.update { it.copy(offlineModelStatuses = it.offlineModelStatuses + (model.id to status)) }
+                }
+            }
+            // Collect download progress for downloadable models
+            if (!model.isSystemManaged) {
+                viewModelScope.launch {
+                    offlineModelRepository.getDownloadProgress(model.id).collect { progress ->
+                        _state.update { it.copy(offlineDownloadProgress = it.offlineDownloadProgress + (model.id to progress)) }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Check Gemini Nano availability via Android AICore.
+     *
+     * Triggers [OfflineModelRepository.requestDownload], which:
+     * 1. Sets status to DOWNLOADING ("Checking…" in the UI) immediately.
+     * 2. Calls the AICore system service to determine if Gemini Nano is available.
+     * 3. Updates status to INSTALLED, NOT_INSTALLED, UNSUPPORTED, or FAILED based on result.
+     *
+     * The status update propagates automatically through the [offlineModelStatuses] Flow;
+     * no manual UI refresh is required.
+     */
+    fun requestOfflineModelDownload(modelId: String) {
+        // Cancel any existing download for this model before starting a new one
+        downloadJobs.remove(modelId)?.cancel()
+        downloadJobs[modelId] = viewModelScope.launch {
+            try {
+                offlineModelRepository.requestDownload(modelId)
+            } finally {
+                downloadJobs.remove(modelId)
+            }
+        }
+    }
+
+    /** Cancel an in-progress model download. Stops network I/O and resets state. */
+    fun cancelOfflineModelDownload(modelId: String) {
+        downloadJobs.remove(modelId)?.cancel()
+        viewModelScope.launch { offlineModelRepository.cancelDownload(modelId) }
+    }
+
+    /** Remove an installed offline model from device storage. */
+    fun removeOfflineModel(modelId: String) {
+        viewModelScope.launch { offlineModelRepository.removeModel(modelId) }
+    }
+
+    /** Dismiss the transient offline info message. */
+    fun clearOfflineInfoMessage() = _state.update { it.copy(offlineInfoMessage = null) }
 
     private fun loadAllStatus() {
         viewModelScope.launch {
             val providerStatus = mutableMapOf<ProviderType, Boolean>()
-            ProviderType.entries.filter { it != ProviderType.FAKE && it != ProviderType.OPENAI_COMPATIBLE }.forEach {
+            // LOCAL_AI excluded: it uses no API key (offline model status tracked separately)
+            ProviderType.entries.filter { it != ProviderType.FAKE && it != ProviderType.OPENAI_COMPATIBLE && it != ProviderType.LOCAL_AI }.forEach {
                 providerStatus[it] = !secureStorage.getApiKey(it).isNullOrBlank()
             }
             val serviceStatus = mutableMapOf<String, Boolean>()
@@ -147,6 +226,32 @@ class VaultViewModel @Inject constructor(
         checkEditorKey(entry)
     }
 
+    /**
+     * Opens the profile editor prefilled for a specific on-device model.
+     * Called from the On-device AI section's "Create Profile" CTA after install.
+     */
+    fun openNewOfflineProfile(modelId: String) {
+        val entry = ProviderCatalog.LOCAL_AI_ENTRY
+        val modelName = ProviderModels.LOCAL_AI.find { it.first == modelId }?.second ?: "On-device AI"
+        _state.update {
+            it.copy(
+                isProfileEditorOpen = true, editingProfile = null,
+                editorName = modelName,
+                editorCatalogEntry = entry, editorModel = modelId,
+                editorCustomModel = "", editorUseCustomModel = false,
+                editorCustomBaseUrl = "", editorCustomProviderName = "",
+                editorApiKey = "", editorHasExistingKey = false, editorError = null
+            )
+        }
+    }
+
+    /** Returns true if a LOCAL_AI profile already exists for the given model ID. */
+    fun hasProfileForModel(modelId: String): Boolean {
+        return _state.value.profiles.any {
+            it.providerType == ProviderType.LOCAL_AI && it.modelId == modelId
+        }
+    }
+
     fun openEditProfile(profile: ProviderProfile) {
         val entry = ProviderCatalog.resolveForProfile(profile)
         val builtInModels = entry.suggestedModels.map { it.first }
@@ -164,9 +269,13 @@ class VaultViewModel @Inject constructor(
             )
         }
         viewModelScope.launch {
-            val hasKey = if (profile.usesPerProfileKey) secureStorage.hasProfileKey(profile.customApiKeyId)
-            else if (entry.category == CatalogCategory.NATIVE && profile.providerType != ProviderType.FAKE) !secureStorage.getApiKey(profile.providerType).isNullOrBlank()
-            else profile.providerType == ProviderType.FAKE
+            val hasKey = when {
+                profile.usesPerProfileKey -> secureStorage.hasProfileKey(profile.customApiKeyId)
+                profile.providerType == ProviderType.FAKE -> true
+                profile.providerType == ProviderType.LOCAL_AI -> true // no API key required
+                entry.category == CatalogCategory.NATIVE -> !secureStorage.getApiKey(profile.providerType).isNullOrBlank()
+                else -> false
+            }
             _state.update { it.copy(editorHasExistingKey = hasKey) }
         }
     }
@@ -174,8 +283,22 @@ class VaultViewModel @Inject constructor(
     fun closeProfileEditor() { _state.update { it.copy(isProfileEditorOpen = false, editorError = null) } }
 
     fun selectCatalogEntry(entry: CatalogEntry) {
+        val currentName = _state.value.editorName
+        // Auto-prefill profile name for OFFLINE entries when the name is blank
+        // or was previously auto-filled from another provider's display name.
+        val autoName = if (entry.category == CatalogCategory.OFFLINE) {
+            val modelName = entry.suggestedModels
+                .find { it.first == entry.defaultModel }?.second
+                ?: entry.displayName
+            if (currentName.isBlank() || isAutoFilledName(currentName)) modelName else currentName
+        } else {
+            // Clear auto-filled name when switching away from OFFLINE,
+            // but keep user-typed names.
+            if (isAutoFilledName(currentName)) "" else currentName
+        }
         _state.update {
             it.copy(
+                editorName = autoName,
                 editorCatalogEntry = entry, editorModel = entry.defaultModel,
                 editorCustomModel = "", editorUseCustomModel = false,
                 editorCustomBaseUrl = entry.presetBaseUrl, editorCustomProviderName = "",
@@ -185,10 +308,18 @@ class VaultViewModel @Inject constructor(
         checkEditorKey(entry)
     }
 
+    /** Returns true if the name matches a known auto-filled model/provider name. */
+    private fun isAutoFilledName(name: String): Boolean {
+        val autoNames = ProviderModels.LOCAL_AI.map { it.second }.toSet() +
+            setOf(ProviderCatalog.LOCAL_AI_ENTRY.displayName)
+        return name in autoNames
+    }
+
     private fun checkEditorKey(entry: CatalogEntry) {
         viewModelScope.launch {
             val hasKey = when {
                 entry.runtimeType == ProviderType.FAKE -> true
+                entry.runtimeType == ProviderType.LOCAL_AI -> true // no API key required for on-device AI
                 entry.category == CatalogCategory.NATIVE -> !secureStorage.getApiKey(entry.runtimeType).isNullOrBlank()
                 else -> false // preset/custom always per-profile, new profile has no key yet
             }
@@ -197,7 +328,14 @@ class VaultViewModel @Inject constructor(
     }
 
     fun updateEditorName(n: String) = _state.update { it.copy(editorName = n) }
-    fun updateEditorModel(m: String) = _state.update { it.copy(editorModel = m) }
+    fun updateEditorModel(m: String) {
+        val s = _state.value
+        // When switching between on-device models, update the auto-filled name too
+        val newName = if (s.editorCatalogEntry.category == CatalogCategory.OFFLINE && isAutoFilledName(s.editorName)) {
+            ProviderModels.LOCAL_AI.find { it.first == m }?.second ?: s.editorName
+        } else s.editorName
+        _state.update { it.copy(editorModel = m, editorName = newName) }
+    }
     fun updateEditorCustomModel(m: String) = _state.update { it.copy(editorCustomModel = m) }
     fun toggleEditorCustomModel(use: Boolean) = _state.update { it.copy(editorUseCustomModel = use) }
     fun updateEditorCustomBaseUrl(u: String) = _state.update { it.copy(editorCustomBaseUrl = u) }
@@ -251,13 +389,17 @@ class VaultViewModel @Inject constructor(
                     ?: "profile_${existing?.id ?: UUID.randomUUID().toString()}"
                 if (s.editorApiKey.isNotBlank()) secureStorage.saveProfileKey(apiKeyId, s.editorApiKey)
                 if (s.editorApiKey.isNotBlank()) settingsRepository.markProviderSetupDone()
-            } else if (entry.runtimeType != ProviderType.FAKE) {
+            } else if (entry.runtimeType != ProviderType.FAKE && entry.runtimeType != ProviderType.LOCAL_AI) {
                 apiKeyId = ""
                 if (s.editorApiKey.isNotBlank()) {
                     secureStorage.saveApiKey(entry.runtimeType, s.editorApiKey)
                     settingsRepository.markProviderSetupDone()
                 }
-            } else { apiKeyId = ""; settingsRepository.markProviderSetupDone() }
+            } else {
+                // FAKE or LOCAL_AI: no API key required
+                apiKeyId = ""
+                settingsRepository.markProviderSetupDone()
+            }
 
             val profile = ProviderProfile(
                 id = existing?.id ?: UUID.randomUUID().toString(),
@@ -276,7 +418,14 @@ class VaultViewModel @Inject constructor(
 
             workflowRepository.saveProfile(profile)
             settingsRepository.markProfileSetupDone()
-            if (profile.isDefault) settingsRepository.markDefaultSetupDone()
+
+            // Auto-promote this new profile to app default, but only when the current
+            // default is still the seeded Local Fake profile. Never overrides an explicit
+            // user choice. No-op for profile edits.
+            val wasNewProfile = existing == null
+            val promoted = defaultProfilePromoter.maybePromoteOnCreate(profile, wasNewProfile)
+
+            if (profile.isDefault || promoted) settingsRepository.markDefaultSetupDone()
 
             _state.update { it.copy(isProfileEditorOpen = false, editorError = null) }
             loadAllStatus()

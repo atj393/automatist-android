@@ -27,6 +27,7 @@ import com.automatist.app.feature.sync.CloudSyncScreen
 import com.automatist.app.feature.upgrade.UpgradeScreen
 import com.automatist.app.feature.vault.SettingsSection
 import com.automatist.app.feature.notes.NotesScreen
+import com.automatist.app.feature.onboarding.NotificationOnboardingGate
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -76,6 +77,10 @@ fun AutomatistNavGraph(
             onDeepLinkConsumed()
         }
     }
+
+    // Show the first-run notification rationale once. Gate itself no-ops when already
+    // shown, or on pre-Tiramisu, or when permission is already granted.
+    NotificationOnboardingGate()
 
     NavHost(navController = navController, startDestination = Routes.DASHBOARD) {
         composable(Routes.DASHBOARD) {
@@ -222,7 +227,11 @@ fun AutomatistNavGraph(
 
         composable("${Routes.WORKFLOW_RUN_DETAIL}/{runId}", arguments = listOf(navArgument("runId") { type = NavType.LongType })) { backStackEntry ->
             val runId = backStackEntry.arguments?.getLong("runId") ?: return@composable
-            WorkflowRunDetailScreen(runId = runId, onBack = { navController.popBackStack() })
+            WorkflowRunDetailScreen(
+                runId = runId,
+                onBack = { navController.popBackStack() },
+                onRunAgain = { templateId -> navController.navigate("${Routes.WORKFLOW_RUN}/$templateId") }
+            )
         }
 
         // ── Schedule Status (inspect scheduled workflows) ──

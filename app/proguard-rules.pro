@@ -60,6 +60,16 @@
 -dontwarn org.apache.http.**
 -dontwarn com.google.android.gms.**
 
+# ── AutoValue / JavaPoet annotation-processor classes (compile-only, not runtime) ─
+# These leak into runtime classpath via google-api-client transitive deps.
+-dontwarn javax.lang.model.SourceVersion
+-dontwarn javax.lang.model.element.Element
+-dontwarn javax.lang.model.element.ElementKind
+-dontwarn javax.lang.model.element.Modifier
+-dontwarn javax.lang.model.type.TypeMirror
+-dontwarn javax.lang.model.type.TypeVisitor
+-dontwarn javax.lang.model.util.SimpleTypeVisitor8
+
 # ── Google Play Services Auth ─────────────────────────────────────────
 -keep class com.google.android.gms.auth.** { *; }
 -keep class com.google.android.gms.common.** { *; }
@@ -85,6 +95,14 @@
 
 # ── Compose (generally handled by R8 defaults, but be safe) ───────────
 -dontwarn androidx.compose.**
+
+# ── MediaPipe LLM Inference (downloadable offline models) ─────────────
+-keep class com.google.mediapipe.** { *; }
+-dontwarn com.google.mediapipe.**
+
+# ── Google AI Edge AICore (Gemini Nano, on-device) ────────────────────
+-keep class com.google.ai.edge.aicore.** { *; }
+-dontwarn com.google.ai.edge.aicore.**
 
 # ── Strip verbose logging in release ──────────────────────────────────
 -assumenosideeffects class android.util.Log {

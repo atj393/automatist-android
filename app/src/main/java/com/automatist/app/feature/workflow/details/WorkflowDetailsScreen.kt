@@ -385,7 +385,7 @@ fun WorkflowDetailsScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Processing instruction",
+                        "AI instruction",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

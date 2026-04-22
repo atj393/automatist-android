@@ -22,8 +22,9 @@ data class CatalogEntry(
 )
 
 enum class CatalogCategory {
-    NATIVE,    // true built-in adapter
+    NATIVE,    // true built-in adapter (cloud API)
     PRESET,    // known provider using OPENAI_COMPATIBLE adapter
+    OFFLINE,   // on-device model, no internet or API key required
     CUSTOM     // fully user-configured
 }
 
@@ -170,6 +171,25 @@ object ProviderCatalog {
         category = CatalogCategory.PRESET
     )
 
+    // ── On-device / Offline provider ──
+
+    /**
+     * On-device AI catalog entry. Uses the LOCAL_AI runtime adapter.
+     * No API key or internet connection required.
+     * Availability must be confirmed via Settings → On-device AI before use.
+     * Add future offline models to ProviderModels.LOCAL_AI and OfflineModelCatalog.ALL_MODELS.
+     */
+    val LOCAL_AI_ENTRY = CatalogEntry(
+        id = "local_ai",
+        displayName = "On-device AI",
+        description = "Run AI fully offline — no internet or API key required",
+        runtimeType = ProviderType.LOCAL_AI,
+        category = CatalogCategory.OFFLINE,
+        suggestedModels = ProviderModels.LOCAL_AI,
+        defaultModel = ProviderModels.defaultModelFor(ProviderType.LOCAL_AI),
+        usesPerProfileKey = false
+    )
+
     // ── Custom provider (fully user-configured) ──
 
     val CUSTOM_ENTRY = CatalogEntry(
@@ -186,12 +206,14 @@ object ProviderCatalog {
         // Popular presets
         OPENROUTER_ENTRY, GROQ_ENTRY, DEEPSEEK_ENTRY, TOGETHER_ENTRY,
         FIREWORKS_ENTRY, PERPLEXITY_ENTRY, MISTRAL_ENTRY,
-        // Local
+        // Local network
         OLLAMA_ENTRY, LM_STUDIO_ENTRY,
         // Other
         ANYSCALE_ENTRY,
         // Demo
         FAKE_ENTRY,
+        // On-device (offline)
+        LOCAL_AI_ENTRY,
         // Custom
         CUSTOM_ENTRY
     )
@@ -208,13 +230,14 @@ object ProviderCatalog {
             findById(profile.providerPresetId)?.let { return it }
         }
 
-        // Match native providers by runtime type
+        // Match native and offline providers by runtime type
         if (profile.providerType != ProviderType.OPENAI_COMPATIBLE) {
             return when (profile.providerType) {
                 ProviderType.OPENAI -> OPENAI_ENTRY
                 ProviderType.ANTHROPIC -> ANTHROPIC_ENTRY
                 ProviderType.GEMINI -> GEMINI_ENTRY
                 ProviderType.FAKE -> FAKE_ENTRY
+                ProviderType.LOCAL_AI -> LOCAL_AI_ENTRY
                 else -> CUSTOM_ENTRY
             }
         }

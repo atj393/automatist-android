@@ -289,7 +289,7 @@ class BillingManager @Inject constructor(
                         }
                     } else {
                         Log.d(TAG, "No Pro purchase found (${purchases.size} total purchase(s) checked)")
-                        _purchaseState.value = PurchaseState.Error("No Pro purchase found on this account.")
+                        _purchaseState.value = PurchaseState.Idle
                     }
                 } else {
                     val msg = "Could not check purchases (code $code)."
