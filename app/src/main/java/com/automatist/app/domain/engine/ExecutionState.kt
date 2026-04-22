@@ -19,6 +19,20 @@ sealed interface ExecutionState {
         val actionType: String
     ) : ExecutionState
 
+    /**
+     * Emitted after the action's raw source has been fetched and **before** the
+     * pre-source instruction preprocessing AI pass runs. Only emitted when the
+     * action has a non-blank instruction — so the UI can show a distinct
+     * "running action prompt" stage for actions that actually have a prompt.
+     * Actions without an instruction skip this state entirely.
+     */
+    data class ActionPromptStarted(
+        val actionIndex: Int,
+        val totalActions: Int,
+        val actionLabel: String,
+        val instructionPreview: String = "" // short excerpt of the instruction for display
+    ) : ExecutionState
+
     data class ActionCompleted(
         val actionIndex: Int,
         val totalActions: Int,
