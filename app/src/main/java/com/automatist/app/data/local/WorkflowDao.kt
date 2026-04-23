@@ -77,8 +77,24 @@ interface WorkflowDao {
     @Query("SELECT * FROM workflow_runs WHERE templateId = :templateId ORDER BY startedAtMillis DESC LIMIT 1")
     suspend fun getLatestRun(templateId: Long): WorkflowRunEntity?
 
-    @Query("UPDATE workflow_runs SET status = 'FAILED', errorMessage = :message, completedAtMillis = :atMillis WHERE templateId = :templateId AND status = 'RUNNING'")
-    suspend fun failStaleRunningRecords(templateId: Long, message: String, atMillis: Long)
+    /**
+     * Age-gated stale sweep for a single template. Only RUNNING rows whose
+     * [WorkflowRunEntity.startedAtMillis] is strictly less than [cutoffMillis]
+     * are failed — this protects a freshly-inserted run (from a concurrent
+     * VM-initiated execution) from being killed by a worker's pre-run sweep.
+     * Pass `Long.MAX_VALUE` to preserve the old "kill all RUNNING" behavior.
+     */
+    @Query("UPDATE workflow_runs SET status = 'FAILED', errorMessage = :message, completedAtMillis = :atMillis WHERE templateId = :templateId AND status = 'RUNNING' AND startedAtMillis < :cutoffMillis")
+    suspend fun failStaleRunningRecords(templateId: Long, message: String, atMillis: Long, cutoffMillis: Long)
+
+    /**
+     * Global stale sweep — across every template. Called from app start to
+     * reconcile orphaned RUNNING rows left behind by a prior process death.
+     * Only rows older than [cutoffMillis] are affected, so a run in flight
+     * from a concurrently-starting worker is not clobbered.
+     */
+    @Query("UPDATE workflow_runs SET status = 'FAILED', errorMessage = :message, completedAtMillis = :atMillis WHERE status = 'RUNNING' AND startedAtMillis < :cutoffMillis")
+    suspend fun failAllStaleRunningRecords(message: String, atMillis: Long, cutoffMillis: Long)
 
     /**
      * Narrow update for in-flight progress. Writes only the stage log + current
@@ -96,6 +112,20 @@ interface WorkflowDao {
      */
     @Query("UPDATE workflow_runs SET profileName = :profileName, modelId = :modelId WHERE id = :id")
     suspend fun updateRunProfile(id: Long, profileName: String, modelId: String)
+
+    /**
+     * Atomically flip a RUNNING row to FAILED. Called when a manual run is
+     * abandoned (user navigates off the run screen, closing the
+     * [WorkflowRunViewModel] that owned the in-flight coroutine). The
+     * `AND status = 'RUNNING'` guard means this is a no-op if the engine
+     * already wrote COMPLETED or FAILED in a race — the terminal write wins.
+     * The query intentionally touches only status/message/stage/completedAt
+     * so incremental progress (`stagesJson`, profile, retry metadata) is
+     * preserved and the detail screen can still show what got done before
+     * cancellation.
+     */
+    @Query("UPDATE workflow_runs SET status = 'FAILED', errorMessage = :message, currentStage = :stage, completedAtMillis = :atMillis WHERE id = :id AND status = 'RUNNING'")
+    suspend fun markRunCancelled(id: Long, message: String, stage: String, atMillis: Long)
 
     // ── Provider Profiles ──
 

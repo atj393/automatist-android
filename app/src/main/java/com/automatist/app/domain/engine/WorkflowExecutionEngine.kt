@@ -1329,21 +1329,32 @@ class WorkflowExecutionEngine @Inject constructor(
         results: List<ActionResult>,
         template: WorkflowTemplate
     ): Pair<String, Int> {
+        // Two parallel builders so the "original" length we report is
+        // apples-to-apples with the final combined length. Prior version
+        // compared `sum(ar.text.length)` (raw texts only) against a combined
+        // string that also carried "=== Source N: label ===" headers, so for
+        // short inputs the header overhead made the "compacted" total exceed
+        // the "original" — the visible `363 → 393, --8%` bug. Now both sides
+        // include the same framing; only the action-text body differs.
         val builder = StringBuilder()
-        var originalTextLength = 0
+        val rawBuilder = StringBuilder()
 
         for ((i, ar) in results.withIndex()) {
             val label = ar.action.label.ifBlank { "${ar.action.type.displayName} #${i + 1}" }
-            builder.appendLine("=== Source ${i + 1}: $label ===")
+            val header = "=== Source ${i + 1}: $label ==="
+            builder.appendLine(header)
+            rawBuilder.appendLine(header)
+
             // Only surface the instruction as a hint if preprocessing did NOT
             // already consume it. Otherwise the downstream prompt sees content
             // that already reflects the instruction.
             if (ar.action.instruction.isNotBlank() && !ar.instructionApplied) {
-                builder.appendLine("[Per-source instruction: ${ar.action.instruction}]")
+                val instructionLine = "[Per-source instruction: ${ar.action.instruction}]"
+                builder.appendLine(instructionLine)
+                rawBuilder.appendLine(instructionLine)
             }
 
             // Compact only the auto-collected action text, not labels/instructions.
-            originalTextLength += ar.text.length
             val mode = ar.action.compaction
             val actionText = if (mode != InputCompactionMode.NONE) {
                 TextCompactor.compact(ar.text, mode).text
@@ -1352,10 +1363,17 @@ class WorkflowExecutionEngine @Inject constructor(
             }
             builder.appendLine(actionText)
             builder.appendLine()
+            rawBuilder.appendLine(ar.text)
+            rawBuilder.appendLine()
         }
 
         val combined = builder.toString().take(MAX_TOTAL_CHARS)
-        return combined to originalTextLength
+        // `rawCombinedLength` is intentionally NOT clamped to MAX_TOTAL_CHARS:
+        // it represents the baseline this run WOULD have produced with no
+        // compaction so the reporting layer can honestly describe the saving
+        // (compaction + any truncation) from that baseline.
+        val rawCombinedLength = rawBuilder.length
+        return combined to rawCombinedLength
     }
 
     /**

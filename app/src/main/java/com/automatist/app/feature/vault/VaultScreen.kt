@@ -5,8 +5,14 @@ import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -234,6 +240,7 @@ private fun ProfilesSection(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PCard(
     p: ProviderProfile, entry: CatalogEntry, hasKey: Boolean,
@@ -241,37 +248,90 @@ private fun PCard(
     onSetFb: (String) -> Unit, onToggle: (ProviderProfile) -> Unit
 ) {
     var showDel by remember { mutableStateOf(false) }
-    Card(elevation = CardDefaults.cardElevation(defaultElevation = if (p.isDefault) 2.dp else 0.dp),
-        colors = CardDefaults.cardColors(containerColor = when {
-            !p.isEnabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
-            p.isDefault -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-        })) {
-        Column(modifier = Modifier.padding(12.dp)) {
+
+    // Unified surface for all profile cards — status is carried by the accent
+    // border + chips, not by shifting the background. Prior version tinted the
+    // default row's background with primaryContainer@25% opacity which read as
+    // a visual bug more than a highlight, and made default/fallback/disabled
+    // variants look inconsistent next to each other in a list.
+    val accent = when {
+        !p.isEnabled -> null
+        p.isDefault -> MaterialTheme.colorScheme.primary
+        p.isFallback -> MaterialTheme.colorScheme.tertiary
+        else -> null
+    }
+    val shape = RoundedCornerShape(12.dp)
+    val cardModifier = Modifier
+        .fillMaxWidth()
+        .let { if (accent != null) it.border(BorderStroke(1.5.dp, accent.copy(alpha = 0.65f)), shape) else it }
+
+    Card(
+        modifier = cardModifier,
+        shape = shape,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (p.isEnabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Header: title + switch. Chips moved out of this row so a long
+            // profile name never competes with the Default/Fallback badges
+            // for horizontal space.
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(p.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-                            color = if (!p.isEnabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.onSurface)
-                        if (p.isDefault) { Spacer(Modifier.width(6.dp)); Chip("Default", MaterialTheme.colorScheme.primary) }
-                        if (p.isFallback) { Spacer(Modifier.width(6.dp)); Chip("Fallback", MaterialTheme.colorScheme.tertiary) }
-                    }
-                    Spacer(Modifier.height(2.dp))
-                    Text("${entry.displayName} / ${p.modelId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        p.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (!p.isEnabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        else MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "${entry.displayName} / ${p.modelId}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 Switch(checked = p.isEnabled, onCheckedChange = { onToggle(p) })
             }
-            if (!hasKey && p.providerType != ProviderType.FAKE && p.providerType != ProviderType.LOCAL_AI) {
-                Spacer(Modifier.height(4.dp)); Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(6.dp)); Text("API key missing — edit to add one", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+
+            // Status row — only rendered when there's actually a status to show.
+            // Prevents a reserved-but-empty vertical slot from making cards in
+            // neutral states look shorter than a default/fallback sibling.
+            if (p.isDefault || p.isFallback) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (p.isDefault) StatusChip("Default", Icons.Default.Star, MaterialTheme.colorScheme.primary)
+                    if (p.isFallback) StatusChip("Fallback", Icons.Default.Shield, MaterialTheme.colorScheme.tertiary)
                 }
             }
-            Spacer(Modifier.height(4.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+
+            if (!hasKey && p.providerType != ProviderType.FAKE && p.providerType != ProviderType.LOCAL_AI) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("API key missing — edit to add one", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+
+            // Action row — FlowRow keeps a 3- or 4-button set from overflowing
+            // on narrow screens and wraps cleanly instead of clipping. End
+            // alignment keeps the visual consistent with the prior design.
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(0.dp, Alignment.End)
+            ) {
                 if (!p.isDefault) TextButton(onClick = { onSetDef(p.id) }) { Text("Set Default") }
                 if (!p.isFallback) TextButton(onClick = { onSetFb(p.id) }) { Text("Set Fallback") }
-                TextButton(onClick = { onEdit(p) }) { Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Edit") }
+                TextButton(onClick = { onEdit(p) }) {
+                    Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Edit")
+                }
                 TextButton(onClick = { showDel = true }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             }
         }
@@ -282,9 +342,34 @@ private fun PCard(
         dismissButton = { TextButton(onClick = { showDel = false }) { Text("Cancel") } })
 }
 
-@Composable private fun Chip(label: String, color: androidx.compose.ui.graphics.Color) {
-    AssistChip(onClick = {}, label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-        colors = AssistChipDefaults.assistChipColors(containerColor = color.copy(alpha = 0.15f)), modifier = Modifier.height(24.dp))
+/**
+ * Small filled status badge with a leading icon. Replaces the previous
+ * washed-out AssistChip: filled container reads as a deliberate tag at a
+ * glance, leading icon reinforces semantic meaning, and height stays under
+ * the title row so cards don't grow on wider content.
+ */
+@Composable
+private fun StatusChip(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    color: androidx.compose.ui.graphics.Color
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .height(22.dp)
+            .background(color.copy(alpha = 0.14f), RoundedCornerShape(11.dp))
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+    ) {
+        Icon(icon, null, tint = color, modifier = Modifier.size(12.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+            color = color
+        )
+    }
 }
 
 // ══════════════════ On-device AI ══════════════════

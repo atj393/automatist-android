@@ -50,10 +50,15 @@ fun ActionBlockEditor(
                     modifier = Modifier.height(28.dp)
                 )
                 Spacer(Modifier.width(8.dp))
+                // Order indicator only — the chip on the left already carries
+                // the action type, so re-showing `displayName` here was
+                // double-labeling each row. Weight(1f) stays so the move /
+                // expand / remove buttons still align to the row's right edge.
                 Text(
-                    text = "${action.type.displayName} #${index + 1}",
+                    text = "#${index + 1}",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
                 if (onMoveUp != null) {
