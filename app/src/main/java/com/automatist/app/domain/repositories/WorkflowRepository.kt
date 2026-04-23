@@ -31,9 +31,26 @@ interface WorkflowRepository {
     suspend fun updateRunProgress(id: Long, stagesJson: String, currentStage: String)
     /** Persist the resolved profile/model once final generation starts. */
     suspend fun updateRunProfile(id: Long, profileName: String, modelId: String)
+    /**
+     * Mark an in-flight manual run as cancelled because the user left the run
+     * screen. Atomic — only flips if the row is still RUNNING, so a terminal
+     * write that won the race is not clobbered. Stages/profile/retry metadata
+     * are preserved so the detail screen shows what got done before the user
+     * backed out.
+     */
+    suspend fun markRunCancelled(id: Long)
     suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun?
     suspend fun getLatestRun(templateId: Long): WorkflowRun?
     suspend fun failStaleRunningRecords(templateId: Long)
+    /**
+     * Global sweep that marks every RUNNING row older than [cutoffMillis] as
+     * FAILED. Call on app start to reconcile orphaned in-flight rows left
+     * over from a prior process death — the VM side has no worker-level
+     * crash recovery, so absent this sweep a killed run stays RUNNING
+     * forever. The age gate prevents clobbering a row from a concurrently
+     * starting worker.
+     */
+    suspend fun failAllStaleRunningRecordsOlderThan(cutoffMillis: Long)
 
     // Provider Profiles
     fun getAllProfiles(): Flow<List<ProviderProfile>>

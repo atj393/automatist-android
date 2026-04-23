@@ -16,18 +16,35 @@ object TextCompactor {
         val originalLength: Int,
         val compactedLength: Int
     ) {
+        /**
+         * Non-negative percent reduction from original to compacted. Returns 0
+         * when no reduction occurred (including the defensive "compaction grew
+         * the text" case, which [compact] already guards against). Negative
+         * reductions are mathematically incoherent as a reduction % and were
+         * the source of the "--8%" double-negative display bug.
+         */
         val reductionPercent: Int
-            get() = if (originalLength == 0) 0
+            get() = if (originalLength == 0 || compactedLength >= originalLength) 0
             else ((originalLength - compactedLength) * 100) / originalLength
+
+        /** True when compaction actually shortened the text. */
+        val didReduce: Boolean get() = compactedLength < originalLength
     }
 
     fun compact(text: String, mode: InputCompactionMode): CompactionResult {
         val originalLength = text.length
-        val result = when (mode) {
+        val candidate = when (mode) {
             InputCompactionMode.NONE -> text
             InputCompactionMode.LIGHT -> lightCompact(text)
             InputCompactionMode.AGGRESSIVE -> aggressiveCompact(text)
         }
+        // No-regression guard: a compaction pass must never hand back a string
+        // that is longer than what was given. Short, already-clean inputs can
+        // come out the same or slightly longer from aggressive mode (e.g. a
+        // `[...]` marker inserted by trimParagraph on a paragraph just over
+        // the threshold). In those cases, prefer the original so downstream
+        // budget/cost assumptions stay intact.
+        val result = if (candidate.length >= originalLength) text else candidate
         return CompactionResult(
             text = result,
             originalLength = originalLength,

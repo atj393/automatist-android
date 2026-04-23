@@ -3,6 +3,7 @@ package com.automatist.app.domain.workflow
 import com.automatist.app.domain.models.ProviderProfile
 import com.automatist.app.domain.models.SavedNote
 import com.automatist.app.domain.models.WorkflowRun
+import com.automatist.app.domain.models.WorkflowRunStatus
 import com.automatist.app.domain.models.WorkflowTemplate
 import com.automatist.app.domain.repositories.WorkflowRepository
 import kotlinx.coroutines.flow.Flow
@@ -142,8 +143,16 @@ class FakeWorkflowRepository : WorkflowRepository {
         runs.value = runs.value + (run.id to run)
     }
 
+    // Instrumentation counters so tests can assert that coalescing actually
+    // skips redundant writes at the VM/Worker layer.
+    var updateRunProgressCallCount: Int = 0
+        private set
+    var updateRunProfileCallCount: Int = 0
+        private set
+
     override suspend fun updateRunProgress(id: Long, stagesJson: String, currentStage: String) {
         val existing = runs.value[id] ?: return
+        updateRunProgressCallCount++
         runs.value = runs.value + (id to existing.copy(
             stagesJson = stagesJson,
             currentStage = currentStage
@@ -152,13 +161,56 @@ class FakeWorkflowRepository : WorkflowRepository {
 
     override suspend fun updateRunProfile(id: Long, profileName: String, modelId: String) {
         val existing = runs.value[id] ?: return
+        updateRunProfileCallCount++
         runs.value = runs.value + (id to existing.copy(
             profileName = profileName,
             modelId = modelId
         ))
     }
 
+    override suspend fun markRunCancelled(id: Long) {
+        val existing = runs.value[id] ?: return
+        // Atomic semantics: only flip if still RUNNING.
+        if (existing.status != WorkflowRunStatus.RUNNING) return
+        runs.value = runs.value + (id to existing.copy(
+            status = WorkflowRunStatus.FAILED,
+            errorMessage = "Run cancelled — the run screen was closed before it finished.",
+            currentStage = "Cancelled",
+            completedAtMillis = System.currentTimeMillis()
+        ))
+    }
+
     override suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun? = null
     override suspend fun getLatestRun(templateId: Long): WorkflowRun? = null
-    override suspend fun failStaleRunningRecords(templateId: Long) {}
+
+    override suspend fun failStaleRunningRecords(templateId: Long) {
+        // Mirror the Room impl's 60s grace window so tests see realistic behavior.
+        val now = System.currentTimeMillis()
+        val cutoff = now - 60_000L
+        runs.value = runs.value.mapValues { (_, r) ->
+            if (r.templateId == templateId &&
+                r.status == WorkflowRunStatus.RUNNING &&
+                r.startedAtMillis < cutoff
+            ) {
+                r.copy(
+                    status = WorkflowRunStatus.FAILED,
+                    errorMessage = "Worker terminated unexpectedly",
+                    completedAtMillis = now
+                )
+            } else r
+        }
+    }
+
+    override suspend fun failAllStaleRunningRecordsOlderThan(cutoffMillis: Long) {
+        val now = System.currentTimeMillis()
+        runs.value = runs.value.mapValues { (_, r) ->
+            if (r.status == WorkflowRunStatus.RUNNING && r.startedAtMillis < cutoffMillis) {
+                r.copy(
+                    status = WorkflowRunStatus.FAILED,
+                    errorMessage = "Previous run was interrupted",
+                    completedAtMillis = now
+                )
+            } else r
+        }
+    }
 }

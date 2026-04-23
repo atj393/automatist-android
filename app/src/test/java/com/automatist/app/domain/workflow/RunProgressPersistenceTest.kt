@@ -182,6 +182,85 @@ class RunProgressPersistenceTest {
 
     // ── Live observation (the user-visible bug fix) ──
 
+    // ── Hardening: retry-chain persistence does not cross-contaminate ──
+
+    @Test
+    fun `incremental writes on a new runId leave prior failed run intact`() = runBlocking {
+        val repo = FakeWorkflowRepository()
+
+        // Seed a prior FAILED run with a resume snapshot — this stands in for
+        // the run that an auto-retry chain will treat as its parent.
+        val priorFailedId = repo.insertRun(
+            newRunningRun().copy(
+                status = WorkflowRunStatus.FAILED,
+                errorMessage = "boom",
+                stagesJson = stagesJson("Preparing", "Processing")
+            )
+        )
+        val priorBefore = repo.getRunById(priorFailedId)!!
+
+        // Fresh retry run, separate id.
+        val retryRunId = repo.insertRun(
+            newRunningRun().copy(
+                currentStage = "Auto-retry 1/3",
+                autoRetryAttempt = 1,
+                parentRunId = priorFailedId
+            )
+        )
+
+        // Drive incremental writes against the retry run.
+        repo.updateRunProgress(retryRunId, stagesJson("Preparing"), "Preparing")
+        repo.updateRunProfile(retryRunId, "OpenAI", "gpt-4o-mini")
+        repo.updateRunProgress(
+            retryRunId,
+            stagesJson("Preparing", "Generating final output"),
+            "Generating final output"
+        )
+
+        val priorAfter = repo.getRunById(priorFailedId)!!
+        val retryAfter = repo.getRunById(retryRunId)!!
+
+        // Prior failed run is byte-identical — history is immutable from here.
+        assertEquals(priorBefore, priorAfter)
+        // Retry run reflects the incremental writes, and keeps its chain metadata.
+        assertEquals(1, retryAfter.autoRetryAttempt)
+        assertEquals(priorFailedId, retryAfter.parentRunId)
+        assertEquals("Generating final output", retryAfter.currentStage)
+        assertEquals("OpenAI", retryAfter.profileName)
+        assertEquals("gpt-4o-mini", retryAfter.modelId)
+    }
+
+    @Test
+    fun `incremental writes survive a stale-running cleanup sweep on a stale row`() = runBlocking {
+        // Contract: if app start sweeps an OLD running row, that sweep only
+        // touches status + errorMessage + completedAtMillis. Even if we were
+        // then to incremental-write against the SAME id post-sweep, prior
+        // stages should have been preserved — the sweep does not overwrite
+        // stagesJson. This locks in the narrow-write contract for stale rows
+        // too, not just live ones.
+        val repo = FakeWorkflowRepository()
+        val now = System.currentTimeMillis()
+        val runId = repo.insertRun(
+            newRunningRun().copy(
+                stagesJson = stagesJson("Preparing", "Processing"),
+                startedAtMillis = now - 2 * 60 * 60 * 1000L
+            )
+        )
+
+        repo.failAllStaleRunningRecordsOlderThan(now - 60 * 60 * 1000L)
+
+        val afterSweep = repo.getRunById(runId)!!
+        assertEquals(WorkflowRunStatus.FAILED, afterSweep.status)
+        // Stage history preserved — sweep only touched terminal-status fields.
+        assertEquals(
+            listOf("Preparing", "Processing"),
+            afterSweep.persistedStages.map { it.label }
+        )
+        // Retry/resume metadata preserved.
+        assertEquals(1, afterSweep.autoRetryAttempt)
+        assertEquals(99L, afterSweep.parentRunId)
+    }
+
     @Test
     fun `detail screen observer sees incremental progress updates live`() = runBlocking {
         val repo = FakeWorkflowRepository()

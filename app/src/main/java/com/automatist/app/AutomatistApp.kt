@@ -44,6 +44,18 @@ class AutomatistApp : Application() {
                 Log.e("AutomatistApp", "First-run seeding error: ${e.message}", e)
             }
 
+            // Reconcile orphaned RUNNING rows from a prior process death. The
+            // VM-driven run path has no worker-level crash recovery, so without
+            // this sweep a killed run stays RUNNING forever. The 1-hour grace
+            // window ensures we never clobber a fresh run that just happens to
+            // coincide with an app restart.
+            try {
+                val cutoff = System.currentTimeMillis() - STALE_RUNNING_GRACE_MS
+                workflowRepository.failAllStaleRunningRecordsOlderThan(cutoff)
+            } catch (e: Exception) {
+                Log.w("AutomatistApp", "Stale running reconciliation error: ${e.message}")
+            }
+
             try {
                 scheduleManager.reconcileSchedules {
                     workflowRepository.getAllTemplates().first()
@@ -52,5 +64,9 @@ class AutomatistApp : Application() {
                 Log.e("AutomatistApp", "Schedule reconciliation error: ${e.message}", e)
             }
         }
+    }
+
+    private companion object {
+        private const val STALE_RUNNING_GRACE_MS = 60L * 60L * 1000L // 1 hour
     }
 }

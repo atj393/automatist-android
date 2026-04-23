@@ -59,14 +59,49 @@ class RoomWorkflowRepository @Inject constructor(
     override suspend fun updateRunProfile(id: Long, profileName: String, modelId: String) =
         dao.updateRunProfile(id, profileName, modelId)
 
+    override suspend fun markRunCancelled(id: Long) {
+        dao.markRunCancelled(
+            id = id,
+            message = CANCELLED_MESSAGE,
+            stage = CANCELLED_STAGE,
+            atMillis = System.currentTimeMillis()
+        )
+    }
+
     override suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun? =
         dao.getLatestSuccessfulRun(templateId)?.toDomain()
 
     override suspend fun getLatestRun(templateId: Long): WorkflowRun? =
         dao.getLatestRun(templateId)?.toDomain()
 
-    override suspend fun failStaleRunningRecords(templateId: Long) =
-        dao.failStaleRunningRecords(templateId, "Worker terminated unexpectedly", System.currentTimeMillis())
+    override suspend fun failStaleRunningRecords(templateId: Long) {
+        // 60-second grace window: a row started less than a minute ago is
+        // very likely still in flight (fresh worker boot, or a concurrent
+        // VM-initiated run on the same template). Only clear rows older
+        // than that — truly orphaned ones from a prior crash.
+        val now = System.currentTimeMillis()
+        dao.failStaleRunningRecords(
+            templateId = templateId,
+            message = "Worker terminated unexpectedly",
+            atMillis = now,
+            cutoffMillis = now - STALE_RUN_GRACE_MS
+        )
+    }
+
+    override suspend fun failAllStaleRunningRecordsOlderThan(cutoffMillis: Long) {
+        dao.failAllStaleRunningRecords(
+            message = "Previous run was interrupted",
+            atMillis = System.currentTimeMillis(),
+            cutoffMillis = cutoffMillis
+        )
+    }
+
+    private companion object {
+        private const val STALE_RUN_GRACE_MS = 60_000L
+        private const val CANCELLED_MESSAGE =
+            "Run cancelled — the run screen was closed before it finished."
+        private const val CANCELLED_STAGE = "Cancelled"
+    }
 
     // ── Provider Profiles ──
 

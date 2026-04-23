@@ -153,6 +153,13 @@ class WorkflowWorker(
             // Execute this attempt.
             var finalState: ExecutionState? = null
             val stageLog = mutableListOf<com.automatist.app.domain.models.PersistedStage>()
+            // Coalescing cache for incremental writes — skip redundant Room updates
+            // when the stage snapshot + label + profile fields are all unchanged
+            // from the previous tick. Scoped to this single attempt.
+            var lastWrittenStagesJson = ""
+            var lastWrittenStageLabel = ""
+            var lastWrittenProfileName = ""
+            var lastWrittenModelId = ""
 
             val attemptFlow = if (resumeSnapshot != null) {
                 engine.resume(currentTemplate, resumeSnapshot)
@@ -175,10 +182,16 @@ class WorkflowWorker(
                         is ExecutionState.ActionCompleted -> "Completed: ${state.actionLabel}"
                         is ExecutionState.ActionFailed -> "Failed: ${state.actionLabel}"
                         is ExecutionState.ProcessingStarted -> {
-                            if (state.compactionMode.isNotBlank() && state.originalInputLength != state.combinedInputLength) {
-                                "Compacted: ${state.compactionMode} (${state.originalInputLength} → ${state.combinedInputLength} chars)"
-                            } else {
-                                "Processing ${state.combinedInputLength} chars..."
+                            val orig = state.originalInputLength
+                            val out = state.combinedInputLength
+                            val mode = state.compactionMode
+                            when {
+                                mode.isBlank() -> "Processing $out chars..."
+                                out < orig -> "Compacted: $mode ($orig → $out chars)"
+                                // Compaction was requested but did not shorten
+                                // the input. Report truthfully rather than
+                                // implying a reduction that didn't happen.
+                                else -> "Compaction: $mode (no reduction, $out chars)"
                             }
                         }
                         is ExecutionState.GeneratingOutput -> "Generating final output via ${state.providerName.ifBlank { "AI" }}..."
@@ -207,17 +220,30 @@ class WorkflowWorker(
                     // below with the complete payload.
                     if (state !is ExecutionState.Completed && state !is ExecutionState.Failed) {
                         try {
-                            repo.updateRunProgress(
-                                id = runId,
-                                stagesJson = com.automatist.app.domain.models.PersistedStage.toJson(stageLog),
-                                currentStage = stageLabel
-                            )
-                            if (state is ExecutionState.GeneratingOutput) {
-                                repo.updateRunProfile(
+                            val nextStagesJson = com.automatist.app.domain.models.PersistedStage.toJson(stageLog)
+                            if (nextStagesJson != lastWrittenStagesJson || stageLabel != lastWrittenStageLabel) {
+                                repo.updateRunProgress(
                                     id = runId,
-                                    profileName = state.profileName,
-                                    modelId = state.modelId
+                                    stagesJson = nextStagesJson,
+                                    currentStage = stageLabel
                                 )
+                                lastWrittenStagesJson = nextStagesJson
+                                lastWrittenStageLabel = stageLabel
+                            }
+                            if (state is ExecutionState.GeneratingOutput) {
+                                val profileName = state.profileName
+                                val modelId = state.modelId
+                                if ((profileName.isNotBlank() || modelId.isNotBlank()) &&
+                                    (profileName != lastWrittenProfileName || modelId != lastWrittenModelId)
+                                ) {
+                                    repo.updateRunProfile(
+                                        id = runId,
+                                        profileName = profileName,
+                                        modelId = modelId
+                                    )
+                                    lastWrittenProfileName = profileName
+                                    lastWrittenModelId = modelId
+                                }
                             }
                         } catch (e: Exception) {
                             // Persistence is best-effort during the run; terminal

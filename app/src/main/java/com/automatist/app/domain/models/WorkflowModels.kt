@@ -364,23 +364,49 @@ object SocialOutputParser {
     fun parse(rawJson: String): List<SocialOutput> {
         return try {
             val trimmed = rawJson.trim()
-            // Try parsing as wrapped object first
             val element = json.parseToJsonElement(trimmed)
-            val obj = element as? kotlinx.serialization.json.JsonObject
-            val outputsArray = obj?.get("outputs") as? kotlinx.serialization.json.JsonArray
-            if (outputsArray != null) {
-                outputsArray.map { item ->
-                    val itemObj = item as kotlinx.serialization.json.JsonObject
-                    SocialOutput(
-                        platform = itemObj["platform"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "Unknown",
-                        content = itemObj["content"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "",
-                        title = itemObj["title"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "",
-                        notes = itemObj["notes"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: ""
-                    )
-                }
-            } else emptyList()
+            // Two accepted shapes — both are treated as first-class "strict":
+            //   A) canonical wrapped object: { "outputs": [ {platform,content,...} ] }
+            //   B) bare array: [ {platform,content,...}, ... ]
+            // Local models (notably Gemma 3 1B int4) sometimes drop the wrapper
+            // and emit shape B even when the prompt explicitly asks for shape A.
+            // Cloud providers reliably emit shape A, so supporting B here adds
+            // zero risk to cloud rendering while recovering the local-model case.
+            val itemsArray = itemsArrayFromRoot(element) ?: return emptyList()
+            itemsArray.mapNotNull { item ->
+                val itemObj = item as? kotlinx.serialization.json.JsonObject ?: return@mapNotNull null
+                SocialOutput(
+                    platform = itemObj["platform"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "Unknown",
+                    content = itemObj["content"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "",
+                    title = itemObj["title"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: "",
+                    notes = itemObj["notes"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: ""
+                )
+            }
         } catch (_: Exception) {
             emptyList()
+        }
+    }
+
+    /**
+     * Return the array of social-output items given either shape. Shape A pulls
+     * from the `outputs` key; shape B treats the root array itself as the list.
+     * A shape-B array only qualifies when at least one entry looks social (has
+     * a `platform` field) so a random array of primitives or mismatched objects
+     * isn't accidentally accepted as social output.
+     */
+    private fun itemsArrayFromRoot(element: kotlinx.serialization.json.JsonElement): kotlinx.serialization.json.JsonArray? {
+        when (element) {
+            is kotlinx.serialization.json.JsonObject -> {
+                val arr = element["outputs"] as? kotlinx.serialization.json.JsonArray
+                return arr
+            }
+            is kotlinx.serialization.json.JsonArray -> {
+                val looksSocial = element.any { item ->
+                    (item as? kotlinx.serialization.json.JsonObject)?.containsKey("platform") == true
+                }
+                return if (looksSocial) element else null
+            }
+            else -> return null
         }
     }
 
@@ -450,8 +476,11 @@ object SocialOutputParser {
         // Strip leading/trailing markdown code fences: ```json ... ``` or ``` ... ```
         s = stripCodeFences(s)
 
-        // Narrow to the outermost JSON object (handles stray leading/trailing prose).
-        extractOutermostJsonObject(s)?.let { s = it }
+        // Narrow to the outermost balanced JSON value (object OR array). Handles
+        // stray prose around the payload, and crucially handles the local-model
+        // "bare array" case — previously we only extracted `{...}`, so a valid
+        // top-level array still tripped the repair path and never rendered.
+        extractOutermostJsonValue(s)?.let { s = it }
 
         // Convert smart/curly quotes to straight ASCII quotes. Gemma sometimes
         // emits '“' / '”' around strings, which kotlinx.serialization rejects.
@@ -482,13 +511,23 @@ object SocialOutputParser {
     }
 
     /**
-     * Locate the outermost balanced JSON object within [s]. Ignores braces
-     * inside string literals. Returns null if no balanced object exists —
-     * callers keep the unmodified input in that case.
+     * Locate the outermost balanced JSON object OR array within [s]. Picks
+     * whichever opening token appears first in the string, so prose before a
+     * `[...]` payload lifts the array correctly and the same for an object.
+     * Ignores braces inside string literals. Returns null if no balanced
+     * payload exists — callers keep the unmodified input in that case.
      */
-    private fun extractOutermostJsonObject(s: String): String? {
-        val start = s.indexOf('{')
-        if (start < 0) return null
+    private fun extractOutermostJsonValue(s: String): String? {
+        val objIdx = s.indexOf('{')
+        val arrIdx = s.indexOf('[')
+        val start = when {
+            objIdx < 0 && arrIdx < 0 -> return null
+            objIdx < 0 -> arrIdx
+            arrIdx < 0 -> objIdx
+            else -> minOf(objIdx, arrIdx)
+        }
+        val openChar = s[start]
+        val closeChar = if (openChar == '{') '}' else ']'
         var depth = 0
         var inString = false
         var escape = false
@@ -502,10 +541,10 @@ object SocialOutputParser {
                 }
                 continue
             }
-            when (c) {
-                '"' -> inString = true
-                '{' -> depth++
-                '}' -> {
+            when {
+                c == '"' -> inString = true
+                c == openChar -> depth++
+                c == closeChar -> {
                     depth--
                     if (depth == 0) return s.substring(start, i + 1)
                 }

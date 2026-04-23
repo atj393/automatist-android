@@ -13,7 +13,10 @@ import com.automatist.app.domain.readiness.ReadinessEvaluator
 import com.automatist.app.domain.readiness.WorkflowReadiness
 import com.automatist.app.domain.repositories.WorkflowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -106,6 +109,18 @@ class WorkflowRunViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(RunUiState())
     val state = _state.asStateFlow()
+
+    // Coalescing guard for persistLiveProgress. The engine emits several
+    // benign non-terminal transitions (e.g. ActionSourceFetched right after
+    // ActionStarted) that don't change the UI state enough to warrant a new
+    // incremental write. Skipping identical writes spares Room + observers
+    // a wasted flow emission on every such tick. Scoped per runId so an
+    // auto-retry chain starts fresh.
+    private var persistedStagesJson: String = ""
+    private var persistedStageLabel: String = ""
+    private var persistedProfileName: String = ""
+    private var persistedModelId: String = ""
+    private var persistedForRunId: Long = -1L
 
     init {
         viewModelScope.launch {
@@ -288,21 +303,42 @@ class WorkflowRunViewModel @Inject constructor(
         val stages = snapshot.stages
         val label = snapshot.currentStageLabel
         if (stages.isEmpty() && label.isBlank()) return
+
+        // Reset the coalescing cache on runId boundaries so a chained auto-retry
+        // can't be falsely skipped by state left over from the previous attempt.
+        if (persistedForRunId != runId) {
+            persistedStagesJson = ""
+            persistedStageLabel = ""
+            persistedProfileName = ""
+            persistedModelId = ""
+            persistedForRunId = runId
+        }
+
         withContext(Dispatchers.Default) {
-            repository.updateRunProgress(
-                id = runId,
-                stagesJson = stagesToJson(stages),
-                currentStage = label
-            )
+            val nextStagesJson = stagesToJson(stages)
+            val nextLabel = label
+            if (nextStagesJson != persistedStagesJson || nextLabel != persistedStageLabel) {
+                repository.updateRunProgress(
+                    id = runId,
+                    stagesJson = nextStagesJson,
+                    currentStage = nextLabel
+                )
+                persistedStagesJson = nextStagesJson
+                persistedStageLabel = nextLabel
+            }
             if (executionState is ExecutionState.GeneratingOutput) {
                 val profileName = executionState.profileName
                 val modelId = executionState.modelId
-                if (profileName.isNotBlank() || modelId.isNotBlank()) {
+                if ((profileName.isNotBlank() || modelId.isNotBlank()) &&
+                    (profileName != persistedProfileName || modelId != persistedModelId)
+                ) {
                     repository.updateRunProfile(
                         id = runId,
                         profileName = profileName,
                         modelId = modelId
                     )
+                    persistedProfileName = profileName
+                    persistedModelId = modelId
                 }
             }
         }
@@ -408,15 +444,24 @@ class WorkflowRunViewModel @Inject constructor(
             }
 
             is ExecutionState.ProcessingStarted -> {
-                val compactionDetail = if (executionState.compactionMode.isNotBlank() &&
-                    executionState.originalInputLength != executionState.combinedInputLength
-                ) {
-                    val pct = ((executionState.originalInputLength - executionState.combinedInputLength) * 100) /
-                            executionState.originalInputLength.coerceAtLeast(1)
-                    "Input compaction: ${executionState.compactionMode} " +
-                            "(${executionState.originalInputLength} → ${executionState.combinedInputLength} chars, -${pct}%)"
-                } else {
-                    "Combined ${executionState.combinedInputLength} chars"
+                val orig = executionState.originalInputLength
+                val out = executionState.combinedInputLength
+                val mode = executionState.compactionMode
+                val compactionDetail = when {
+                    mode.isBlank() -> "Combined $out chars"
+                    out < orig -> {
+                        // Honest reduction: compute once, format with a single
+                        // leading minus sign so we never render `--8%` when the
+                        // integer itself is already negative.
+                        val pct = ((orig - out) * 100) / orig.coerceAtLeast(1)
+                        "Input compaction: $mode ($orig → $out chars, -$pct%)"
+                    }
+                    else -> {
+                        // Compaction was requested but didn't reduce (typically
+                        // short, already-clean inputs). Say so plainly instead
+                        // of inventing a fake percentage.
+                        "Input compaction: $mode ($out chars, no reduction)"
+                    }
                 }
                 _state.update {
                     val stages = it.stages.markLastCompleted() + StageInfo(
@@ -758,5 +803,47 @@ class WorkflowRunViewModel @Inject constructor(
             )
         }
         return list
+    }
+
+    /**
+     * Honest manual-run lifecycle contract.
+     *
+     * A manual run is owned by [viewModelScope]; when this VM clears (Back
+     * navigation pops the NavBackStackEntry, or the Activity is finished),
+     * that scope cancels and the engine coroutine stops mid-stream. Without
+     * this hook, the DB row left behind stayed status=RUNNING until the
+     * app-start stale sweep — the user would reopen the run and see a
+     * phantom spinner on a run that was no longer actually executing.
+     *
+     * Here we flip the abandoned run to FAILED with a clear cancellation
+     * message. The DAO query is gated `AND status = 'RUNNING'` so if a
+     * terminal write (Completed/Failed from the engine) won the race, it
+     * is preserved and we no-op. The write itself runs on a local IO scope,
+     * not [viewModelScope] (which is already cancelling), and is fire-and-
+     * forget — good enough for the normal case; the app-start sweep still
+     * catches the edge where the process dies before the write lands.
+     */
+    override fun onCleared() {
+        super.onCleared()
+        val snapshot = _state.value
+        val rid = snapshot.runId
+        // Only act when the run was genuinely in-flight. Completed / Failed
+        // / not-yet-started / setup-blocked all bail out.
+        if (rid == null || rid <= 0L) return
+        if (!snapshot.isRunning) return
+        if (snapshot.isCompleted || snapshot.isFailed) return
+        if (snapshot.isBlockedBySetup) return
+
+        val rescueScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        rescueScope.launch {
+            try {
+                repository.markRunCancelled(rid)
+                Log.i(TAG, "manual-run cancellation persisted for runId=$rid (VM cleared while running)")
+            } catch (e: Exception) {
+                Log.w(TAG, "markRunCancelled failed for runId=$rid — stale sweep will reconcile", e)
+            } finally {
+                rescueScope.cancel()
+            }
+        }
     }
 }

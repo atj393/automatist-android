@@ -149,6 +149,35 @@ fun WorkflowRunDetailScreen(
                         }
                     }
                 }
+            } else if (r.status == WorkflowRunStatus.RUNNING && r.currentStage.isNotBlank()) {
+                // Narrow window between insertRun and the first incremental
+                // progress write — stagesJson is still empty but we do have
+                // a currentStage label. Surface it so the body isn't blank
+                // while the engine is warming up.
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(12.dp).fillMaxWidth()
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                "In progress",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                r.currentStage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
 
             // Output — versioned or single display
