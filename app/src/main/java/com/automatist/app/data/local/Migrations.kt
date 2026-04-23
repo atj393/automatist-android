@@ -3,6 +3,24 @@ package com.automatist.app.data.local
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Template-level auto-retry opt-in (defaults OFF for existing workflows).
+        db.execSQL("ALTER TABLE workflow_templates ADD COLUMN autoRetryEnabled INTEGER NOT NULL DEFAULT 0")
+        // Per-run attempt tracking. 0 = initial / manual retry, 1..3 = auto-retries.
+        db.execSQL("ALTER TABLE workflow_runs ADD COLUMN autoRetryAttempt INTEGER NOT NULL DEFAULT 0")
+        // Parent points at the initial run in an auto-retry chain so history
+        // can group retries; nullable for initial runs and manual retries.
+        db.execSQL("ALTER TABLE workflow_runs ADD COLUMN parentRunId INTEGER")
+    }
+}
+
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE workflow_runs ADD COLUMN resumeSnapshotJson TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 val MIGRATION_14_15 = object : Migration(14, 15) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE provider_profiles ADD COLUMN providerPresetId TEXT NOT NULL DEFAULT ''")

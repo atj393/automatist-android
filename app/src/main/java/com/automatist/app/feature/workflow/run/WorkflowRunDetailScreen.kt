@@ -26,7 +26,9 @@ import kotlinx.coroutines.launch
 fun WorkflowRunDetailScreen(
     runId: Long,
     onBack: () -> Unit,
-    onRunAgain: (templateId: Long) -> Unit = {},
+    // Second arg is the failed run's id so the run screen can attempt a
+    // resume-from-failed-step retry. Pass 0L to force a full rerun.
+    onRunAgain: (templateId: Long, failedRunId: Long) -> Unit = { _, _ -> },
     viewModel: WorkflowRunDetailViewModel = hiltViewModel()
 ) {
     val run by viewModel.run.collectAsState()
@@ -284,7 +286,7 @@ fun WorkflowRunDetailScreen(
                 when (workflowExists) {
                     true -> {
                         Button(
-                            onClick = { onRunAgain(r.templateId) },
+                            onClick = { onRunAgain(r.templateId, r.id) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp))

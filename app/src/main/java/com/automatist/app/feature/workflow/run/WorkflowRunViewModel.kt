@@ -48,7 +48,12 @@ data class RunUiState(
     // Versions
     val versions: List<OutputVersion> = emptyList(),
     val synthesisInput: String = "",
-    val isRegenerating: Boolean = false
+    val isRegenerating: Boolean = false,
+    // Auto-retry — 0 for initial attempt / manual retry, 1..MAX_AUTO_RETRIES
+    // when an automatic retry is active. Surfaced to UI so the run page can
+    // show an "Auto-retry N/3" badge.
+    val autoRetryAttempt: Int = 0,
+    val isAutoRetrying: Boolean = false
 )
 
 data class StageInfo(
@@ -94,6 +99,10 @@ class WorkflowRunViewModel @Inject constructor(
     }
 
     private val templateId: Long = savedStateHandle.get<Long>("templateId") ?: -1L
+    // Passed by "Run Again" from a failed run detail screen. 0L or missing means
+    // "no prior run to resume from — fresh run". The VM treats 0L as null.
+    private val initialResumeFromRunId: Long? =
+        savedStateHandle.get<Long>("resumeFromRunId")?.takeIf { it > 0L }
 
     private val _state = MutableStateFlow(RunUiState())
     val state = _state.asStateFlow()
@@ -140,20 +149,23 @@ class WorkflowRunViewModel @Inject constructor(
                 return@launch
             }
 
-            startRun(template)
+            startRun(template, resumeFromRunId = initialResumeFromRunId)
         }
     }
 
     /**
-     * Retry the workflow after a failed run. Resets the UI state and starts a fresh run
-     * using the current workflow definition. Creates a new run record — the failed run
-     * remains intact in history.
+     * Retry the workflow after a failed run. Creates a NEW run record — the
+     * prior failed run remains intact in history. When the prior failed run
+     * captured a valid resume snapshot AND the workflow definition hasn't
+     * changed, this skips already-successful earlier work and restarts from
+     * the first failed step. Otherwise falls back to a full rerun.
      *
      * Safe to call multiple times: guards against duplicate in-progress runs.
      */
     fun retryRun() {
         if (_state.value.isRunning) return // prevent duplicate retry
-        Log.i(TAG, "retryRun requested templateId=$templateId — engine will reset local runtime state at run-start")
+        val priorRunId = _state.value.runId
+        Log.i(TAG, "retryRun requested templateId=$templateId priorRunId=$priorRunId")
         viewModelScope.launch {
             val template = repository.getTemplateById(templateId)
             if (template == null) {
@@ -166,35 +178,143 @@ class WorkflowRunViewModel @Inject constructor(
                 templateName = template.name,
                 isRunning = false
             )
-            startRun(template)
+            startRun(template, resumeFromRunId = priorRunId)
         }
     }
 
-    private fun startRun(template: WorkflowTemplate) {
+    /**
+     * Starts a new run. If [resumeFromRunId] is provided and the prior run
+     * captured a valid resume snapshot that still matches the current
+     * workflow definition, execution uses the resume path (skip actions,
+     * reuse frozen combined input). Otherwise this is a full rerun.
+     *
+     * Either way, a fresh [WorkflowRun] row is inserted — prior run history
+     * is never touched.
+     *
+     * [autoRetryAttempt] / [parentRunId] carry auto-retry context: 0 means
+     * "initial attempt or manual retry — no auto-retry chain"; 1..3 means
+     * "this is the Nth automatic retry after a failure". The auto-retry
+     * loop itself lives in [handleState]'s Failed branch.
+     */
+    private fun startRun(
+        template: WorkflowTemplate,
+        resumeFromRunId: Long? = null,
+        autoRetryAttempt: Int = 0,
+        parentRunId: Long? = null
+    ) {
         viewModelScope.launch {
-            Log.d(TAG, "startRun() launched thread=${Thread.currentThread().name}")
-            _state.update { it.copy(isRunning = true, outputFormat = template.outputConfig.outputFormat) }
+            Log.d(TAG, "startRun() launched thread=${Thread.currentThread().name} resumeFromRunId=$resumeFromRunId autoRetryAttempt=$autoRetryAttempt")
+            _state.update {
+                it.copy(
+                    isRunning = true,
+                    outputFormat = template.outputConfig.outputFormat,
+                    autoRetryAttempt = autoRetryAttempt,
+                    isAutoRetrying = autoRetryAttempt > 0
+                )
+            }
+
+            // Decide resume vs fresh BEFORE inserting the new row so currentStage
+            // reflects what's actually about to happen.
+            val resumeSnapshot = if (resumeFromRunId != null) {
+                val prior = repository.getRunById(resumeFromRunId)
+                val snap = prior?.resumeSnapshot
+                if (snap != null && snap.canResumeFor(template)) {
+                    Log.i(TAG, "retry path=resume priorRunId=$resumeFromRunId reachedStage=${snap.reachedStage}")
+                    snap
+                } else {
+                    if (snap != null) {
+                        Log.i(TAG, "retry path=full-rerun reason=snapshot-stale-or-mismatched priorRunId=$resumeFromRunId")
+                    } else {
+                        Log.i(TAG, "retry path=full-rerun reason=no-snapshot priorRunId=$resumeFromRunId")
+                    }
+                    null
+                }
+            } else null
 
             // Create run record
             val runId = repository.insertRun(
                 WorkflowRun(
                     templateId = template.id,
                     templateName = template.name,
-                    triggerType = "manual",
+                    triggerType = when {
+                        autoRetryAttempt > 0 -> "auto-retry"
+                        resumeSnapshot != null -> "manual-resume"
+                        else -> "manual"
+                    },
                     status = WorkflowRunStatus.RUNNING,
-                    currentStage = "Preparing",
-                    outputFormat = template.outputConfig.outputFormat
+                    currentStage = when {
+                        autoRetryAttempt > 0 -> "Auto-retry $autoRetryAttempt/${WorkflowRun.MAX_AUTO_RETRIES}"
+                        resumeSnapshot != null -> "Resuming"
+                        else -> "Preparing"
+                    },
+                    outputFormat = template.outputConfig.outputFormat,
+                    autoRetryAttempt = autoRetryAttempt,
+                    parentRunId = parentRunId
                 )
             )
             _state.update { it.copy(runId = runId) }
 
-            engine.execute(template).collect { executionState ->
-                handleState(executionState, runId, template)
+            val flow = if (resumeSnapshot != null) {
+                engine.resume(template, resumeSnapshot)
+            } else {
+                engine.execute(template)
+            }
+            flow.collect { executionState ->
+                handleState(executionState, runId, template, autoRetryAttempt, parentRunId)
+                // Incrementally persist progress so the run detail screen
+                // re-hydrates correctly if the user navigates away and back
+                // mid-run. Terminal states (Completed/Failed) do their own
+                // full persist via handleState, so we skip them here.
+                if (executionState !is ExecutionState.Completed &&
+                    executionState !is ExecutionState.Failed
+                ) {
+                    persistLiveProgress(runId, executionState)
+                }
             }
         }
     }
 
-    private suspend fun handleState(executionState: ExecutionState, runId: Long, template: WorkflowTemplate) {
+    /**
+     * Snapshot the current in-memory stages + current-stage label and push
+     * them to the database. Called once per non-terminal [ExecutionState]
+     * event so a detail screen opening mid-run sees live progress.
+     *
+     * Also, on [ExecutionState.GeneratingOutput], writes the resolved
+     * provider profile + model once so the detail header isn't stuck on
+     * blank values while final generation is in flight.
+     */
+    private suspend fun persistLiveProgress(runId: Long, executionState: ExecutionState) {
+        val snapshot = _state.value
+        val stages = snapshot.stages
+        val label = snapshot.currentStageLabel
+        if (stages.isEmpty() && label.isBlank()) return
+        withContext(Dispatchers.Default) {
+            repository.updateRunProgress(
+                id = runId,
+                stagesJson = stagesToJson(stages),
+                currentStage = label
+            )
+            if (executionState is ExecutionState.GeneratingOutput) {
+                val profileName = executionState.profileName
+                val modelId = executionState.modelId
+                if (profileName.isNotBlank() || modelId.isNotBlank()) {
+                    repository.updateRunProfile(
+                        id = runId,
+                        profileName = profileName,
+                        modelId = modelId
+                    )
+                }
+            }
+        }
+    }
+
+    private suspend fun handleState(
+        executionState: ExecutionState,
+        runId: Long,
+        template: WorkflowTemplate,
+        autoRetryAttempt: Int = 0,
+        parentRunId: Long? = null
+    ) {
         when (executionState) {
             is ExecutionState.Preparing -> {
                 _state.update {
@@ -430,43 +550,115 @@ class WorkflowRunViewModel @Inject constructor(
             is ExecutionState.Failed -> {
                 val rawError = executionState.rawError.ifBlank { null }
                 val rawForStorage = ErrorRedactor.redactForStorage(rawError)
-                _state.update {
-                    val stages = it.stages.toMutableList()
-                    if (stages.isNotEmpty()) {
-                        stages[stages.lastIndex] = stages.last().copy(
+
+                // Always persist the failed run first so history + resume snapshot
+                // are durable regardless of whether auto-retry fires next.
+                val stagesSnapshotForPersist = run {
+                    // Snapshot the would-be failed stages list WITHOUT mutating UI state yet —
+                    // UI state is decided below based on whether auto-retry will fire.
+                    val temp = _state.value.stages.toMutableList()
+                    if (temp.isNotEmpty()) {
+                        temp[temp.lastIndex] = temp.last().copy(
                             status = StageStatus.FAILED,
                             detail = executionState.error
                         )
                     }
-                    stages.add(StageInfo("Failed", StageStatus.FAILED, executionState.error))
-                    it.copy(
-                        isRunning = false,
-                        isFailed = true,
-                        currentStageLabel = "Failed: ${executionState.error}",
-                        stages = stages,
-                        errorMessage = executionState.error,
-                        errorDetail = rawError
-                    )
+                    temp.add(StageInfo("Failed", StageStatus.FAILED, executionState.error))
+                    temp.toList()
                 }
-
-                // Snapshot + persist off Main (same reasoning as Completed path)
-                val stagesSnapshot = _state.value.stages
+                val resumeSnapshot = executionState.resumeSnapshot
                 withContext(Dispatchers.Default) {
-                    val persistedStagesJson = stagesToJson(stagesSnapshot)
+                    val persistedStagesJson = stagesToJson(stagesSnapshotForPersist)
+                    val resumeSnapshotJson = resumeSnapshot?.let {
+                        ResumeSnapshot.toJson(it)
+                    } ?: ""
                     repository.updateRun(
                         WorkflowRun(
                             id = runId,
                             templateId = template.id,
                             templateName = template.name,
-                            triggerType = "manual",
+                            triggerType = if (autoRetryAttempt > 0) "auto-retry" else "manual",
                             status = WorkflowRunStatus.FAILED,
                             currentStage = executionState.stage,
                             errorMessage = executionState.error,
                             errorDetail = rawForStorage,
                             completedAtMillis = System.currentTimeMillis(),
-                            stagesJson = persistedStagesJson
+                            stagesJson = persistedStagesJson,
+                            resumeSnapshotJson = resumeSnapshotJson,
+                            autoRetryAttempt = autoRetryAttempt,
+                            parentRunId = parentRunId
                         )
                     )
+                }
+
+                // Check if an automatic retry should chain off this failure.
+                // Re-read the template so a user edit mid-chain is honoured.
+                val currentTemplate = repository.getTemplateById(template.id)
+                val canAutoRetry = currentTemplate != null
+                    && currentTemplate.autoRetryEnabled
+                    && autoRetryAttempt < WorkflowRun.MAX_AUTO_RETRIES
+
+                if (canAutoRetry && currentTemplate != null) {
+                    val nextAttempt = autoRetryAttempt + 1
+                    val chainParent = parentRunId ?: runId
+                    Log.i(
+                        TAG,
+                        "auto-retry firing attempt=$nextAttempt/${WorkflowRun.MAX_AUTO_RETRIES} " +
+                            "parentRunId=$chainParent priorFailedRunId=$runId"
+                    )
+                    // UI stays in "running" state so the user doesn't flash between
+                    // a failed screen and a re-running one. The failed stage row is
+                    // preserved but we append a clear "Auto-retry N/3" row to
+                    // signal what's happening next.
+                    _state.update { ui ->
+                        val stages = stagesSnapshotForPersist.toMutableList()
+                        // Replace the trailing synthetic "Failed" row with the
+                        // retry announcement so the stage list doesn't keep
+                        // stacking Failed/Retry/Failed/Retry rows.
+                        if (stages.isNotEmpty() && stages.last().label == "Failed") {
+                            stages.removeAt(stages.lastIndex)
+                        }
+                        stages.add(
+                            StageInfo(
+                                label = "Auto-retry $nextAttempt/${WorkflowRun.MAX_AUTO_RETRIES}",
+                                status = StageStatus.RUNNING,
+                                detail = "Previous attempt failed: ${executionState.error}",
+                                startedAtMillis = System.currentTimeMillis()
+                            )
+                        )
+                        ui.copy(
+                            isRunning = true,
+                            isFailed = false,
+                            isAutoRetrying = true,
+                            autoRetryAttempt = nextAttempt,
+                            currentStageLabel = "Auto-retry $nextAttempt/${WorkflowRun.MAX_AUTO_RETRIES}",
+                            stages = stages,
+                            errorMessage = null,
+                            errorDetail = null
+                        )
+                    }
+                    startRun(
+                        template = currentTemplate,
+                        resumeFromRunId = runId,
+                        autoRetryAttempt = nextAttempt,
+                        parentRunId = chainParent
+                    )
+                } else {
+                    // Final failure — flip UI to the terminal failed state.
+                    if (autoRetryAttempt > 0) {
+                        Log.i(TAG, "auto-retry exhausted after $autoRetryAttempt attempt(s); run finally failed")
+                    }
+                    _state.update {
+                        it.copy(
+                            isRunning = false,
+                            isFailed = true,
+                            isAutoRetrying = false,
+                            currentStageLabel = "Failed: ${executionState.error}",
+                            stages = stagesSnapshotForPersist,
+                            errorMessage = executionState.error,
+                            errorDetail = rawError
+                        )
+                    }
                 }
             }
         }

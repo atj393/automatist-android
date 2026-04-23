@@ -80,6 +80,23 @@ interface WorkflowDao {
     @Query("UPDATE workflow_runs SET status = 'FAILED', errorMessage = :message, completedAtMillis = :atMillis WHERE templateId = :templateId AND status = 'RUNNING'")
     suspend fun failStaleRunningRecords(templateId: Long, message: String, atMillis: Long)
 
+    /**
+     * Narrow update for in-flight progress. Writes only the stage log + current
+     * stage label, leaving every other run field intact. Called repeatedly
+     * during execution — once per [ExecutionState] event — so a user who opens
+     * the run detail screen mid-run sees live, accurate progress.
+     */
+    @Query("UPDATE workflow_runs SET stagesJson = :stagesJson, currentStage = :currentStage WHERE id = :id")
+    suspend fun updateRunProgress(id: Long, stagesJson: String, currentStage: String)
+
+    /**
+     * Persist the resolved profile/model once the engine has picked them. Runs
+     * at [GeneratingOutput] time so the detail header shows the right provider
+     * even while final generation is still in flight.
+     */
+    @Query("UPDATE workflow_runs SET profileName = :profileName, modelId = :modelId WHERE id = :id")
+    suspend fun updateRunProfile(id: Long, profileName: String, modelId: String)
+
     // ── Provider Profiles ──
 
     @Query("SELECT * FROM provider_profiles WHERE isEnabled = 1 ORDER BY isDefault DESC, name ASC")

@@ -41,18 +41,23 @@ fun OutputDisplay(
     modifier: Modifier = Modifier,
     isSocialOutput: Boolean = false
 ) {
-    // Social output mode → render platform cards
+    // Social output mode → render platform cards.
+    // Uses tolerant parsing so local/offline model outputs that are almost-valid
+    // JSON (missing commas, markdown fences, stray prose) still render as cards
+    // instead of collapsing into a "Rendered == Raw" fallback. Cloud outputs
+    // pass strict parse on the first attempt and never touch the repair path.
     if (isSocialOutput) {
-        val socialOutputs = remember(outputText) { SocialOutputParser.parse(outputText) }
-        if (socialOutputs.isNotEmpty()) {
+        val parseResult = remember(outputText) { SocialOutputParser.parseTolerant(outputText) }
+        if (parseResult.outputs.isNotEmpty()) {
             SocialOutputDisplay(
-                socialOutputs = socialOutputs,
-                rawJson = outputText,
+                socialOutputs = parseResult.outputs,
+                rawJson = parseResult.originalRaw, // Raw tab always shows the TRUE model output.
+                wasRepaired = parseResult.wasRepaired,
                 modifier = modifier
             )
             return
         }
-        // Fallback: if parsing fails, render as standard output
+        // Fallback: if parsing (even with repair) fails, render as standard output
     }
 
     val context = LocalContext.current
@@ -166,7 +171,14 @@ fun OutputDisplay(
 fun SocialOutputDisplay(
     socialOutputs: List<SocialOutput>,
     rawJson: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /**
+     * True when the rendered cards were built from a repaired copy of [rawJson]
+     * because the original was not strictly valid JSON. Surfaces a subtle hint
+     * above the Raw JSON panel so users understand why the original JSON may
+     * show as invalid while the cards render correctly.
+     */
+    wasRepaired: Boolean = false
 ) {
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
@@ -206,7 +218,34 @@ fun SocialOutputDisplay(
         }
 
         if (showRaw) {
-            // Raw JSON view
+            // Raw JSON view — ALWAYS shows the true model output, even when
+            // the rendered cards came from a repaired copy. This lets users
+            // inspect exactly what the model produced.
+            if (wasRepaired) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Info, null,
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "The original JSON was not strictly valid. Cards above were rendered " +
+                                "from a repaired copy; the text below is the model's true output.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                    }
+                }
+            }
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)

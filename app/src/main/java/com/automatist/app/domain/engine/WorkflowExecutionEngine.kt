@@ -301,10 +301,27 @@ class WorkflowExecutionEngine @Inject constructor(
                     Log.i(TAG, "run-end status=failed stage=processing template='${template.name}' " +
                         "profile='$profileName' provider='$providerName' model='$modelId'")
                     transformProvider.resetForNewStage("run-end-failed-processing:${template.id}")
+                    // Build a resume snapshot: all actions succeeded and we have
+                    // the frozen combined input computed. A later retry can skip
+                    // the whole action chain and rerun only the final generation
+                    // if the workflow fingerprint still matches.
+                    val snapshot = ResumeSnapshot(
+                        fingerprint = computeWorkflowFingerprint(template),
+                        reachedStage = ResumeSnapshot.STAGE_PROCESSING,
+                        synthesisInput = combinedInput,
+                        actionOutputs = actionResults.map { ar ->
+                            ResumedActionOutput(
+                                actionId = ar.action.id,
+                                preparedText = ar.text,
+                                instructionApplied = ar.instructionApplied
+                            )
+                        }
+                    )
                     emit(ExecutionState.Failed(
                         error.message ?: "AI processing failed (profile: $profileName, provider: $providerName, model: $modelId)",
                         "processing",
-                        rawError = rawWithContext.trim()
+                        rawError = rawWithContext.trim(),
+                        resumeSnapshot = snapshot
                     ))
                     return@flow
                 }
@@ -342,6 +359,195 @@ class WorkflowExecutionEngine @Inject constructor(
         transformProvider.resetForNewStage("run-end-completed:${template.id}")
 
         // outputText = first version for backward compatibility
+        emit(
+            ExecutionState.Completed(
+                outputText = versions.first().outputText,
+                providerType = lastProviderType,
+                tokenUsage = tokenUsage,
+                durationMs = durationMs,
+                profileName = profileName,
+                modelId = modelId,
+                isSocialOutput = isSocialMode,
+                versions = versions,
+                synthesisInput = combinedInput
+            )
+        )
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Resume a failed workflow run from the first failed step using the supplied
+     * [snapshot]. For v1 this only supports the PROCESSING reached stage — the
+     * common case where all actions already succeeded and only the final AI
+     * generation failed. The action chain is skipped entirely; the frozen
+     * combined input captured at the time of failure is replayed through final
+     * generation. This saves every expensive RSS fetch, URL fetch, weather
+     * call, and per-action preprocessing AI pass from being rerun.
+     *
+     * The caller is responsible for validating `snapshot.canResumeFor(template)`
+     * before invoking this — if the fingerprint no longer matches or the
+     * snapshot is empty, the caller must fall back to [execute].
+     *
+     * The emitted stage events mirror [execute] so the run page UI treats the
+     * resumed run like any other: a concise "Reusing N prior step result(s)"
+     * row sits where the action stages would normally appear.
+     */
+    fun resume(
+        template: WorkflowTemplate,
+        snapshot: ResumeSnapshot
+    ): Flow<ExecutionState> = flow<ExecutionState> {
+        Log.i(TAG, "resume() run-start template='${template.name}' id=${template.id} " +
+            "reachedStage=${snapshot.reachedStage} reusedActions=${snapshot.actionOutputs.size} " +
+            "thread=${Thread.currentThread().name}")
+        val startTime = System.currentTimeMillis()
+
+        transformProvider.resetForNewStage("resume-start:${template.id}")
+
+        emit(ExecutionState.Preparing)
+
+        val enabledActions = template.actions.filter { it.isEnabled }.sortedBy { it.order }
+        if (enabledActions.isEmpty()) {
+            // Shouldn't happen for a resumable run, but stay safe.
+            emit(ExecutionState.Failed("No enabled actions in workflow.", "validation"))
+            return@flow
+        }
+        emit(ExecutionState.ValidatingInputs(enabledActions.size))
+
+        // Render one concise stage row summarising what we reused from the
+        // prior run so the user sees why the action chain is not re-running.
+        val reusedLabel = "Reusing ${snapshot.actionOutputs.size} prior step result(s)"
+        emit(ExecutionState.ActionStarted(
+            actionIndex = 0,
+            totalActions = 1,
+            actionLabel = reusedLabel,
+            actionType = "RESUME"
+        ))
+        emit(ExecutionState.ActionCompleted(
+            actionIndex = 0,
+            totalActions = 1,
+            actionLabel = reusedLabel,
+            resultPreview = "Resumed from prior failed run",
+            fullResultText = ""
+        ))
+
+        // Use the frozen combined input directly. No action work happens.
+        val combinedInput = snapshot.synthesisInput
+        emit(ExecutionState.ProcessingStarted(
+            combinedInputLength = combinedInput.length,
+            originalInputLength = combinedInput.length,
+            compactionMode = ""
+        ))
+
+        // Resolve profile for final output generation (same rules as execute()).
+        val outputProfileId = template.outputConfig.outputProfileId.ifBlank {
+            template.defaultProfileId.ifBlank { null }
+        }
+        val resolvedProfile = if (outputProfileId != null) {
+            workflowRepository.getProfileById(outputProfileId)
+        } else {
+            workflowRepository.getDefaultProfile()
+        }
+        val profileName = resolvedProfile?.name ?: "App default"
+        val providerName = resolvedProfile?.providerType?.displayName ?: "Fallback"
+        val modelId = resolvedProfile?.modelId ?: ""
+
+        transformProvider.resetForNewStage("resume-final-generation:${template.id}")
+
+        val systemPrompt = buildSystemPrompt(template)
+        emit(ExecutionState.GeneratingOutput(
+            profileName = profileName,
+            providerName = providerName,
+            modelId = modelId,
+            systemPrompt = systemPrompt,
+            userContent = combinedInput
+        ))
+
+        val isSocialMode = isSocialOutputMode(template)
+        val numVersions = template.outputConfig.numberOfOutputs.coerceIn(1, 10)
+
+        val input = ArticleInput(
+            text = combinedInput,
+            systemPromptOverride = systemPrompt,
+            profileId = outputProfileId
+        )
+
+        val versions = mutableListOf<OutputVersion>()
+        var totalPromptTokens = 0
+        var totalCompletionTokens = 0
+        var lastProviderType: ProviderType = ProviderType.FAKE
+        var aggregateIsEstimated = false
+        var aggregateWasTruncated: Boolean? = null
+        var aggregateInputChars: Int? = null
+        var aggregateOutputChars: Int? = null
+        var aggregateContextCeiling: Int? = null
+
+        for (v in 1..numVersions) {
+            val transformResult = transformProvider.transform(input, TransformType.CUSTOM_WORKFLOW)
+            if (transformResult.isSuccess) {
+                val result = transformResult.getOrThrow()
+                versions.add(OutputVersion(
+                    version = v,
+                    outputText = result.outputText,
+                    isSocialOutput = isSocialMode
+                ))
+                totalPromptTokens += result.promptTokens ?: 0
+                totalCompletionTokens += result.completionTokens ?: 0
+                lastProviderType = result.providerType
+                if (result.isUsageEstimated) aggregateIsEstimated = true
+                result.wasTruncated?.let { truncated ->
+                    aggregateWasTruncated = (aggregateWasTruncated ?: false) || truncated
+                }
+                result.inputChars?.let { aggregateInputChars = (aggregateInputChars ?: 0) + it }
+                result.outputChars?.let { aggregateOutputChars = (aggregateOutputChars ?: 0) + it }
+                result.contextCeilingTokens?.let { aggregateContextCeiling = it }
+            } else {
+                val error = transformResult.exceptionOrNull()!!
+                val rawDetail = when (error) {
+                    is DiagnosticException -> error.rawDetail
+                    else -> "${error.javaClass.simpleName}: ${error.message}"
+                }
+                val rawWithContext = buildString {
+                    append(ErrorRedactor.redact(rawDetail))
+                    if (!rawDetail.contains("Profile:")) {
+                        appendLine()
+                        appendLine("Profile: $profileName")
+                        appendLine("Provider: $providerName")
+                        appendLine("Model: $modelId")
+                    }
+                }
+                if (versions.isEmpty()) {
+                    Log.i(TAG, "resume run-end status=failed stage=processing template='${template.name}'")
+                    transformProvider.resetForNewStage("resume-end-failed-processing:${template.id}")
+                    // Re-emit a fresh snapshot so a subsequent retry can resume
+                    // again (the combined input is still valid — only the final
+                    // generation kept failing).
+                    emit(ExecutionState.Failed(
+                        error.message ?: "AI processing failed (profile: $profileName, provider: $providerName, model: $modelId)",
+                        "processing",
+                        rawError = rawWithContext.trim(),
+                        resumeSnapshot = snapshot.copy(
+                            fingerprint = computeWorkflowFingerprint(template)
+                        )
+                    ))
+                    return@flow
+                }
+                break
+            }
+        }
+
+        val durationMs = System.currentTimeMillis() - startTime
+        val tokenUsage = TokenUsage(
+            promptTokens = totalPromptTokens,
+            completionTokens = totalCompletionTokens,
+            totalTokens = totalPromptTokens + totalCompletionTokens,
+            isEstimated = aggregateIsEstimated || lastProviderType == ProviderType.FAKE,
+            inputChars = aggregateInputChars,
+            outputChars = aggregateOutputChars,
+            contextCeilingTokens = aggregateContextCeiling,
+            wasTruncated = aggregateWasTruncated
+        )
+        Log.i(TAG, "resume run-end status=completed template='${template.name}' duration=${durationMs}ms")
+        transformProvider.resetForNewStage("resume-end-completed:${template.id}")
+
         emit(
             ExecutionState.Completed(
                 outputText = versions.first().outputText,
@@ -1023,30 +1229,28 @@ class WorkflowExecutionEngine @Inject constructor(
                 return Result.failure(Exception("AI prompt text is empty"))
             }
 
-            // Build the system prompt from output format preference
+            // Compact format instructions. Kept to one clause each; the model
+            // only needs a clear directive, not an explanation of Markdown.
             val formatInstruction = when (config.outputFormat) {
-                AiPromptOutputFormat.PLAIN_TEXT -> "Respond in plain readable text. No Markdown syntax."
-                AiPromptOutputFormat.MARKDOWN -> "Respond using Markdown formatting with headings, bullets, and bold for emphasis."
-                AiPromptOutputFormat.JSON -> "Respond with valid JSON only. No explanation, no Markdown code fences."
+                AiPromptOutputFormat.PLAIN_TEXT -> "Plain text only — no Markdown syntax."
+                AiPromptOutputFormat.MARKDOWN -> "Use Markdown (## headings, bullets, **bold**)."
+                AiPromptOutputFormat.JSON -> "Output STRICT valid JSON only — no prose, no code fences."
                 AiPromptOutputFormat.CUSTOM -> ""
             }
 
             val systemPrompt = buildString {
-                append("You are a professional AI assistant executing a workflow action. ")
-                if (formatInstruction.isNotBlank()) {
-                    append(formatInstruction)
-                    append(" ")
-                }
                 append("Follow the user's prompt precisely.")
+                if (formatInstruction.isNotBlank()) {
+                    append(' ')
+                    append(formatInstruction)
+                }
             }
 
             // Build the user message: prompt + any prior context from action results
             val userMessage = buildString {
                 append(config.promptText)
-
-                // If prior actions have produced results, include them as context
                 if (actionResultMap.isNotEmpty()) {
-                    append("\n\n--- Available context from prior actions ---\n")
+                    append("\n\nPrior context:\n")
                     actionResultMap.entries.forEachIndexed { i, (_, text) ->
                         append("Source ${i + 1}: ${text.take(2000)}\n\n")
                     }
@@ -1171,11 +1375,12 @@ class WorkflowExecutionEngine @Inject constructor(
             val profileId = action.profileId.ifBlank {
                 template.defaultProfileId.ifBlank { null }
             }
+            // Compact preprocessing system prompt: ~130 chars + instruction
+            // (was ~290 chars + instruction). The preprocessing pass runs once
+            // per action with a non-blank instruction, so savings compound
+            // linearly with the number of such actions in a workflow.
             val systemPrompt = buildString {
-                append("You are preparing an input for a downstream AI workflow. ")
-                append("Apply the following instruction to the source content and return ")
-                append("only the transformed result. Do not add commentary, headings, ")
-                append("or explanations — just the prepared text.\n\n")
+                append("Apply this instruction to the content below. Return only the transformed text — no commentary, no headings.\n\n")
                 append("Instruction: ")
                 append(action.instruction.trim())
             }
@@ -1206,13 +1411,25 @@ class WorkflowExecutionEngine @Inject constructor(
         return allPlatforms.isNotEmpty()
     }
 
+    /**
+     * Builds the workflow's final-generation system prompt.
+     *
+     * Rewritten 2026-04 to be materially shorter. The previous version had:
+     *  - a verbose "You are a professional AI assistant…" preamble,
+     *  - format instructions duplicated across modes,
+     *  - a multi-line JSON schema block for social mode (~300 chars),
+     *  - redundant "Process the following source data:" footer.
+     *
+     * Total overhead dropped from ~1100 chars (social + 2 platforms) and ~480
+     * chars (standard briefing) to ~570 / ~200 respectively — ~50% shorter
+     * without losing a single semantic requirement. Motivated by Gemma 3 1B
+     * int4 timing out on overnight scheduled runs when the engine's long
+     * prompt blew past the local model's token budget.
+     */
     private fun buildSystemPrompt(template: WorkflowTemplate): String {
-        val cfg = template.outputConfig
         val socialMode = isSocialOutputMode(template)
 
         return buildString {
-            append("You are a professional AI assistant executing a custom workflow. ")
-
             if (socialMode) {
                 buildSocialSystemPrompt(this, template)
             } else {
@@ -1220,97 +1437,108 @@ class WorkflowExecutionEngine @Inject constructor(
             }
 
             if (template.globalInstruction.isNotBlank()) {
-                append("\n\nAdditional instructions: ${template.globalInstruction}")
+                append("\n\nExtra: ${template.globalInstruction.trim()}")
             }
 
-            append("\n\nProcess the following source data:\n")
+            append("\n\nSources:\n")
         }
     }
 
     private fun buildStandardSystemPrompt(sb: StringBuilder, template: WorkflowTemplate) {
         val cfg = template.outputConfig
         when (cfg.outputType) {
-            WorkflowOutputType.BRIEFING -> sb.append("Generate a structured, scannable briefing from the provided sources. ")
+            WorkflowOutputType.BRIEFING -> sb.append("Write a structured, scannable briefing from the sources below.")
             WorkflowOutputType.SOCIAL_POST -> {
-                sb.append("Generate social media posts from the provided sources. ")
+                sb.append("Write social media posts from the sources below.")
                 if (cfg.socialPlatforms.isNotEmpty()) {
-                    sb.append("Target platforms: ${cfg.socialPlatforms.joinToString { it.displayName }}. Match tone for each platform. ")
+                    sb.append(" Platforms: ${cfg.socialPlatforms.joinToString { it.displayName }}. Match each platform's tone.")
                 }
             }
             WorkflowOutputType.BOTH -> {
-                sb.append("Generate both a structured briefing AND social media posts. ")
+                sb.append("Write a structured briefing AND social media posts from the sources below.")
                 if (cfg.socialPlatforms.isNotEmpty()) {
-                    sb.append("Target platforms for social: ${cfg.socialPlatforms.joinToString { it.displayName }}. ")
+                    sb.append(" Social platforms: ${cfg.socialPlatforms.joinToString { it.displayName }}.")
                 }
             }
             WorkflowOutputType.CUSTOM -> {
                 if (cfg.customInstruction.isNotBlank()) {
-                    sb.append("Custom output instructions: ${cfg.customInstruction}. ")
+                    sb.append(cfg.customInstruction.trim())
+                } else {
+                    sb.append("Process the sources below.")
                 }
             }
         }
 
-        // Output format instruction
+        // Output format. Kept short; the previous version repeated "Format your
+        // response using…" and then enumerated syntax exhaustively — smaller
+        // models ignore the prose anyway.
         when (cfg.outputFormat) {
-            OutputFormat.MARKDOWN -> sb.append("\n\nFormat your response using Markdown. Use headings (##, ###), bullet lists, **bold** for emphasis, and --- for section separators. Do not wrap the entire response in a code block. Structure the output for easy scanning.")
-            OutputFormat.PLAIN_TEXT -> sb.append("\n\nFormat your response as plain readable text. Do not use Markdown syntax like #, *, or ```. Use simple paragraphs and line breaks for structure.")
-            OutputFormat.JSON -> sb.append("\n\nReturn your response as valid JSON only. No explanation, no commentary, no Markdown code fences. Output must be parseable JSON.")
+            OutputFormat.MARKDOWN -> sb.append(
+                "\n\nFormat: Markdown (## headings, bullets, **bold**, --- separators). Do not wrap the whole response in a code block."
+            )
+            OutputFormat.PLAIN_TEXT -> sb.append(
+                "\n\nFormat: plain text only. No Markdown syntax (#, *, backticks)."
+            )
+            OutputFormat.JSON -> sb.append(
+                "\n\nOutput STRICT valid JSON only — no prose, no code fences."
+            )
             OutputFormat.AUTO -> { /* no format constraint */ }
         }
     }
 
-    /** Build structured JSON prompt for multi-platform social output generation. */
+    /**
+     * Build structured JSON prompt for multi-platform social output generation.
+     *
+     * The schema is expressed as a single inline example — e.g.
+     * `{"outputs":[{"platform":"X","content":"...","title":"","notes":""}]}` —
+     * rather than a multi-line block. Smaller models follow inline examples
+     * just as well, and the prompt saves ~150 chars (~50 tokens).
+     *
+     * `SocialOutputParser.parseTolerant` repairs missing commas / markdown
+     * fences / stray prose as a safety net, so the prompt doesn't need to
+     * repeat formatting rules three times.
+     */
     private fun buildSocialSystemPrompt(sb: StringBuilder, template: WorkflowTemplate) {
         val cfg = template.outputConfig
         val allPlatforms = cfg.socialPlatforms.map { it.displayName } + cfg.customPlatforms
 
-        sb.append("Generate distinct social media content for multiple platforms from the provided sources.")
+        sb.append("Write distinct social posts from the sources below — one per platform, each tailored (no duplicates).")
 
-        // Global social instruction
         if (cfg.socialGlobalInstruction.isNotBlank()) {
-            sb.append("\n\nGlobal social content instruction: ${cfg.socialGlobalInstruction}")
+            sb.append("\n\nGlobal: ${cfg.socialGlobalInstruction.trim()}")
         }
 
-        // Per-platform instructions
-        sb.append("\n\nTarget platforms and style guidance:")
+        sb.append("\n\nPlatforms:")
         for (platform in allPlatforms) {
             val instruction = cfg.platformInstructions[platform]
             sb.append("\n- $platform")
             if (!instruction.isNullOrBlank()) {
-                sb.append(": $instruction")
+                sb.append(": ${instruction.trim()}")
             } else {
-                // Default style hints for built-in platforms
+                // Compact per-platform defaults. Keep the distinctive tone cue,
+                // drop filler like "and call-to-action. 1-3 short paragraphs."
                 when (platform) {
-                    "X" -> sb.append(": Short, punchy, under 280 characters. Use hashtags sparingly.")
-                    "LinkedIn" -> sb.append(": Professional tone with a hook and call-to-action. 1-3 short paragraphs.")
-                    "Facebook" -> sb.append(": Conversational and community-friendly. Encourage engagement.")
-                    "Medium" -> sb.append(": Longer teaser paragraph with article-style tone. Thoughtful and insightful.")
-                    "Instagram" -> sb.append(": Caption-style. Visual, aspirational, with relevant hashtags.")
-                    "Threads" -> sb.append(": Narrative, conversational thread style.")
+                    "X" -> sb.append(": punchy, under 280 chars. Hashtags sparingly.")
+                    "LinkedIn" -> sb.append(": professional hook, 1–3 short paragraphs.")
+                    "Facebook" -> sb.append(": conversational, encourages engagement.")
+                    "Medium" -> sb.append(": article-style teaser paragraph, thoughtful.")
+                    "Instagram" -> sb.append(": caption-style with relevant hashtags.")
+                    "Threads" -> sb.append(": narrative, conversational thread tone.")
                 }
             }
         }
 
-        // Include briefing section for BOTH mode
         if (cfg.outputType == WorkflowOutputType.BOTH) {
-            sb.append("\n\nAlso include a briefing section. Add it as an additional output entry with platform name \"Briefing\".")
+            sb.append("\n\nAlso add one entry with platform \"Briefing\" containing a structured briefing.")
         }
 
-        // Structured JSON output instruction
-        sb.append("\n\nIMPORTANT: Return your response as valid JSON only. No explanation, no commentary, no Markdown code fences.")
-        sb.append("\nUse exactly this JSON schema:")
-        sb.append("\n{")
-        sb.append("\n  \"outputs\": [")
-        sb.append("\n    {")
-        sb.append("\n      \"platform\": \"Platform Name\",")
-        sb.append("\n      \"content\": \"The generated content for this platform\",")
-        sb.append("\n      \"title\": \"Optional short title or hook\",")
-        sb.append("\n      \"notes\": \"Optional notes like suggested hashtags or posting tips\"")
-        sb.append("\n    }")
-        sb.append("\n  ]")
-        sb.append("\n}")
-        sb.append("\n\nGenerate one entry per platform. Each platform's content must be distinct and tailored — do not simply rewrite the same text.")
-        sb.append("\nPlatforms to generate for: ${allPlatforms.joinToString(", ")}")
+        // Single compact schema block. The final rendering layer
+        // (SocialOutputParser.parseTolerant) handles missing commas, stray
+        // prose, and code fences, so we don't need defensive repetition.
+        sb.append("\n\nOutput STRICT valid JSON only — no prose, no code fences. Use this exact shape:")
+        sb.append("\n{\"outputs\":[{\"platform\":\"X\",\"content\":\"…\",\"title\":\"\",\"notes\":\"\"}]}")
+        sb.append("\nOne object per platform in \"outputs\". Double-quoted strings, commas between fields. title/notes may be \"\".")
+        sb.append("\nPlatforms to generate: ${allPlatforms.joinToString(", ")}")
     }
 
     private data class ActionResult(

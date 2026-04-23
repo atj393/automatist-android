@@ -366,6 +366,29 @@ fun WorkflowEditorScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
 
+            // ── Auto-retry toggle ──
+            // Execution-behaviour setting rather than a notification, but slotted
+            // here because it's the only other per-workflow run-behaviour control
+            // and adding a new section just for one switch would be over-engineering.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Retry automatically")
+                    Text(
+                        "If enabled, failed runs will retry up to 3 times automatically. " +
+                            "Successful earlier stages are reused when safe.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = state.autoRetryEnabled,
+                    onCheckedChange = viewModel::updateAutoRetryEnabled
+                )
+            }
+
             // ── Validation Errors ──
             if (state.validationErrors.isNotEmpty()) {
                 Card(
