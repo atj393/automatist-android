@@ -155,6 +155,33 @@ fun WorkflowRunScreen(
                 }
             }
 
+            // Manual-run expectation setter — shown only while the run is
+            // actively in flight. Leaving this screen cancels the run (the
+            // VM's scope is tied to the NavBackStackEntry and cancels on
+            // back-nav). Message is calm and informational — it must never
+            // look like an error. Hidden for auto-retry iterations because
+            // the auto-retry badge already explains what's happening.
+            if (state.isRunning && !state.isAutoRetrying) {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            Icons.Default.Info, null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Manual runs stay active while this screen is open. Leaving this page will cancel the run. Scheduled workflows run in the background and aren't affected.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             // Progress stages
             Text("Run Log", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
 

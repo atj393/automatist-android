@@ -34,6 +34,18 @@ internal object LocalPromptBuilder {
     const val INSTRUCTION_CHARS = 900
 
     /**
+     * Tight content cap for the local-only social path. The engine's social
+     * system prompt (even the compact variant we emit below) plus a normal
+     * content body at 2500 chars brings the combined prompt close to the
+     * 1280-token input ceiling on a Gemma 3 1B int4. 1600 chars of content
+     * leaves comfortable headroom for prompt + schema + output, so scheduled
+     * overnight runs on the default "News to Social Posts" template complete
+     * reliably instead of timing out. Cloud paths are unaffected — this only
+     * applies when [buildForMediaPipe] detects a social-mode override.
+     */
+    const val SOCIAL_CONTENT_CHARS = 1600
+
+    /**
      * Fallback instruction cap used on the retry path — if the first build
      * somehow overshoots the token estimate (e.g. dense non-English text that
      * tokenises tighter than 3 chars/token), the provider rebuilds with a much
@@ -66,7 +78,22 @@ internal object LocalPromptBuilder {
         entry: OfflineModelEntry,
         instructionCap: Int = INSTRUCTION_CHARS
     ): String {
-        val rawInstruction = input.systemPromptOverride ?: defaultInstructionFor(type)
+        val rawOverride = input.systemPromptOverride
+
+        // Local-only substitution: when the engine authored a social-output
+        // prompt for a cloud provider (recognisable by its schema signature),
+        // swap it for a compact local variant that asks for a bare JSON array
+        // of {platform, content} — no title/notes, no per-platform tone prose,
+        // no duplicated formatting rules. SocialOutputParser.parseTolerant
+        // accepts both the bare-array and outputs-wrapped shapes, so the
+        // rendered-output pipeline is unaffected.
+        if (rawOverride != null && isSocialOverride(rawOverride)) {
+            val compact = compactLocalSocialFor(rawOverride)
+            val safeContent = input.text.take(SOCIAL_CONTENT_CHARS)
+            return wrapPrompt(compact, safeContent)
+        }
+
+        val rawInstruction = rawOverride ?: defaultInstructionFor(type)
         val instruction = if (rawInstruction.length > instructionCap) {
             rawInstruction.take(instructionCap - TRUNCATION_MARKER.length) + TRUNCATION_MARKER
         } else {
@@ -74,6 +101,84 @@ internal object LocalPromptBuilder {
         }
         val safeContent = input.text.take(entry.contextWindowChars)
         return wrapPrompt(instruction, safeContent)
+    }
+
+    /**
+     * Signature match for the engine's social-mode prompt. The engine's
+     * [WorkflowExecutionEngine.buildSocialSystemPrompt] always emits the
+     * literal `{"outputs":[{"platform":` schema fragment — stable across
+     * cloud template variants. We use that fragment as a cheap, precise
+     * detector so a user-authored custom instruction containing "social"
+     * text doesn't accidentally trip this path.
+     */
+    internal fun isSocialOverride(override: String): Boolean =
+        override.contains("\"outputs\":[{\"platform\":")
+
+    /**
+     * Build a compact local-only social instruction from the cloud override.
+     *
+     * Keeps the essentials:
+     *  - intent ("one post per platform, distinct")
+     *  - platform list (extracted from the cloud override's Platforms block)
+     *  - global/custom directives if the template author added any
+     *  - strict-JSON + schema — but the **bare array** shape (no `outputs`
+     *    wrapper, no title/notes) which is materially shorter and easier for
+     *    a 1B int4 model to emit correctly
+     *
+     * Drops the per-platform tone hints, the nested schema wrapper, and the
+     * "double-quoted strings, commas between fields" restatement. Cuts the
+     * system-prompt footprint from ~700–900 chars to ~250 chars for the
+     * default News-to-Social template, which frees up input-token budget for
+     * actual source content and reduces prefill latency substantially.
+     */
+    private fun compactLocalSocialFor(cloudOverride: String): String {
+        val platforms = extractPlatforms(cloudOverride)
+        val globalInstruction = extractGlobalInstruction(cloudOverride)
+
+        return buildString {
+            append("Write one short social post per platform from the content below. ")
+            append("Each post must be distinct and tailored to its platform.")
+            if (globalInstruction.isNotBlank()) {
+                append("\nExtra: ")
+                append(globalInstruction)
+            }
+            if (platforms.isNotEmpty()) {
+                append("\nPlatforms: ")
+                append(platforms.joinToString(", "))
+            }
+            append("\n\nOutput STRICT valid JSON only — no prose, no code fences. Use this exact shape:")
+            append("\n[{\"platform\":\"X\",\"content\":\"…\"}]")
+            append("\nOne object per platform. Double-quoted strings. Nothing outside the array.")
+        }
+    }
+
+    /**
+     * Pull the platform list out of the cloud override. The engine emits
+     * `Platforms:\n- X\n- LinkedIn\n- Facebook` and a trailing
+     * `Platforms to generate: X, LinkedIn, Facebook` hint — we read the
+     * bulleted block because it's more precise (each bullet is one platform).
+     * Falls back to the trailing hint if the bulleted block is missing.
+     */
+    private fun extractPlatforms(cloudOverride: String): List<String> {
+        val bulletRegex = Regex("""(?m)^-\s+([^:\n]+?)(?::|$)""")
+        val bulleted = bulletRegex.findAll(cloudOverride)
+            .map { it.groupValues[1].trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+        if (bulleted.isNotEmpty()) return bulleted
+
+        val trailing = Regex("""Platforms to generate:\s*(.+)""").find(cloudOverride)
+        return trailing?.groupValues?.get(1)
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+    }
+
+    /** Extract the `Global: ...` line from the cloud override if present. */
+    private fun extractGlobalInstruction(cloudOverride: String): String {
+        val match = Regex("""(?m)^Global:\s*(.+)$""").find(cloudOverride)
+        return match?.groupValues?.get(1)?.trim().orEmpty()
     }
 
     /**

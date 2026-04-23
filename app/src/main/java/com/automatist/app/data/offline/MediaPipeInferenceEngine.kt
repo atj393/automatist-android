@@ -192,6 +192,21 @@ class MediaPipeInferenceEngine @Inject constructor(
      * @throws ModelInferenceException on any error (wraps the underlying cause)
      */
     private fun runMediaPipeInference(modelFile: File, prompt: String): String {
+        // Trust-the-numbers fix: clear `lastTimings` at the START of the call.
+        // The outer withTimeoutOrNull(INFERENCE_TIMEOUT_MS) can fire while a
+        // prior call's native inference is still running on the dedicated
+        // worker thread (MediaPipe does not cooperate with coroutine
+        // cancellation). When that prior native call finally completes, its
+        // recordTimings() writes lastTimings with a generate= value that
+        // exceeds the 120 s timeout — e.g. generate=1030047ms. If the CURRENT
+        // call then times out before its own recordTimings() lands, the
+        // provider's error surface formats lastTimings from the prior run,
+        // producing the observed mismatch ("timeout 120000ms … generate=1030047ms").
+        // Clearing here guarantees a timeout report on THIS call either shows
+        // timings from THIS call (if recordTimings ran) or honestly reports
+        // "no phase timings recorded" (if it didn't).
+        lastTimings = null
+
         val totalStart = System.currentTimeMillis()
         var modelLoadMs = 0L
         var sessionCreateMs = 0L

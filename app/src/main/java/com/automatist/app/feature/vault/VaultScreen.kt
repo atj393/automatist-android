@@ -125,6 +125,7 @@ fun VaultScreen(
 
                 item(key = "about") { Card2(Icons.Default.Info, "About", "Automatist — Workflow AI utility") {
                     IRow("Version", BuildConfig.VERSION_NAME); IRow("Storage", "All data stays on device"); IRow("API keys", "Stored locally, never uploaded")
+                    LinkRow("Website", "https://automatist.cloud")
                 } }
 
                 item(key = "security") { Card2(Icons.Default.Shield, "Security", "How Automatist protects your data") {
@@ -431,6 +432,38 @@ private fun OnDeviceAISection(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+        // Honesty card: local models share the phone's RAM and CPU budget with
+        // everything else it's doing, so speed and consistency vary. Framed as
+        // expectation-setting, not a warning — shown once in Settings, not
+        // repeated on every run.
+        Spacer(Modifier.height(6.dp))
+        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f))) {
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+                Icon(
+                    Icons.Default.Info, null,
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(
+                        "What to expect from on-device models",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Speed and quality depend on your device's available memory and current system load, " +
+                        "so results may vary between runs. On-device AI is best for smaller tasks, quick " +
+                        "experiments, and testing. For the most consistent results on longer or more complex " +
+                        "workflows, use a cloud AI provider (OpenAI, Anthropic, or Gemini).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
             }
         }
     }
@@ -744,6 +777,51 @@ private fun Card2(icon: androidx.compose.ui.graphics.vector.ImageVector, title: 
     }
 }
 
+/**
+ * Tappable info row for external URLs. Mirrors [IRow]'s label / value layout
+ * so it blends into the About card, then adds primary-tinted text + an
+ * external-link glyph on the trailing edge so it reads as "link" not "info".
+ * The URL is displayed without the `https://` prefix to keep the row tidy.
+ * Launch is wrapped in try/catch so a device with no browser fails silently
+ * instead of crashing — the row stays informational.
+ */
+@Composable
+private fun LinkRow(label: String, url: String) {
+    val ctx = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                try {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                } catch (_: Exception) {
+                    // No browser / no Activity able to handle the intent —
+                    // swallow; the row is purely informational in that case.
+                }
+            }
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                url.removePrefix("https://").removePrefix("http://"),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.width(6.dp))
+            Icon(
+                Icons.Default.OpenInNew,
+                contentDescription = "Open $label in browser",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
+}
+
 // ══════════════════ Profile Editor ══════════════════
 
 @Composable
@@ -806,9 +884,17 @@ private fun ProfileEditor(state: VaultUiState, vm: VaultViewModel, modifier: Mod
                             Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.Top) {
                                 Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
+                                // Folded the "What to expect" honesty line into
+                                // the same info card so a user picking a local
+                                // model in the profile editor sees both the
+                                // availability hint and the variability hint at
+                                // once — no stacked notices.
                                 Text(
                                     "Runs fully offline — no API key or internet required. " +
-                                    "Download or check availability in Settings → On-device AI before first use.",
+                                    "Download or check availability in Settings → On-device AI before first use. " +
+                                    "Speed and consistency depend on your device's available memory and system load; " +
+                                    "on-device AI is best for smaller tasks and testing. For the most consistent " +
+                                    "results on longer workflows, use a cloud provider.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
