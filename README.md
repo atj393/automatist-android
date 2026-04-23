@@ -4,6 +4,8 @@ A workflow-first AI utility for Android that transforms text content into struct
 
 Automatist is not a chatbot. It takes articles, meeting notes, and RSS feeds as input and produces summaries, social media posts, professional briefs, and strategic insights using pluggable AI providers.
 
+> **Proprietary software.** Automatist is a commercial product. The source in this repository is **All Rights Reserved** and is not open source. It is published for transparency, security review, and personal evaluation only. See [LICENSE.md](LICENSE.md), [EULA.md](EULA.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Do not copy, fork, redistribute, or reuse this code without prior written permission.
+
 ---
 
 ## Features
@@ -276,7 +278,12 @@ Sign in with Google → CloudSyncManager → Export workflows (secret-free) → 
 
 ---
 
-## Contributing
+## Extending the codebase (internal)
+
+> Automatist is proprietary (see [LICENSE.md](LICENSE.md)). These notes are
+> for the project maintainer's internal reference and for reviewers with
+> written permission. External pull requests and forks are not accepted.
+> If you have an idea or a security report, email **alexistoby393@gmail.com**.
 
 ### Adding a New AI Provider
 1. Create API interface + models in `data/providers/{name}/`
@@ -353,4 +360,20 @@ Do not regenerate or resize icons without testing on a real device with an aggre
 
 ## License
 
-<!-- Add your license here -->
+Automatist is proprietary software. Copyright © 2026 Alexis Johnson. All Rights Reserved.
+
+- [LICENSE.md](LICENSE.md) — proprietary source-code license (viewing and evaluation only; no redistribution or reuse)
+- [EULA.md](EULA.md) — end-user licence agreement for the installed app
+- [NOTICE.md](NOTICE.md) — short third-party attribution notice
+- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — detailed inventory of third-party components and their licenses
+- Hosted legal pages: [Terms](https://automatist.cloud/terms.html) · [Privacy](https://automatist.cloud/privacy.html)
+
+Third-party dependencies (AndroidX, Kotlin, OkHttp, Retrofit, Hilt, MediaPipe, Google Play Billing, Google Drive API, AICore, etc.) remain governed by their own licenses, as listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Gemma model weights that the app can optionally download at runtime remain governed by the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and [Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy); Automatist does not claim ownership of those weights.
+
+For commercial licensing, partnership, or reuse enquiries, contact **alexistoby393@gmail.com**.
+
+---
+
+## Trademarks
+
+"Automatist" and the Automatist logo are trademarks of Alexis Johnson. "Android", "Google Play", "Gemma", and "Gemini" are trademarks of Google LLC. Automatist is not affiliated with, endorsed by, or sponsored by Google LLC.

@@ -346,7 +346,13 @@ class WorkflowEditorViewModel @Inject constructor(
             if (state.trigger.daysOfWeek.isEmpty()) errors.add("Select at least one day of the week.")
         }
         if (state.trigger is WorkflowTrigger.Interval) {
-            if (state.trigger.intervalMinutes < 15) errors.add("Interval must be at least 15 minutes.")
+            // New picker permits 1 minute → 24 hours (1440 minutes). Existing
+            // saved workflows outside this range (e.g. imported presets,
+            // legacy 15-min floor) remain valid and load fine; this only
+            // gates new commits from the editor.
+            val m = state.trigger.intervalMinutes
+            if (m < 1) errors.add("Interval must be at least 1 minute.")
+            if (m > 24 * 60) errors.add("Interval must be at most 24 hours.")
         }
         return errors
     }
