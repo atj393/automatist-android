@@ -546,30 +546,15 @@ private fun TriggerSection(
             }
         }
 
-        // Interval presets
+        // Flexible Minutes (1–59) / Hours (1–24) picker backed by the same
+        // intervalMinutes integer that the scheduler already consumes.
+        // Storage contract is preserved byte-for-byte.
         if (trigger is WorkflowTrigger.Interval) {
-            val presets = listOf(15, 30, 60, 120, 240, 480)
-            Column(modifier = Modifier.padding(start = 48.dp)) {
-                Text("Run every:", style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    presets.forEach { mins ->
-                        val label = when {
-                            mins < 60 -> "${mins}m"
-                            mins == 60 -> "1h"
-                            else -> "${mins / 60}h"
-                        }
-                        FilterChip(
-                            selected = trigger.intervalMinutes == mins,
-                            onClick = { onTriggerChanged(trigger.copy(intervalMinutes = mins)) },
-                            label = { Text(label, style = MaterialTheme.typography.labelSmall) }
-                        )
-                    }
-                }
-            }
+            IntervalPicker(
+                intervalMinutes = trigger.intervalMinutes,
+                onChange = { newMinutes -> onTriggerChanged(trigger.copy(intervalMinutes = newMinutes)) },
+                modifier = Modifier.padding(start = 48.dp)
+            )
         }
 
         // Show computed next run
@@ -594,6 +579,149 @@ private fun TriggerSection(
             )
         }
     }
+}
+
+/**
+ * Derive the UI's (value, unit) pair from a stored `intervalMinutes` integer.
+ *
+ * Storage remains the single source of truth — this function is pure and
+ * lossless for all values that fit the new picker (Minutes 1–59, Hours 1–24).
+ * Values that don't fit cleanly (legacy `90`, imported `150`, absurd `10000`)
+ * are SNAPPED for display so the picker always renders a valid state, but
+ * the caller keeps the raw stored value until the user actually changes
+ * something in the picker. This snapping is display-only; it never mutates
+ * the stored interval until the user explicitly commits a change.
+ */
+internal fun deriveIntervalUi(intervalMinutes: Int): IntervalUi {
+    val m = intervalMinutes
+    return when {
+        m in 1..59 -> IntervalUi(m, IntervalUnit.Minutes, snapped = false)
+        m == 0 || m < 0 -> IntervalUi(15, IntervalUnit.Minutes, snapped = true)
+        m % 60 == 0 && m / 60 in 1..24 -> IntervalUi(m / 60, IntervalUnit.Hours, snapped = false)
+        m in 60..(24 * 60) -> IntervalUi((m / 60).coerceIn(1, 24), IntervalUnit.Hours, snapped = true)
+        else -> IntervalUi(24, IntervalUnit.Hours, snapped = true)
+    }
+}
+
+internal enum class IntervalUnit { Minutes, Hours }
+
+internal data class IntervalUi(
+    val value: Int,
+    val unit: IntervalUnit,
+    /**
+     * True when the stored [WorkflowTrigger.Interval.intervalMinutes] didn't
+     * fit the new picker ranges cleanly and the displayed (value, unit) was
+     * rounded. Lets the UI surface a small note so the user understands why
+     * the displayed value doesn't exactly match what was previously saved.
+     */
+    val snapped: Boolean
+)
+
+/** Convert a picker selection back to the storage integer. */
+internal fun intervalUiToMinutes(value: Int, unit: IntervalUnit): Int = when (unit) {
+    IntervalUnit.Minutes -> value.coerceIn(1, 59)
+    IntervalUnit.Hours -> value.coerceIn(1, 24) * 60
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun IntervalPicker(
+    intervalMinutes: Int,
+    onChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val ui = remember(intervalMinutes) { deriveIntervalUi(intervalMinutes) }
+    val maxValue = when (ui.unit) {
+        IntervalUnit.Minutes -> 59
+        IntervalUnit.Hours -> 24
+    }
+    val minValue = 1
+
+    Column(modifier = modifier) {
+        Text("Run every:", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(6.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Stepper — compact, mobile-friendly, no keyboard required. Caps
+            // at the unit's maximum so the user can't overshoot into an
+            // invalid state. Each tap commits immediately.
+            IconButton(
+                onClick = {
+                    val next = (ui.value - 1).coerceIn(minValue, maxValue)
+                    if (next != ui.value) onChange(intervalUiToMinutes(next, ui.unit))
+                },
+                enabled = ui.value > minValue,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(Icons.Default.Remove, "Decrease", modifier = Modifier.size(18.dp))
+            }
+            Text(
+                ui.value.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.widthIn(min = 28.dp)
+            )
+            IconButton(
+                onClick = {
+                    val next = (ui.value + 1).coerceIn(minValue, maxValue)
+                    if (next != ui.value) onChange(intervalUiToMinutes(next, ui.unit))
+                },
+                enabled = ui.value < maxValue,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(Icons.Default.Add, "Increase", modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            // Unit selector — SingleChoiceSegmentedButtonRow is the cleanest
+            // Material pattern for a two-option toggle and handles accessibility
+            // (role, semantics) automatically.
+            SingleChoiceSegmentedButtonRow {
+                SegmentedButton(
+                    selected = ui.unit == IntervalUnit.Minutes,
+                    onClick = {
+                        if (ui.unit != IntervalUnit.Minutes) {
+                            val clamped = ui.value.coerceIn(1, 59)
+                            onChange(intervalUiToMinutes(clamped, IntervalUnit.Minutes))
+                        }
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                ) { Text("Minutes", style = MaterialTheme.typography.labelSmall) }
+                SegmentedButton(
+                    selected = ui.unit == IntervalUnit.Hours,
+                    onClick = {
+                        if (ui.unit != IntervalUnit.Hours) {
+                            val clamped = ui.value.coerceIn(1, 24)
+                            onChange(intervalUiToMinutes(clamped, IntervalUnit.Hours))
+                        }
+                    },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                ) { Text("Hours", style = MaterialTheme.typography.labelSmall) }
+            }
+        }
+
+        // Natural-language summary with correct pluralisation, and a small
+        // footnote when the stored value had to be snapped for display.
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Every ${intervalSummary(ui.value, ui.unit)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (ui.snapped) {
+            Text(
+                "Adjusted from saved value ($intervalMinutes min). Saving will store the new interval.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+        }
+    }
+}
+
+private fun intervalSummary(value: Int, unit: IntervalUnit): String = when (unit) {
+    IntervalUnit.Minutes -> if (value == 1) "1 minute" else "$value minutes"
+    IntervalUnit.Hours -> if (value == 1) "1 hour" else "$value hours"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

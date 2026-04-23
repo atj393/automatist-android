@@ -87,11 +87,34 @@ sealed interface WorkflowTrigger {
     data class Interval(
         val intervalMinutes: Int = 60
     ) : WorkflowTrigger {
+        /**
+         * Human-readable label used throughout the UI. Keeps the compact
+         * "Every 15m" / "Every 3h" shorthand for tight chips and row
+         * summaries. Full sentences with correct plurals ("Every 1 minute",
+         * "Every 3 hours") are produced by [displayLabelVerbose] for places
+         * that have horizontal room.
+         */
         val displayLabel: String get() = when {
             intervalMinutes < 60 -> "Every ${intervalMinutes}m"
             intervalMinutes == 60 -> "Every hour"
             intervalMinutes % 60 == 0 -> "Every ${intervalMinutes / 60}h"
             else -> "Every ${intervalMinutes / 60}h ${intervalMinutes % 60}m"
+        }
+
+        /** Long-form label with correct singular/plural handling. */
+        val displayLabelVerbose: String get() = when {
+            intervalMinutes <= 0 -> "Every 0 minutes"
+            intervalMinutes == 1 -> "Every 1 minute"
+            intervalMinutes < 60 -> "Every $intervalMinutes minutes"
+            intervalMinutes == 60 -> "Every 1 hour"
+            intervalMinutes % 60 == 0 -> "Every ${intervalMinutes / 60} hours"
+            else -> {
+                val h = intervalMinutes / 60
+                val m = intervalMinutes % 60
+                val hPart = if (h == 1) "1 hour" else "$h hours"
+                val mPart = if (m == 1) "1 minute" else "$m minutes"
+                "Every $hPart $mPart"
+            }
         }
     }
 
