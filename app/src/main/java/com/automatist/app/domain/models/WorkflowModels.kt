@@ -25,7 +25,18 @@ data class WorkflowTemplate(
     val category: String = "",                 // UI grouping: "News & Content", "Communication", etc.
     val customization: TemplateCustomization = TemplateCustomization(),
     // ── Profile routing ──
-    val defaultProfileId: String = "" // workflow-level default profile ("" = use app default)
+    val defaultProfileId: String = "", // workflow-level default profile ("" = use app default)
+    // ── Auto-retry ──
+    /**
+     * When true, a failed run automatically retries up to
+     * [WorkflowRun.MAX_AUTO_RETRIES] times before the run chain is finally
+     * marked failed. Each retry reuses [ResumeSnapshot] when safe, so the
+     * expensive earlier stages (RSS/URL fetch, per-action preprocessing) are
+     * only rerun when resume is unsafe. Defaults to OFF for backwards
+     * compatibility — existing workflows keep their current fail-fast behaviour
+     * until the user explicitly opts in.
+     */
+    val autoRetryEnabled: Boolean = false
 )
 
 // ── Template Customization Rules ──
@@ -316,9 +327,39 @@ data class SocialOutput(
 /**
  * Utility to parse social output JSON from AI response.
  * Expected schema: {"outputs": [{"platform": "X", "content": "...", "title": "...", "notes": "..."}]}
+ *
+ * Two parse modes:
+ *  - [parse] — strict. Used by cloud-quality outputs and by [isSocialJson] for
+ *    cheap "is this likely a social JSON" checks. Returns empty on any
+ *    malformation.
+ *  - [parseTolerant] — strict-first-then-repair. Local/offline models (notably
+ *    Gemma 3 1B int4) often emit almost-valid JSON (missing commas, code
+ *    fences, trailing commentary). When strict fails, this tries conservative
+ *    repairs and re-parses. Cloud outputs never reach the repair code because
+ *    they pass strict parse on the first attempt, so this is a pure additive
+ *    behaviour — no risk to OpenAI / Anthropic / Gemini output handling.
  */
 object SocialOutputParser {
     private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+    /**
+     * Result of [parseTolerant]. Carries the parsed outputs plus whether the
+     * input had to be repaired first. The caller can use [wasRepaired] to show
+     * a subtle UI hint, but the rendered content should use [outputs]
+     * directly — [originalRaw] always preserves the true model output so the
+     * Raw view can show it verbatim.
+     */
+    data class ParseResult(
+        val outputs: List<SocialOutput>,
+        val wasRepaired: Boolean,
+        val originalRaw: String,
+        /**
+         * Repaired JSON string if repair was both needed and successful;
+         * null when strict parse succeeded or repair failed entirely. Useful
+         * for a "Repaired JSON" diagnostic view — NOT for the Raw view.
+         */
+        val repairedJson: String? = null
+    )
 
     fun parse(rawJson: String): List<SocialOutput> {
         return try {
@@ -343,6 +384,44 @@ object SocialOutputParser {
         }
     }
 
+    /**
+     * Best-effort parse that tries strict first and falls back to a conservative
+     * JSON repair. The [raw] string is never mutated in the result — [ParseResult.originalRaw]
+     * always reflects the true model output so the Raw view can show it verbatim.
+     */
+    fun parseTolerant(raw: String): ParseResult {
+        // 1. Strict first. Cloud outputs hit this and never touch the repair code.
+        val strict = parse(raw)
+        if (strict.isNotEmpty()) {
+            return ParseResult(
+                outputs = strict,
+                wasRepaired = false,
+                originalRaw = raw,
+                repairedJson = null
+            )
+        }
+
+        // 2. Conservative repair. Returns null if nothing repairable applies.
+        val repaired = repairJson(raw) ?: return ParseResult(emptyList(), false, raw, null)
+        // Don't count "no-op" repairs as repairs — if the string didn't actually
+        // change, strict already failed and running parse() again won't help.
+        if (repaired == raw) return ParseResult(emptyList(), false, raw, null)
+
+        val afterRepair = parse(repaired)
+        return if (afterRepair.isNotEmpty()) {
+            ParseResult(
+                outputs = afterRepair,
+                wasRepaired = true,
+                originalRaw = raw,
+                repairedJson = repaired
+            )
+        } else {
+            // Repair produced something, but it still isn't valid social JSON.
+            // Fall back to "parsing failed" — the UI will show raw-only.
+            ParseResult(emptyList(), false, raw, null)
+        }
+    }
+
     fun isSocialJson(text: String): Boolean {
         return try {
             val trimmed = text.trim()
@@ -353,6 +432,86 @@ object SocialOutputParser {
         } catch (_: Exception) {
             false
         }
+    }
+
+    // ── JSON repair heuristics ──
+    //
+    // Every fix below is conservative. The idea is to cover the cases we've
+    // actually observed from Gemma 3 1B int4 (markdown fences, stray prose
+    // before/after the object, trailing commas, the occasional missing comma
+    // between fields, smart quotes). Anything riskier — unquoted keys, nested
+    // structural rewrites — is intentionally NOT attempted: a failed render is
+    // better than a silently misrepresented one.
+
+    private fun repairJson(raw: String): String? {
+        if (raw.isBlank()) return null
+        var s = raw.trim()
+
+        // Strip leading/trailing markdown code fences: ```json ... ``` or ``` ... ```
+        s = stripCodeFences(s)
+
+        // Narrow to the outermost JSON object (handles stray leading/trailing prose).
+        extractOutermostJsonObject(s)?.let { s = it }
+
+        // Convert smart/curly quotes to straight ASCII quotes. Gemma sometimes
+        // emits '“' / '”' around strings, which kotlinx.serialization rejects.
+        s = s
+            .replace('“', '"')
+            .replace('”', '"')
+            .replace('‘', '\'')
+            .replace('’', '\'')
+
+        // Remove trailing commas before } or ] — common Gemma tic.
+        s = s.replace(Regex(""",\s*(?=[}\]])"""), "")
+
+        // Insert missing commas at three structural patterns:
+        //   a) end-of-string directly followed by start-of-next-key string
+        //   b) }  directly followed by { (array of objects, missing comma)
+        //   c) ]  directly followed by " (string key after a closing array)
+        s = s.replace(Regex("""("(?:[^"\\]|\\.)*")(\s*[\r\n]+\s*)(")"""), "$1,$2$3")
+        s = s.replace(Regex("""(\})(\s*[\r\n]+\s*)(\{)"""), "$1,$2$3")
+        s = s.replace(Regex("""(\])(\s*[\r\n]+\s*)(")"""), "$1,$2$3")
+
+        return s.takeIf { it != raw }
+    }
+
+    private fun stripCodeFences(s: String): String {
+        val fenceStart = Regex("""^\s*```(?:json|JSON)?\s*""")
+        val fenceEnd = Regex("""\s*```\s*$""")
+        return s.replace(fenceStart, "").replace(fenceEnd, "").trim()
+    }
+
+    /**
+     * Locate the outermost balanced JSON object within [s]. Ignores braces
+     * inside string literals. Returns null if no balanced object exists —
+     * callers keep the unmodified input in that case.
+     */
+    private fun extractOutermostJsonObject(s: String): String? {
+        val start = s.indexOf('{')
+        if (start < 0) return null
+        var depth = 0
+        var inString = false
+        var escape = false
+        for (i in start until s.length) {
+            val c = s[i]
+            if (escape) { escape = false; continue }
+            if (inString) {
+                when (c) {
+                    '\\' -> escape = true
+                    '"' -> inString = false
+                }
+                continue
+            }
+            when (c) {
+                '"' -> inString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return s.substring(start, i + 1)
+                }
+            }
+        }
+        return null
     }
 }
 
@@ -387,11 +546,43 @@ data class WorkflowRun(
     val isSocialOutput: Boolean = false,
     val stagesJson: String = "",
     val synthesisInput: String = "",   // frozen combined input for regeneration
-    val versionsJson: String = ""      // JSON: List<OutputVersion>
+    val versionsJson: String = "",     // JSON: List<OutputVersion>
+    // Resume snapshot captured on failure so retry can safely skip
+    // already-successful work. Blank for runs that didn't capture one
+    // (older runs, completed runs, non-resumable failure stages).
+    val resumeSnapshotJson: String = "",
+    /**
+     * Which automatic retry this run represents.
+     * - 0: the initial attempt (or a manual retry the user kicked off)
+     * - 1..[MAX_AUTO_RETRIES]: an automatic retry triggered after the
+     *   previous run in the same chain failed
+     *
+     * Auto-retry stops once this would exceed [MAX_AUTO_RETRIES], giving a
+     * hard ceiling of 1 initial attempt + [MAX_AUTO_RETRIES] auto-retries.
+     */
+    val autoRetryAttempt: Int = 0,
+    /**
+     * Points to the run that started this auto-retry chain (the initial
+     * attempt) so run history can show "Attempt 2/4" grouping. Null for
+     * initial runs and manual retries.
+     */
+    val parentRunId: Long? = null
 ) {
-    /** Parse social outputs from outputText when isSocialOutput is true. */
+    companion object {
+        /**
+         * Max number of automatic retries. With the initial attempt this
+         * gives 4 total tries before the chain is considered finally failed.
+         */
+        const val MAX_AUTO_RETRIES = 3
+    }
+    /**
+     * Parse social outputs from outputText when isSocialOutput is true.
+     * Uses the tolerant parser so almost-valid local-model JSON still yields
+     * cards. The true raw output is always on [outputText] itself — this
+     * accessor is for rendered/structured consumption only.
+     */
     val socialOutputs: List<SocialOutput>
-        get() = if (isSocialOutput) SocialOutputParser.parse(outputText) else emptyList()
+        get() = if (isSocialOutput) SocialOutputParser.parseTolerant(outputText).outputs else emptyList()
 
     /** Parse persisted stage history from stagesJson. */
     val persistedStages: List<PersistedStage>
@@ -401,9 +592,128 @@ data class WorkflowRun(
     val outputVersions: List<OutputVersion>
         get() = OutputVersion.parseList(versionsJson)
 
+    /** Parse resume snapshot, or null if blank / unparseable. */
+    val resumeSnapshot: ResumeSnapshot?
+        get() = ResumeSnapshot.parse(resumeSnapshotJson)
+
     /** Whether this run has enough context for regeneration. */
     val canRegenerate: Boolean
         get() = synthesisInput.isNotBlank() && status == WorkflowRunStatus.COMPLETED
+}
+
+// ── Resume Snapshot (captured on safe-to-resume failures) ──
+
+/**
+ * Immutable snapshot of what the engine had computed up to the point of
+ * failure. Attached to failed [WorkflowRun] rows so the retry path can
+ * resume from the first failed step instead of rerunning everything.
+ *
+ * The [fingerprint] is a stable hash of the workflow definition at run time.
+ * A retry validates that the CURRENT template still matches this fingerprint
+ * before reusing any snapshot state — if the user edited the workflow after
+ * the failure, the snapshot is treated as stale and a full rerun happens.
+ *
+ * [reachedStage] documents how far execution got so the retry can pick the
+ * right entry point. v1 supports "PROCESSING" (final-generation failure); the
+ * schema leaves room for per-action resume in a future revision.
+ *
+ * [synthesisInput] is the frozen combined prompt that was about to be sent
+ * to the model. Non-blank ONLY when reachedStage == "PROCESSING".
+ *
+ * [actionOutputs] captures every successful action's prepared text, keyed by
+ * [WorkflowAction.id]. v1 doesn't reuse these for final-gen resume (the
+ * combined input is enough), but they're captured for future action-level
+ * resume so we don't need another migration later.
+ */
+@Serializable
+data class ResumeSnapshot(
+    val fingerprint: String,
+    val reachedStage: String,
+    val synthesisInput: String = "",
+    val actionOutputs: List<ResumedActionOutput> = emptyList(),
+    val schemaVersion: Int = 1
+) {
+    /**
+     * True if this snapshot has enough state to safely resume a retry for
+     * [template]: the fingerprint still matches and we reached a stage we
+     * actually know how to resume from.
+     */
+    fun canResumeFor(template: WorkflowTemplate): Boolean {
+        if (fingerprint.isBlank()) return false
+        if (fingerprint != computeWorkflowFingerprint(template)) return false
+        return when (reachedStage) {
+            STAGE_PROCESSING -> synthesisInput.isNotBlank()
+            else -> false
+        }
+    }
+
+    companion object {
+        const val STAGE_PROCESSING = "PROCESSING"
+
+        private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+        fun parse(raw: String): ResumeSnapshot? {
+            if (raw.isBlank()) return null
+            return try {
+                json.decodeFromString<ResumeSnapshot>(raw)
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        fun toJson(snapshot: ResumeSnapshot): String = try {
+            json.encodeToString(serializer(), snapshot)
+        } catch (_: Exception) {
+            ""
+        }
+    }
+}
+
+@Serializable
+data class ResumedActionOutput(
+    val actionId: String,
+    val preparedText: String,
+    val instructionApplied: Boolean = false
+)
+
+/**
+ * Deterministic fingerprint of the workflow definition that affects execution.
+ * Covers the action list (id/type/sourceData/instruction/extraConfig/order/
+ * isEnabled/compaction/profileId), the global instruction, the output config,
+ * and the workflow-level default profile.
+ *
+ * Two templates with the same fingerprint are considered interchangeable for
+ * the purpose of resuming a prior failed run. The hash is a plain string
+ * concatenation rather than SHA-256 — we care about equality, not collision
+ * resistance, and avoiding crypto keeps this cheap + test-friendly.
+ */
+fun computeWorkflowFingerprint(template: WorkflowTemplate): String {
+    val sb = StringBuilder()
+    // Field separator: a newline char literal kept to one line.
+    val sep: Char = '\u000A'
+    sb.append("gi=").append(template.globalInstruction.hashCode()).append(sep)
+    sb.append("dp=").append(template.defaultProfileId).append(sep)
+    // Output config: use the existing JSON encoder for stability (same one the
+    // Room mappers use) so we are indirectly testing the same serialisation
+    // path users will see.
+    val j = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+    val ocJson = try {
+        j.encodeToString(WorkflowOutputConfig.serializer(), template.outputConfig)
+    } catch (_: Exception) { "" }
+    sb.append("oc=").append(ocJson.hashCode()).append(sep)
+    sb.append("acts=")
+    for (a in template.actions.sortedBy { it.order }) {
+        sb.append(a.id).append('|')
+        sb.append(a.type.name).append('|')
+        sb.append(a.order).append('|')
+        sb.append(a.isEnabled).append('|')
+        sb.append(a.compaction.name).append('|')
+        sb.append(a.profileId).append('|')
+        sb.append(a.sourceData.hashCode()).append('|')
+        sb.append(a.instruction.hashCode()).append('|')
+        sb.append(a.extraConfig.hashCode()).append(sep)
+    }
+    return sb.toString().hashCode().toString(16)
 }
 
 // ── Persisted Stage (for run detail history) ──
@@ -446,9 +756,9 @@ data class OutputVersion(
     val isSocialOutput: Boolean = false,
     val generatedAtMillis: Long = System.currentTimeMillis()
 ) {
-    /** Parse social outputs if this version is social. */
+    /** Parse social outputs if this version is social (tolerant — see [WorkflowRun.socialOutputs]). */
     val socialOutputs: List<SocialOutput>
-        get() = if (isSocialOutput) SocialOutputParser.parse(outputText) else emptyList()
+        get() = if (isSocialOutput) SocialOutputParser.parseTolerant(outputText).outputs else emptyList()
 
     companion object {
         private val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }

@@ -33,6 +33,7 @@ data class EditorUiState(
     val outputConfig: WorkflowOutputConfig = WorkflowOutputConfig(),
     val notifyOnCompletion: Boolean = false,
     val notifyOnStart: Boolean = false,
+    val autoRetryEnabled: Boolean = false,
     val isSaving: Boolean = false,
     val savedTemplateId: Long? = null,
     val validationErrors: List<String> = emptyList(),
@@ -103,6 +104,7 @@ class WorkflowEditorViewModel @Inject constructor(
                             outputConfig = template.outputConfig,
                             notifyOnCompletion = template.notifyOnCompletion,
                             notifyOnStart = template.notifyOnStart,
+                            autoRetryEnabled = template.autoRetryEnabled,
                             sourceTemplateId = template.sourceTemplateId,
                             sourceTemplateName = sourceName,
                             category = template.category,
@@ -129,6 +131,7 @@ class WorkflowEditorViewModel @Inject constructor(
                             outputConfig = bp.outputConfig,
                             notifyOnCompletion = bp.notifyOnCompletion,
                             notifyOnStart = bp.notifyOnStart,
+                            autoRetryEnabled = bp.autoRetryEnabled,
                             sourceTemplateId = builtIn.id,
                             sourceTemplateName = builtIn.name,
                             category = builtIn.category
@@ -171,6 +174,7 @@ class WorkflowEditorViewModel @Inject constructor(
     fun updateGlobalInstruction(text: String) = _state.update { it.copy(globalInstruction = text) }
     fun updateNotifyOnCompletion(enabled: Boolean) = _state.update { it.copy(notifyOnCompletion = enabled) }
     fun updateNotifyOnStart(enabled: Boolean) = _state.update { it.copy(notifyOnStart = enabled) }
+    fun updateAutoRetryEnabled(enabled: Boolean) = _state.update { it.copy(autoRetryEnabled = enabled) }
     fun updateOutputConfig(config: WorkflowOutputConfig) = _state.update { it.copy(outputConfig = config) }
     fun updateDefaultProfileId(profileId: String) = _state.update { it.copy(defaultProfileId = profileId) }
 
@@ -231,6 +235,7 @@ class WorkflowEditorViewModel @Inject constructor(
                 outputConfig = current.outputConfig,
                 notifyOnCompletion = current.notifyOnCompletion,
                 notifyOnStart = current.notifyOnStart,
+                autoRetryEnabled = current.autoRetryEnabled,
                 createdAtMillis = if (templateId != null) {
                     repository.getTemplateById(templateId)?.createdAtMillis ?: now
                 } else now,

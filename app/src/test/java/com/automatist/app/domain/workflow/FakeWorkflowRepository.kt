@@ -122,10 +122,42 @@ class FakeWorkflowRepository : WorkflowRepository {
     override fun getRecentRuns(limit: Int): Flow<List<WorkflowRun>> =
         MutableStateFlow(emptyList())
 
-    override suspend fun getRunById(id: Long): WorkflowRun? = null
-    override fun observeRunById(id: Long): Flow<WorkflowRun?> = MutableStateFlow(null)
-    override suspend fun insertRun(run: WorkflowRun): Long = 0
-    override suspend fun updateRun(run: WorkflowRun) {}
+    // Back the Run-related methods with a real in-memory map so tests that
+    // exercise incremental persistence can verify writes actually land.
+    private val runs = MutableStateFlow<Map<Long, WorkflowRun>>(emptyMap())
+    private var nextRunId = 1L
+
+    override suspend fun getRunById(id: Long): WorkflowRun? = runs.value[id]
+
+    override fun observeRunById(id: Long): Flow<WorkflowRun?> =
+        runs.map { it[id] }
+
+    override suspend fun insertRun(run: WorkflowRun): Long {
+        val id = if (run.id == 0L) nextRunId++ else run.id
+        runs.value = runs.value + (id to run.copy(id = id))
+        return id
+    }
+
+    override suspend fun updateRun(run: WorkflowRun) {
+        runs.value = runs.value + (run.id to run)
+    }
+
+    override suspend fun updateRunProgress(id: Long, stagesJson: String, currentStage: String) {
+        val existing = runs.value[id] ?: return
+        runs.value = runs.value + (id to existing.copy(
+            stagesJson = stagesJson,
+            currentStage = currentStage
+        ))
+    }
+
+    override suspend fun updateRunProfile(id: Long, profileName: String, modelId: String) {
+        val existing = runs.value[id] ?: return
+        runs.value = runs.value + (id to existing.copy(
+            profileName = profileName,
+            modelId = modelId
+        ))
+    }
+
     override suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun? = null
     override suspend fun getLatestRun(templateId: Long): WorkflowRun? = null
     override suspend fun failStaleRunningRecords(templateId: Long) {}

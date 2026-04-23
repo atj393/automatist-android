@@ -2,6 +2,7 @@ package com.automatist.app.domain.engine
 
 import com.automatist.app.domain.models.OutputVersion
 import com.automatist.app.domain.models.ProviderType
+import com.automatist.app.domain.models.ResumeSnapshot
 import com.automatist.app.domain.models.TokenUsage
 
 sealed interface ExecutionState {
@@ -104,6 +105,13 @@ sealed interface ExecutionState {
     data class Failed(
         val error: String,
         val stage: String,
-        val rawError: String = ""
+        val rawError: String = "",
+        /**
+         * Present when the engine has enough intermediate state for a later
+         * retry to resume from the first failed step instead of rerunning
+         * everything. Currently populated only for processing-stage failures
+         * (final generation failed after all actions succeeded).
+         */
+        val resumeSnapshot: ResumeSnapshot? = null
     ) : ExecutionState
 }

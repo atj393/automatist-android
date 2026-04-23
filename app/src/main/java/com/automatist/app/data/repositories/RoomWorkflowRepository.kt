@@ -53,6 +53,12 @@ class RoomWorkflowRepository @Inject constructor(
     override suspend fun updateRun(run: WorkflowRun) =
         dao.updateRun(run.toEntity())
 
+    override suspend fun updateRunProgress(id: Long, stagesJson: String, currentStage: String) =
+        dao.updateRunProgress(id, stagesJson, currentStage)
+
+    override suspend fun updateRunProfile(id: Long, profileName: String, modelId: String) =
+        dao.updateRunProfile(id, profileName, modelId)
+
     override suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun? =
         dao.getLatestSuccessfulRun(templateId)?.toDomain()
 

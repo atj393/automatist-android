@@ -11,8 +11,10 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.automatist.app.domain.engine.ExecutionState
 import com.automatist.app.domain.engine.WorkflowExecutionEngine
+import com.automatist.app.domain.models.ResumeSnapshot
 import com.automatist.app.domain.models.WorkflowRun
 import com.automatist.app.domain.models.WorkflowRunStatus
+import com.automatist.app.domain.models.WorkflowTemplate
 import com.automatist.app.domain.repositories.WorkflowRepository
 import com.automatist.app.platform.notifications.NotificationHelper
 import com.automatist.app.platform.scheduling.ScheduleManager
@@ -95,37 +97,77 @@ class WorkflowWorker(
             Log.w(TAG, "  Stale record cleanup failed (non-fatal): ${e.message}")
         }
 
-        // ── Create run record FIRST so we have a runId for notifications ──
-        val runId = repo.insertRun(
-            WorkflowRun(
-                templateId = templateId,
-                templateName = template.name,
-                triggerType = triggerType,
-                status = WorkflowRunStatus.RUNNING,
-                currentStage = "Preparing"
+        // ── Auto-retry loop ──
+        // Each iteration is one attempt. The first attempt uses engine.execute();
+        // subsequent attempts use engine.resume() when the prior failed run has
+        // a usable snapshot (matching fingerprint + non-empty synthesisInput).
+        // We cap at 1 initial + MAX_AUTO_RETRIES automatic attempts; the loop
+        // exits via `break` on any COMPLETED or on FAILED when auto-retry is
+        // disabled or exhausted.
+        var currentTemplate: WorkflowTemplate = template
+        var autoRetryAttempt = 0
+        var parentRunId: Long? = null
+        var priorFailedRunId: Long? = null
+        lateinit var result: Result
+
+        while (true) {
+            // Resolve resume vs full execute for this attempt.
+            val resumeSnapshot: ResumeSnapshot? = priorFailedRunId?.let { id ->
+                val prior = repo.getRunById(id)
+                prior?.resumeSnapshot?.takeIf { it.canResumeFor(currentTemplate) }
+            }
+            val attemptTrigger = when {
+                autoRetryAttempt > 0 -> "auto-retry"
+                else -> triggerType
+            }
+            val attemptStage = when {
+                autoRetryAttempt > 0 -> "Auto-retry $autoRetryAttempt/${WorkflowRun.MAX_AUTO_RETRIES}"
+                resumeSnapshot != null -> "Resuming"
+                else -> "Preparing"
+            }
+
+            val runId = repo.insertRun(
+                WorkflowRun(
+                    templateId = templateId,
+                    templateName = currentTemplate.name,
+                    triggerType = attemptTrigger,
+                    status = WorkflowRunStatus.RUNNING,
+                    currentStage = attemptStage,
+                    autoRetryAttempt = autoRetryAttempt,
+                    parentRunId = parentRunId
+                )
             )
-        )
-        Log.i(TAG, "  Created run record: runId=$runId")
+            Log.i(
+                TAG,
+                "  Created run record: runId=$runId attempt=$autoRetryAttempt/${WorkflowRun.MAX_AUTO_RETRIES} " +
+                    "parent=$parentRunId resuming=${resumeSnapshot != null}"
+            )
 
-        // ── Fire start notification if enabled ──
-        if (template.notifyOnStart) {
-            notifications.notifyRunStarted(templateId, template.name, runId)
-        }
+            // Start notification only once per chain (on the first attempt).
+            if (autoRetryAttempt == 0 && currentTemplate.notifyOnStart) {
+                notifications.notifyRunStarted(templateId, currentTemplate.name, runId)
+            }
 
-        setProgress(workDataOf("status" to "Executing workflow: ${template.name}", "runId" to runId))
+            setProgress(workDataOf("status" to "Executing workflow: ${currentTemplate.name}", "runId" to runId))
 
-        // ── Execute workflow via shared engine ──
-        Log.i(TAG, "  Calling WorkflowExecutionEngine.execute()...")
-        var finalState: ExecutionState? = null
-        val stageLog = mutableListOf<com.automatist.app.domain.models.PersistedStage>()
+            // Execute this attempt.
+            var finalState: ExecutionState? = null
+            val stageLog = mutableListOf<com.automatist.app.domain.models.PersistedStage>()
 
-        try {
-            engine.execute(template)
-                .collect { state ->
+            val attemptFlow = if (resumeSnapshot != null) {
+                engine.resume(currentTemplate, resumeSnapshot)
+            } else {
+                engine.execute(currentTemplate)
+            }
+
+            try {
+                attemptFlow.collect { state ->
                     finalState = state
 
                     val stageLabel = when (state) {
-                        is ExecutionState.Preparing -> "Preparing workflow..."
+                        is ExecutionState.Preparing -> if (autoRetryAttempt > 0)
+                            "Auto-retry $autoRetryAttempt/${WorkflowRun.MAX_AUTO_RETRIES}: preparing..."
+                            else "Preparing workflow..."
                         is ExecutionState.ValidatingInputs -> { val n = state.totalActions; "Validating $n ${if (n == 1) "action" else "actions"}..." }
                         is ExecutionState.ActionStarted -> "Reading source: ${state.actionLabel}"
                         is ExecutionState.ActionSourceFetched -> "Source ready: ${state.actionLabel}"
@@ -144,14 +186,12 @@ class WorkflowWorker(
                         is ExecutionState.Failed -> "Failed: ${state.error}"
                     }
 
-                    // Accumulate stage log for persistence
                     val stageStatus = when (state) {
                         is ExecutionState.ActionFailed -> "FAILED"
                         is ExecutionState.Failed -> "FAILED"
                         is ExecutionState.Completed -> "COMPLETED"
                         else -> "COMPLETED"
                     }
-                    // Capture action result data for completed actions
                     val actionData = if (state is ExecutionState.ActionCompleted) {
                         val raw = state.fullResultText
                         val redacted = com.automatist.app.domain.engine.ErrorRedactor.redact(raw)
@@ -160,117 +200,161 @@ class WorkflowWorker(
                     } else ""
                     stageLog.add(com.automatist.app.domain.models.PersistedStage(stageLabel, stageStatus, actionData = actionData))
 
+                    // Incrementally persist the evolving stage log so a user
+                    // who opens the run detail screen while a scheduled run
+                    // is in flight sees live progress, not a blank body.
+                    // Skip terminal states — they do a full repo.updateRun()
+                    // below with the complete payload.
+                    if (state !is ExecutionState.Completed && state !is ExecutionState.Failed) {
+                        try {
+                            repo.updateRunProgress(
+                                id = runId,
+                                stagesJson = com.automatist.app.domain.models.PersistedStage.toJson(stageLog),
+                                currentStage = stageLabel
+                            )
+                            if (state is ExecutionState.GeneratingOutput) {
+                                repo.updateRunProfile(
+                                    id = runId,
+                                    profileName = state.profileName,
+                                    modelId = state.modelId
+                                )
+                            }
+                        } catch (e: Exception) {
+                            // Persistence is best-effort during the run; terminal
+                            // state will still record the final truth.
+                            Log.w(TAG, "  Incremental progress write failed (non-fatal): ${e.message}")
+                        }
+                    }
+
                     Log.d(TAG, "  Stage: $stageLabel")
                     setProgress(workDataOf("status" to stageLabel, "runId" to runId))
 
                     try {
-                        setForeground(createForegroundInfo(template.name, stageLabel))
+                        setForeground(createForegroundInfo(currentTemplate.name, stageLabel))
                     } catch (_: Exception) { /* foreground update not critical */ }
                 }
-        } catch (e: Exception) {
-            Log.e(TAG, "  Engine threw exception: ${e.javaClass.simpleName}: ${e.message}", e)
-            finalState = ExecutionState.Failed(e.message ?: "Unexpected error", "execution")
-            stageLog.add(com.automatist.app.domain.models.PersistedStage("Exception: ${e.message}", "FAILED"))
-        }
-
-        val stagesJson = com.automatist.app.domain.models.PersistedStage.toJson(stageLog)
-
-        val terminalName = finalState?.let { it::class.simpleName } ?: "null"
-        Log.i(TAG, "  Engine flow completed. Terminal state: $terminalName")
-
-        // ── Handle terminal state ──
-        val result = when (val terminal = finalState) {
-            is ExecutionState.Completed -> {
-                Log.i(TAG, "=== COMPLETED === duration=${terminal.durationMs}ms, tokens=${terminal.tokenUsage.totalTokens}, profile=${terminal.profileName}, model=${terminal.modelId}, social=${terminal.isSocialOutput}")
-
-                val effectiveFormat = if (terminal.isSocialOutput) com.automatist.app.domain.models.OutputFormat.JSON
-                    else template.outputConfig.outputFormat
-
-                repo.updateRun(
-                    WorkflowRun(
-                        id = runId,
-                        templateId = templateId,
-                        templateName = template.name,
-                        triggerType = triggerType,
-                        status = WorkflowRunStatus.COMPLETED,
-                        currentStage = "Completed",
-                        outputText = terminal.outputText,
-                        outputFormat = effectiveFormat,
-                        providerType = terminal.providerType,
-                        promptTokens = terminal.tokenUsage.promptTokens,
-                        completionTokens = terminal.tokenUsage.completionTokens,
-                        totalTokens = terminal.tokenUsage.totalTokens,
-                        durationMs = terminal.durationMs,
-                        completedAtMillis = System.currentTimeMillis(),
-                        profileName = terminal.profileName,
-                        modelId = terminal.modelId,
-                        isSocialOutput = terminal.isSocialOutput,
-                        stagesJson = stagesJson,
-                        synthesisInput = terminal.synthesisInput,
-                        versionsJson = com.automatist.app.domain.models.OutputVersion.toJson(terminal.versions)
-                    )
-                )
-
-                repo.updateTemplateLastRun(templateId, WorkflowRunStatus.COMPLETED)
-
-                if (template.notifyOnCompletion) {
-                    notifications.notifyRunCompleted(templateId, template.name, runId)
-                }
-
-                Result.success(workDataOf("status" to "completed", "runId" to runId))
+            } catch (e: Exception) {
+                Log.e(TAG, "  Engine threw exception: ${e.javaClass.simpleName}: ${e.message}", e)
+                finalState = ExecutionState.Failed(e.message ?: "Unexpected error", "execution")
+                stageLog.add(com.automatist.app.domain.models.PersistedStage("Exception: ${e.message}", "FAILED"))
             }
 
-            is ExecutionState.Failed -> {
-                Log.e(TAG, "=== FAILED === stage=${terminal.stage}, error=${terminal.error}")
-                if (terminal.rawError.isNotBlank()) {
-                    Log.e(TAG, "  Raw error detail: ${terminal.rawError}")
+            val stagesJson = com.automatist.app.domain.models.PersistedStage.toJson(stageLog)
+            val terminalName = finalState?.let { it::class.simpleName } ?: "null"
+            Log.i(TAG, "  Attempt $autoRetryAttempt engine flow completed. Terminal state: $terminalName")
+
+            // Handle terminal state for THIS attempt.
+            when (val terminal = finalState) {
+                is ExecutionState.Completed -> {
+                    Log.i(TAG, "=== COMPLETED === attempt=$autoRetryAttempt duration=${terminal.durationMs}ms, tokens=${terminal.tokenUsage.totalTokens}")
+
+                    val effectiveFormat = if (terminal.isSocialOutput) com.automatist.app.domain.models.OutputFormat.JSON
+                        else currentTemplate.outputConfig.outputFormat
+
+                    repo.updateRun(
+                        WorkflowRun(
+                            id = runId,
+                            templateId = templateId,
+                            templateName = currentTemplate.name,
+                            triggerType = attemptTrigger,
+                            status = WorkflowRunStatus.COMPLETED,
+                            currentStage = "Completed",
+                            outputText = terminal.outputText,
+                            outputFormat = effectiveFormat,
+                            providerType = terminal.providerType,
+                            promptTokens = terminal.tokenUsage.promptTokens,
+                            completionTokens = terminal.tokenUsage.completionTokens,
+                            totalTokens = terminal.tokenUsage.totalTokens,
+                            durationMs = terminal.durationMs,
+                            completedAtMillis = System.currentTimeMillis(),
+                            profileName = terminal.profileName,
+                            modelId = terminal.modelId,
+                            isSocialOutput = terminal.isSocialOutput,
+                            stagesJson = stagesJson,
+                            synthesisInput = terminal.synthesisInput,
+                            versionsJson = com.automatist.app.domain.models.OutputVersion.toJson(terminal.versions),
+                            autoRetryAttempt = autoRetryAttempt,
+                            parentRunId = parentRunId
+                        )
+                    )
+                    repo.updateTemplateLastRun(templateId, WorkflowRunStatus.COMPLETED)
+
+                    if (currentTemplate.notifyOnCompletion) {
+                        notifications.notifyRunCompleted(templateId, currentTemplate.name, runId)
+                    }
+
+                    result = Result.success(workDataOf("status" to "completed", "runId" to runId))
+                    break
                 }
 
-                val rawForStorage = com.automatist.app.domain.engine.ErrorRedactor
-                    .redactForStorage(terminal.rawError.ifBlank { null })
+                is ExecutionState.Failed -> {
+                    Log.e(TAG, "=== FAILED === attempt=$autoRetryAttempt stage=${terminal.stage}, error=${terminal.error}")
+                    val rawForStorage = com.automatist.app.domain.engine.ErrorRedactor
+                        .redactForStorage(terminal.rawError.ifBlank { null })
+                    val resumeSnapshotJson = terminal.resumeSnapshot?.let { ResumeSnapshot.toJson(it) } ?: ""
 
-                repo.updateRun(
-                    WorkflowRun(
-                        id = runId,
-                        templateId = templateId,
-                        templateName = template.name,
-                        triggerType = triggerType,
-                        status = WorkflowRunStatus.FAILED,
-                        currentStage = terminal.stage,
-                        errorMessage = terminal.error,
-                        errorDetail = rawForStorage,
-                        completedAtMillis = System.currentTimeMillis(),
-                        stagesJson = stagesJson
+                    repo.updateRun(
+                        WorkflowRun(
+                            id = runId,
+                            templateId = templateId,
+                            templateName = currentTemplate.name,
+                            triggerType = attemptTrigger,
+                            status = WorkflowRunStatus.FAILED,
+                            currentStage = terminal.stage,
+                            errorMessage = terminal.error,
+                            errorDetail = rawForStorage,
+                            completedAtMillis = System.currentTimeMillis(),
+                            stagesJson = stagesJson,
+                            resumeSnapshotJson = resumeSnapshotJson,
+                            autoRetryAttempt = autoRetryAttempt,
+                            parentRunId = parentRunId
+                        )
                     )
-                )
 
-                repo.updateTemplateLastRun(templateId, WorkflowRunStatus.FAILED)
-                notifications.notifyRunFailed(templateId, template.name, runId, terminal.error)
+                    // Re-read template so a user edit mid-chain is honoured.
+                    val refreshed = repo.getTemplateById(templateId) ?: currentTemplate
+                    currentTemplate = refreshed
+                    val canAutoRetry = refreshed.autoRetryEnabled && autoRetryAttempt < WorkflowRun.MAX_AUTO_RETRIES
+                    if (canAutoRetry) {
+                        parentRunId = parentRunId ?: runId
+                        priorFailedRunId = runId
+                        autoRetryAttempt++
+                        Log.i(TAG, "  Auto-retry queued: next attempt=$autoRetryAttempt/${WorkflowRun.MAX_AUTO_RETRIES}")
+                        // Continue the loop — next iteration creates a new run row.
+                        continue
+                    } else {
+                        if (autoRetryAttempt > 0) {
+                            Log.i(TAG, "  Auto-retry exhausted after $autoRetryAttempt attempt(s) — chain finally failed")
+                        }
+                        repo.updateTemplateLastRun(templateId, WorkflowRunStatus.FAILED)
+                        notifications.notifyRunFailed(templateId, currentTemplate.name, runId, terminal.error)
+                        result = Result.failure(workDataOf("error" to terminal.error, "runId" to runId))
+                        break
+                    }
+                }
 
-                Result.failure(workDataOf("error" to terminal.error, "runId" to runId))
-            }
-
-            else -> {
-                Log.w(TAG, "=== UNEXPECTED STATE === finalState=$finalState")
-
-                repo.updateRun(
-                    WorkflowRun(
-                        id = runId,
-                        templateId = templateId,
-                        templateName = template.name,
-                        triggerType = triggerType,
-                        status = WorkflowRunStatus.FAILED,
-                        currentStage = "Unknown",
-                        errorMessage = "Workflow ended without a terminal state",
-                        completedAtMillis = System.currentTimeMillis(),
-                        stagesJson = stagesJson
+                else -> {
+                    Log.w(TAG, "=== UNEXPECTED STATE === finalState=$finalState")
+                    repo.updateRun(
+                        WorkflowRun(
+                            id = runId,
+                            templateId = templateId,
+                            templateName = currentTemplate.name,
+                            triggerType = attemptTrigger,
+                            status = WorkflowRunStatus.FAILED,
+                            currentStage = "Unknown",
+                            errorMessage = "Workflow ended without a terminal state",
+                            completedAtMillis = System.currentTimeMillis(),
+                            stagesJson = stagesJson,
+                            autoRetryAttempt = autoRetryAttempt,
+                            parentRunId = parentRunId
+                        )
                     )
-                )
-
-                repo.updateTemplateLastRun(templateId, WorkflowRunStatus.FAILED)
-                notifications.notifyRunFailed(templateId, template.name, runId, "Workflow ended unexpectedly")
-
-                Result.failure(workDataOf("error" to "Unexpected terminal state", "runId" to runId))
+                    repo.updateTemplateLastRun(templateId, WorkflowRunStatus.FAILED)
+                    notifications.notifyRunFailed(templateId, currentTemplate.name, runId, "Workflow ended unexpectedly")
+                    result = Result.failure(workDataOf("error" to "Unexpected terminal state", "runId" to runId))
+                    break
+                }
             }
         }
 

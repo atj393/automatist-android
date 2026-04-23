@@ -133,6 +133,17 @@ fun WorkflowRunScreen(
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Medium
                         )
+                        // Surface the auto-retry badge inline with the header so
+                        // users aren't surprised by new stage rows appearing on
+                        // the same screen after a failed attempt.
+                        if (state.isAutoRetrying && state.autoRetryAttempt > 0) {
+                            Text(
+                                "Auto-retry ${state.autoRetryAttempt} of ${com.automatist.app.domain.models.WorkflowRun.MAX_AUTO_RETRIES}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                         if (state.durationMs != null) {
                             Text(
                                 "Duration: ${formatDuration(state.durationMs!!)}",

@@ -32,7 +32,9 @@ data class WorkflowTemplateEntity(
     val sourceTemplateId: String = "",
     val category: String = "",
     val customizationJson: String = "", // JSON: TemplateCustomization
-    val defaultProfileId: String = ""   // provider profile ID for workflow-level routing (v5)
+    val defaultProfileId: String = "",  // provider profile ID for workflow-level routing (v5)
+    // Auto-retry opt-in (v17): failed runs retry up to MAX_AUTO_RETRIES when true.
+    val autoRetryEnabled: Boolean = false
 )
 
 // ── Run Entity ──
@@ -72,7 +74,12 @@ data class WorkflowRunEntity(
     val isSocialOutput: Boolean = false,
     val stagesJson: String = "", // JSON: List of persisted stage info
     val synthesisInput: String = "", // frozen combined input for regeneration
-    val versionsJson: String = ""    // JSON: List<OutputVersion>
+    val versionsJson: String = "",   // JSON: List<OutputVersion>
+    val resumeSnapshotJson: String = "", // JSON: ResumeSnapshot (v16+)
+    // Auto-retry metadata (v17+): attempt index within its retry chain and
+    // a pointer to the initial run that started the chain.
+    val autoRetryAttempt: Int = 0,
+    val parentRunId: Long? = null
 )
 
 // ── Provider Profile Entity ──
@@ -170,7 +177,8 @@ fun WorkflowTemplateEntity.toDomain() = WorkflowTemplate(
         try { json.decodeFromString<TemplateCustomization>(customizationJson) }
         catch (_: Exception) { TemplateCustomization() }
     } else TemplateCustomization(),
-    defaultProfileId = defaultProfileId
+    defaultProfileId = defaultProfileId,
+    autoRetryEnabled = autoRetryEnabled
 )
 
 fun WorkflowTemplate.toEntity() = WorkflowTemplateEntity(
@@ -191,7 +199,8 @@ fun WorkflowTemplate.toEntity() = WorkflowTemplateEntity(
     sourceTemplateId = sourceTemplateId,
     category = category,
     customizationJson = json.encodeToString(customization),
-    defaultProfileId = defaultProfileId
+    defaultProfileId = defaultProfileId,
+    autoRetryEnabled = autoRetryEnabled
 )
 
 // ── Mappers: Run ──
@@ -219,7 +228,10 @@ fun WorkflowRunEntity.toDomain() = WorkflowRun(
     isSocialOutput = isSocialOutput,
     stagesJson = stagesJson,
     synthesisInput = synthesisInput,
-    versionsJson = versionsJson
+    versionsJson = versionsJson,
+    resumeSnapshotJson = resumeSnapshotJson,
+    autoRetryAttempt = autoRetryAttempt,
+    parentRunId = parentRunId
 )
 
 fun WorkflowRun.toEntity() = WorkflowRunEntity(
@@ -245,5 +257,8 @@ fun WorkflowRun.toEntity() = WorkflowRunEntity(
     isSocialOutput = isSocialOutput,
     stagesJson = stagesJson,
     synthesisInput = synthesisInput,
-    versionsJson = versionsJson
+    versionsJson = versionsJson,
+    resumeSnapshotJson = resumeSnapshotJson,
+    autoRetryAttempt = autoRetryAttempt,
+    parentRunId = parentRunId
 )

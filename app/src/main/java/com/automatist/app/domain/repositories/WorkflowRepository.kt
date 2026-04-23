@@ -22,6 +22,15 @@ interface WorkflowRepository {
     fun observeRunById(id: Long): Flow<WorkflowRun?>
     suspend fun insertRun(run: WorkflowRun): Long
     suspend fun updateRun(run: WorkflowRun)
+    /**
+     * Narrow incremental update used while a run is in flight. Writes only
+     * the stage log + current stage label; the rest of the row stays as-is.
+     * Called per [ExecutionState] event so the run detail screen renders
+     * live progress even when the user navigates away and back.
+     */
+    suspend fun updateRunProgress(id: Long, stagesJson: String, currentStage: String)
+    /** Persist the resolved profile/model once final generation starts. */
+    suspend fun updateRunProfile(id: Long, profileName: String, modelId: String)
     suspend fun getLatestSuccessfulRun(templateId: Long): WorkflowRun?
     suspend fun getLatestRun(templateId: Long): WorkflowRun?
     suspend fun failStaleRunningRecords(templateId: Long)

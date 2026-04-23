@@ -33,6 +33,9 @@ data class WorkflowExportDto(
     val outputConfig: WorkflowOutputConfig = WorkflowOutputConfig(),
     val notifyOnCompletion: Boolean = false,
     val notifyOnStart: Boolean = false,
+    // Auto-retry opt-in carried across export/import. Default false keeps
+    // pre-v17 export payloads valid (they just keep auto-retry OFF on import).
+    val autoRetryEnabled: Boolean = false,
     val sourceTemplateId: String = "",
     val category: String = "",
     val customization: TemplateCustomization = TemplateCustomization(),

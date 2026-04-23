@@ -218,7 +218,15 @@ fun AutomatistNavGraph(
             )
         }
 
-        composable("${Routes.WORKFLOW_RUN}/{templateId}", arguments = listOf(navArgument("templateId") { type = NavType.LongType })) {
+        composable(
+            "${Routes.WORKFLOW_RUN}/{templateId}?resumeFromRunId={resumeFromRunId}",
+            arguments = listOf(
+                navArgument("templateId") { type = NavType.LongType },
+                // 0L means "no prior failed run to resume from — fresh run".
+                // The VM treats 0L the same as null.
+                navArgument("resumeFromRunId") { type = NavType.LongType; defaultValue = 0L }
+            )
+        ) {
             WorkflowRunScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToSettings = { navController.navigate("${Routes.VAULT}?section=${SettingsSection.SERVICE_KEYS.key}") }
@@ -230,7 +238,15 @@ fun AutomatistNavGraph(
             WorkflowRunDetailScreen(
                 runId = runId,
                 onBack = { navController.popBackStack() },
-                onRunAgain = { templateId -> navController.navigate("${Routes.WORKFLOW_RUN}/$templateId") }
+                // Detail screen's "Run Again" passes the failed run's id along so the
+                // run screen can attempt a resume-from-failed-step retry instead of a
+                // full rerun. Falls back to a full rerun automatically if the
+                // snapshot is stale or missing.
+                onRunAgain = { templateId, failedRunId ->
+                    val base = "${Routes.WORKFLOW_RUN}/$templateId"
+                    val route = if (failedRunId > 0L) "$base?resumeFromRunId=$failedRunId" else base
+                    navController.navigate(route)
+                }
             )
         }
 
