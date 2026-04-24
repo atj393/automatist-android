@@ -145,5 +145,5 @@ after an update constitutes acceptance of the revised EULA.
 Questions about this EULA:
 
 **Alexis Johnson**
-Email: alexistoby393@gmail.com
+Email: support@automatist.cloud
 Website: https://automatist.cloud

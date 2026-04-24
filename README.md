@@ -283,7 +283,7 @@ Sign in with Google → CloudSyncManager → Export workflows (secret-free) → 
 > Automatist is proprietary (see [LICENSE.md](LICENSE.md)). These notes are
 > for the project maintainer's internal reference and for reviewers with
 > written permission. External pull requests and forks are not accepted.
-> If you have an idea or a security report, email **alexistoby393@gmail.com**.
+> If you have an idea or a security report, email **support@automatist.cloud**.
 
 ### Adding a New AI Provider
 1. Create API interface + models in `data/providers/{name}/`
@@ -370,7 +370,7 @@ Automatist is proprietary software. Copyright © 2026 Alexis Johnson. All Rights
 
 Third-party dependencies (AndroidX, Kotlin, OkHttp, Retrofit, Hilt, MediaPipe, Google Play Billing, Google Drive API, AICore, etc.) remain governed by their own licenses, as listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Gemma model weights that the app can optionally download at runtime remain governed by the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and [Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy); Automatist does not claim ownership of those weights.
 
-For commercial licensing, partnership, or reuse enquiries, contact **alexistoby393@gmail.com**.
+For commercial licensing, partnership, or reuse enquiries, contact **support@automatist.cloud**.
 
 ---
 
