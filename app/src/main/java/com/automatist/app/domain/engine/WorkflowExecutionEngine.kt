@@ -698,11 +698,46 @@ class WorkflowExecutionEngine @Inject constructor(
                 RssFeedConfig()
             }
 
-            // Reuse existing RssParser for the heavy lifting
-            val rawText = rssParser.fetchAndParse(listOf(feedUrl))
-            if (rawText.isBlank()) return Result.failure(Exception("RSS feed returned no content"))
+            // Use the detailed fetcher so per-URL failures (network, HTTP
+            // status, parse error, empty feed) surface as a typed cause
+            // instead of being swallowed and collapsed into "no content".
+            val result = rssParser.fetchAndParseDetailed(listOf(feedUrl))
+
+            if (result.aggregatedText.isBlank()) {
+                val firstFailure = result.failures.firstOrNull()
+                val (userMsg, rawDetail) = if (firstFailure != null) {
+                    val kindLabel = when (firstFailure.kind) {
+                        com.automatist.app.data.network.RssFetchFailure.Kind.NETWORK -> "Network error"
+                        com.automatist.app.data.network.RssFetchFailure.Kind.HTTP_STATUS -> "Feed returned an error response"
+                        com.automatist.app.data.network.RssFetchFailure.Kind.PARSE -> "Couldn't parse the feed"
+                        com.automatist.app.data.network.RssFetchFailure.Kind.EMPTY -> "The feed contains no items right now"
+                    }
+                    "$kindLabel: ${firstFailure.message}" to buildString {
+                        append("Feed URL: $feedUrl\n")
+                        append("Kind: ${firstFailure.kind}\n")
+                        append("Message: ${firstFailure.message}")
+                        firstFailure.cause?.let {
+                            append("\nException: ${it.javaClass.simpleName}: ${it.message}")
+                        }
+                    }
+                } else {
+                    // Defensive — should not happen because the detailed fetcher
+                    // always records at least an EMPTY failure when no items came
+                    // back, but we don't want to mask a legitimate zero-content
+                    // outcome either.
+                    "RSS feed returned no content" to "Feed URL: $feedUrl\n(no per-URL failure captured)"
+                }
+                return Result.failure(
+                    DiagnosticException(
+                        message = userMsg,
+                        rawDetail = rawDetail,
+                        cause = firstFailure?.cause
+                    )
+                )
+            }
 
             // Apply keyword filter if configured
+            val rawText = result.aggregatedText
             val filteredText = if (config.keywordFilter.isNotBlank()) {
                 val keywords = config.keywordFilter.split(",").map { it.trim().lowercase() }
                 val lines = rawText.split("\n\n")

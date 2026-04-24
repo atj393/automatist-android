@@ -138,8 +138,22 @@ class ScheduleManager @Inject constructor(
             WorkflowWorker.KEY_TRIGGER_TYPE to "scheduled"
         )
 
+        // Require connectivity before running. Scheduled runs that fire
+        // overnight or while the device is idle often hit no / flaky network
+        // and collapse the News Feed action into an empty fetch — reported
+        // as "RSS feed returned no content" even though the real cause is
+        // just "no internet at the moment". WorkManager will hold the job
+        // in ENQUEUED until the constraint is satisfied, which is the
+        // canonical way to handle this and costs nothing on well-connected
+        // devices. Deliberately NOT applied to manual runs below so a user
+        // tap never silently queues.
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
         val request = OneTimeWorkRequestBuilder<WorkflowWorker>()
             .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+            .setConstraints(constraints)
             .setInputData(inputData)
             .addTag("workflow_schedule")
             .addTag("template_$templateId")
