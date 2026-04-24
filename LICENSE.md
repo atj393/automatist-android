@@ -99,7 +99,7 @@ competent jurisdiction at that location.
 Licensing, permission, and commercial enquiries:
 
 **Alexis Johnson**
-Email: alexistoby393@gmail.com
+Email: support@automatist.cloud
 Project: https://automatist.cloud
 
 ---
