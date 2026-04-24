@@ -33,6 +33,7 @@ import com.automatist.app.domain.models.*
 import com.automatist.app.domain.offline.DownloadProgress
 import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelStatus
+import com.automatist.app.platform.support.SupportConfig
 
 enum class SettingsSection(val key: String) {
     DEFAULT_PROFILE("section_default_profile"),
@@ -41,6 +42,7 @@ enum class SettingsSection(val key: String) {
     PROVIDER_KEYS("section_provider_keys"),
     SERVICE_KEYS("section_service_keys"),
     OFFLINE_AI("section_offline_ai"),
+    SUPPORT("section_support"),
     LEGACY("section_legacy")
 }
 
@@ -85,6 +87,7 @@ fun VaultScreen(
                         SettingsSection.AI_SETUP.key, SettingsSection.PROFILES.key, SettingsSection.DEFAULTS.key, SettingsSection.PROVIDER_KEYS.key, SettingsSection.LEGACY.key -> 1 + bo
                         SettingsSection.OFFLINE_AI.key -> 2 + bo
                         SettingsSection.SERVICE_KEYS.key -> { expandedServiceKeys = VaultViewModel.BUILT_IN_SERVICE_KEYS.map { it.id }.toSet(); 3 + bo }
+                        SettingsSection.SUPPORT.key -> 4 + bo
                         else -> 0
                     }
                     listState.animateScrollToItem(idx)
@@ -122,6 +125,14 @@ fun VaultScreen(
                         { id -> expandedServiceKeys = if (id in expandedServiceKeys) expandedServiceKeys - id else expandedServiceKeys + id },
                         viewModel::saveServiceKey, viewModel::removeServiceKey, viewModel::addCustomServiceKey, viewModel::removeCustomServiceKey)
                 }
+
+                item(key = "support") { Card2(Icons.Default.HelpOutline, "Support", "Get help and contact us") {
+                    LinkRow("Contact support", SupportConfig.CONTACT_SUPPORT_URL)
+                    LinkRow("Send feedback", "mailto:${SupportConfig.FEEDBACK_EMAIL}")
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    LinkRow("Privacy Policy", SupportConfig.PRIVACY_POLICY_URL)
+                    LinkRow("Terms of Use", SupportConfig.TERMS_OF_USE_URL)
+                } }
 
                 item(key = "about") { Card2(Icons.Default.Info, "About", "Automatist — Workflow AI utility") {
                     IRow("Version", BuildConfig.VERSION_NAME); IRow("Storage", "All data stays on device"); IRow("API keys", "Stored locally, never uploaded")

@@ -193,6 +193,7 @@ fun UpgradeScreen(
                     ProFeatureRow("All action types")
                     ProFeatureRow("Full scheduling")
                     ProFeatureRow("Export & import workflows")
+                    ProFeatureRow("Priority support")
                 }
             }
 
