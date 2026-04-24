@@ -23,7 +23,10 @@ fun ActionBlockList(
     availableWorkflows: List<WorkflowTemplate> = emptyList(),
     availableProfiles: List<ProviderProfile> = emptyList(),
     readinessEvaluator: ReadinessEvaluator? = null,
-    onNavigateToSettings: () -> Unit = {}
+    // Section-aware deep-link into Settings. The catalog decides per-action
+    // whether to route to AI Profiles (AI Prompt) or Service API Keys
+    // (weather, route, …) — see [settingsSectionFor] in ActionCatalog.kt.
+    onNavigateToSettings: (String) -> Unit = {}
 ) {
     var showCatalog by remember { mutableStateOf(false) }
 

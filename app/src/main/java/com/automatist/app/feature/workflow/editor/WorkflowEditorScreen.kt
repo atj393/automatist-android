@@ -245,17 +245,61 @@ fun WorkflowEditorScreen(
                 availableWorkflows = availableWorkflows,
                 availableProfiles = availableProfiles,
                 readinessEvaluator = viewModel.readinessEvaluator,
-                onNavigateToSettings = { onNavigateToSettings(SettingsSection.SERVICE_KEYS.key) }
+                // Let the catalog decide which Settings section to open — AI
+                // Profiles for AI Prompt, Service API Keys for weather/routes,
+                // etc. Prior version hardcoded SERVICE_KEYS for every action,
+                // which is why AI Prompt's "Set Up" landed on the wrong page.
+                onNavigateToSettings = { section -> onNavigateToSettings(section) }
             )
 
-            // ── Section 4: Processing Instructions ──
-            SectionHeader("4", "Processing Instructions")
+            // ── Section 4: Final Output Prompt ──
+            // Renamed from "Processing Instructions" / "Global Instruction":
+            // users repeatedly missed that this is the single instruction that
+            // runs AFTER all actions complete, on the combined outputs.
+            // Storage contract is unchanged — the field still writes into
+            // `WorkflowTemplate.globalInstruction`, which the engine still
+            // appends as the "Extra: …" line to the final system prompt.
+            SectionHeader("4", "Final Output Prompt")
+
+            // Short, non-technical explanation. Clarifies the two-tier
+            // instruction model without exposing internal engine details.
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "How this prompt is used",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Each action above can have its own per-step instruction that affects only that action. " +
+                            "After all actions finish, their outputs are combined and this Final Output Prompt " +
+                            "is applied once to produce the final result. Output type and platform settings in " +
+                            "Section 5 below add formatting guidance automatically — you don't need to repeat them here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             OutlinedTextField(
                 value = state.globalInstruction,
                 onValueChange = viewModel::updateGlobalInstruction,
-                label = { Text("Global Instruction") },
-                placeholder = { Text("e.g. Combine all sources into a concise morning briefing") },
+                label = { Text("Final instruction for the combined output") },
+                placeholder = {
+                    Text("e.g. Combine all sources into a concise morning briefing with clear section headings.")
+                },
+                supportingText = {
+                    Text(
+                        "Runs once at the end, on the combined outputs of all actions above. Optional — leave " +
+                            "blank to let Output settings drive the result.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                },
                 minLines = 3,
                 maxLines = 6,
                 modifier = Modifier.fillMaxWidth()
