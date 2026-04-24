@@ -126,6 +126,16 @@ class WorkflowWorker(
                 else -> "Preparing"
             }
 
+            // Authoritative start time for this attempt. Captured once here so
+            // every terminal write below (Completed / Failed / Unexpected)
+            // reuses the exact same value. Prior code relied on the
+            // [WorkflowRun] data-class default `startedAtMillis =
+            // System.currentTimeMillis()` being taken at insert time, but
+            // then rebuilt a fresh [WorkflowRun] at terminal time without
+            // passing startedAtMillis — Room's @Update wrote the terminal-
+            // moment default over the original, making Started and Completed
+            // visually identical in the Run Results page.
+            val runStartedAtMillis = System.currentTimeMillis()
             val runId = repo.insertRun(
                 WorkflowRun(
                     templateId = templateId,
@@ -133,6 +143,7 @@ class WorkflowWorker(
                     triggerType = attemptTrigger,
                     status = WorkflowRunStatus.RUNNING,
                     currentStage = attemptStage,
+                    startedAtMillis = runStartedAtMillis,
                     autoRetryAttempt = autoRetryAttempt,
                     parentRunId = parentRunId
                 )
@@ -292,6 +303,7 @@ class WorkflowWorker(
                             completionTokens = terminal.tokenUsage.completionTokens,
                             totalTokens = terminal.tokenUsage.totalTokens,
                             durationMs = terminal.durationMs,
+                            startedAtMillis = runStartedAtMillis,
                             completedAtMillis = System.currentTimeMillis(),
                             profileName = terminal.profileName,
                             modelId = terminal.modelId,
@@ -329,6 +341,7 @@ class WorkflowWorker(
                             currentStage = terminal.stage,
                             errorMessage = terminal.error,
                             errorDetail = rawForStorage,
+                            startedAtMillis = runStartedAtMillis,
                             completedAtMillis = System.currentTimeMillis(),
                             stagesJson = stagesJson,
                             resumeSnapshotJson = resumeSnapshotJson,
@@ -370,6 +383,7 @@ class WorkflowWorker(
                             status = WorkflowRunStatus.FAILED,
                             currentStage = "Unknown",
                             errorMessage = "Workflow ended without a terminal state",
+                            startedAtMillis = runStartedAtMillis,
                             completedAtMillis = System.currentTimeMillis(),
                             stagesJson = stagesJson,
                             autoRetryAttempt = autoRetryAttempt,

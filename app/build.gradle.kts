@@ -179,3 +179,14 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlinx.serialization.json)
 }
+
+// Custom task: build release APK/AAB and install on connected device
+// Usage: ./gradlew buildReleaseAndInstall
+tasks.register("buildReleaseAndInstall") {
+    dependsOn("assembleRelease", "installRelease")
+    doLast {
+        println("\n✅ Release build complete and installed on connected device")
+        println("📦 Play Store AAB: app/build/outputs/bundle/release/app-release.aab")
+        println("📱 Device APK: Installed on device\n")
+    }
+}
