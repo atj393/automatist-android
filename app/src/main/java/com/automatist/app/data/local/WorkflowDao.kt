@@ -129,7 +129,15 @@ interface WorkflowDao {
 
     // ── Provider Profiles ──
 
-    @Query("SELECT * FROM provider_profiles WHERE isEnabled = 1 ORDER BY isDefault DESC, name ASC")
+    /**
+     * Returns every stored profile, enabled or not. The Settings management
+     * list needs to show disabled profiles so the user can re-enable them;
+     * prior `WHERE isEnabled = 1` made disabled profiles invisible after a
+     * single toggle, which is exactly what made them look deleted. Consumers
+     * that need only usable profiles (e.g. `ProfilePicker`, the default /
+     * fallback selector) filter on `isEnabled` themselves.
+     */
+    @Query("SELECT * FROM provider_profiles ORDER BY isDefault DESC, name ASC")
     fun getAllProfiles(): Flow<List<ProviderProfileEntity>>
 
     @Query("SELECT * FROM provider_profiles WHERE id = :id")

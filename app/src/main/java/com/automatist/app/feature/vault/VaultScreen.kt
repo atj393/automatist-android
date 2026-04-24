@@ -308,15 +308,21 @@ private fun PCard(
                 Switch(checked = p.isEnabled, onCheckedChange = { onToggle(p) })
             }
 
-            // Status row — only rendered when there's actually a status to show.
-            // Prevents a reserved-but-empty vertical slot from making cards in
-            // neutral states look shorter than a default/fallback sibling.
-            if (p.isDefault || p.isFallback) {
+            // Status row — rendered whenever there's any status worth naming.
+            // A disabled profile shows a "Disabled" chip so the user knows
+            // why its name is dimmed; a default/fallback profile still shows
+            // its badge even if disabled, which helps surface "your default
+            // is currently off" at a glance. Order: Disabled → Default →
+            // Fallback so the most actionable state reads first.
+            if (!p.isEnabled || p.isDefault || p.isFallback) {
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    if (!p.isEnabled) {
+                        StatusChip("Disabled", Icons.Default.PauseCircle, MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     if (p.isDefault) StatusChip("Default", Icons.Default.Star, MaterialTheme.colorScheme.primary)
                     if (p.isFallback) StatusChip("Fallback", Icons.Default.Shield, MaterialTheme.colorScheme.tertiary)
                 }

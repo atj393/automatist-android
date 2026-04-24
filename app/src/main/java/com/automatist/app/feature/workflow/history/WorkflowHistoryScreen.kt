@@ -164,6 +164,28 @@ private fun HistoryRunCard(run: WorkflowRun, onClick: () -> Unit) {
                         },
                         modifier = Modifier.height(22.dp)
                     )
+                    // Retry chip — only rendered when the run is part of an
+                    // auto-retry chain or a manual rerun. Lets the user scan
+                    // the history and immediately spot "this run was attempt
+                    // 2 of 3" without opening the detail screen.
+                    val retryLabel = run.retryDisplayLabel
+                    if (retryLabel.isNotBlank()) {
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text(retryLabel, style = MaterialTheme.typography.labelSmall)
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    if (run.isAutoRetryAttempt) Icons.Default.Refresh
+                                    else Icons.Default.Replay,
+                                    null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            },
+                            modifier = Modifier.height(22.dp)
+                        )
+                    }
                 }
 
                 // Timestamps

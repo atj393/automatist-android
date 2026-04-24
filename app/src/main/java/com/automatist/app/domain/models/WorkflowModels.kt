@@ -661,6 +661,39 @@ data class WorkflowRun(
     /** Whether this run has enough context for regeneration. */
     val canRegenerate: Boolean
         get() = synthesisInput.isNotBlank() && status == WorkflowRunStatus.COMPLETED
+
+    /**
+     * User-friendly attempt context. Present only when there's something to
+     * say — an initial manual or scheduled run returns blank so the UI can
+     * skip rendering the chip. Everything else (auto-retry attempts, manual
+     * reruns, and the final failed attempt of a chain) gets a concise label.
+     *
+     * Distinguishes:
+     *  - Auto-retry attempts   → "Auto-retry 2 of 3" / "Final attempt" when N == MAX
+     *  - Manual reruns         → "Manual rerun"   (triggerType == "manual-resume")
+     *  - Initial runs          → blank
+     *
+     * Based on metadata that's already persisted on [WorkflowRun]
+     * ([autoRetryAttempt], [triggerType]) — no extra columns, no extra reads.
+     */
+    val retryDisplayLabel: String
+        get() = when {
+            autoRetryAttempt in 1..MAX_AUTO_RETRIES -> {
+                if (autoRetryAttempt == MAX_AUTO_RETRIES && status == WorkflowRunStatus.FAILED) {
+                    "Final attempt ($autoRetryAttempt of $MAX_AUTO_RETRIES)"
+                } else {
+                    "Auto-retry $autoRetryAttempt of $MAX_AUTO_RETRIES"
+                }
+            }
+            triggerType == "manual-resume" -> "Manual rerun"
+            else -> ""
+        }
+
+    /** True when this run is part of an auto-retry chain (not an initial run). */
+    val isAutoRetryAttempt: Boolean get() = autoRetryAttempt > 0
+
+    /** True when this run was explicitly kicked off by a user's Run Again tap. */
+    val isManualRerun: Boolean get() = triggerType == "manual-resume"
 }
 
 // ── Resume Snapshot (captured on safe-to-resume failures) ──

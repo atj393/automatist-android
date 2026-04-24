@@ -89,6 +89,71 @@ fun WorkflowRunDetailScreen(
                     }
                 )
                 AssistChip(onClick = {}, label = { Text(r.triggerType.replaceFirstChar { it.uppercase() }) })
+                // Retry context chip. Only shown when there's something to
+                // say — an initial manual or scheduled run renders blank
+                // label and the helper short-circuits. Lets the user tell
+                // at a glance "this was attempt 3 of 3" vs "this was a fresh
+                // manual rerun" without having to decode triggerType.
+                val retryLabel = r.retryDisplayLabel
+                if (retryLabel.isNotBlank()) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(retryLabel) },
+                        leadingIcon = {
+                            Icon(
+                                if (r.isAutoRetryAttempt) Icons.Default.Refresh else Icons.Default.Replay,
+                                null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                }
+            }
+
+            // Retry-chain context banner. Only rendered when the run is part
+            // of an auto-retry chain (parentRunId != null or autoRetryAttempt > 0).
+            // Keeps the user oriented about whether this run was the first,
+            // middle, or final attempt and what the chain's outcome is.
+            if (r.isAutoRetryAttempt || r.parentRunId != null) {
+                val chainMessage = when {
+                    r.status == WorkflowRunStatus.COMPLETED && r.isAutoRetryAttempt ->
+                        "Succeeded on retry ${r.autoRetryAttempt} of ${com.automatist.app.domain.models.WorkflowRun.MAX_AUTO_RETRIES}. " +
+                            "Earlier attempts in this chain failed before this one completed."
+                    r.status == WorkflowRunStatus.FAILED &&
+                        r.autoRetryAttempt == com.automatist.app.domain.models.WorkflowRun.MAX_AUTO_RETRIES ->
+                        "Final attempt failed after ${com.automatist.app.domain.models.WorkflowRun.MAX_AUTO_RETRIES} automatic retries. " +
+                            "No further retries will be attempted."
+                    r.status == WorkflowRunStatus.FAILED && r.isAutoRetryAttempt ->
+                        "Auto-retry ${r.autoRetryAttempt} of ${com.automatist.app.domain.models.WorkflowRun.MAX_AUTO_RETRIES} failed. " +
+                            "Another automatic retry may follow."
+                    r.status == WorkflowRunStatus.RUNNING && r.isAutoRetryAttempt ->
+                        "Auto-retry ${r.autoRetryAttempt} of ${com.automatist.app.domain.models.WorkflowRun.MAX_AUTO_RETRIES} in progress."
+                    else -> ""
+                }
+                if (chainMessage.isNotBlank()) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Icon(
+                                Icons.Default.Info, null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                chainMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
 
             // Metadata
