@@ -247,6 +247,7 @@ class WorkflowRunViewModel @Inject constructor(
             } else null
 
             // Create run record
+            val startTimeMillis = System.currentTimeMillis()
             val runId = repository.insertRun(
                 WorkflowRun(
                     templateId = template.id,
@@ -263,6 +264,7 @@ class WorkflowRunViewModel @Inject constructor(
                         else -> "Preparing"
                     },
                     outputFormat = template.outputConfig.outputFormat,
+                    startedAtMillis = startTimeMillis,
                     autoRetryAttempt = autoRetryAttempt,
                     parentRunId = parentRunId
                 )
@@ -557,6 +559,10 @@ class WorkflowRunViewModel @Inject constructor(
                     val persistedStagesJson = stagesToJson(stagesSnapshot)
                     val versionsJson = OutputVersion.toJson(executionState.versions)
 
+                    // Fetch the original run to preserve startedAtMillis before updating
+                    val originalRun = repository.getRunById(runId)
+                    val runStartedAtMillis = originalRun?.startedAtMillis ?: System.currentTimeMillis()
+
                     repository.updateRun(
                         WorkflowRun(
                             id = runId,
@@ -572,6 +578,7 @@ class WorkflowRunViewModel @Inject constructor(
                             completionTokens = executionState.tokenUsage.completionTokens,
                             totalTokens = executionState.tokenUsage.totalTokens,
                             durationMs = executionState.durationMs,
+                            startedAtMillis = runStartedAtMillis,
                             completedAtMillis = System.currentTimeMillis(),
                             profileName = executionState.profileName,
                             modelId = executionState.modelId,
@@ -617,6 +624,11 @@ class WorkflowRunViewModel @Inject constructor(
                     val resumeSnapshotJson = resumeSnapshot?.let {
                         ResumeSnapshot.toJson(it)
                     } ?: ""
+
+                    // Fetch the original run to preserve startedAtMillis before updating
+                    val originalRun = repository.getRunById(runId)
+                    val runStartedAtMillis = originalRun?.startedAtMillis ?: System.currentTimeMillis()
+
                     repository.updateRun(
                         WorkflowRun(
                             id = runId,
@@ -627,6 +639,7 @@ class WorkflowRunViewModel @Inject constructor(
                             currentStage = executionState.stage,
                             errorMessage = executionState.error,
                             errorDetail = rawForStorage,
+                            startedAtMillis = runStartedAtMillis,
                             completedAtMillis = System.currentTimeMillis(),
                             stagesJson = persistedStagesJson,
                             resumeSnapshotJson = resumeSnapshotJson,
