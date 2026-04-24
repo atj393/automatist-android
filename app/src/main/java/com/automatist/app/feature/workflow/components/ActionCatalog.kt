@@ -20,7 +20,21 @@ import com.automatist.app.domain.models.WorkflowActionType
 import com.automatist.app.domain.readiness.ActionReadiness
 import com.automatist.app.domain.readiness.ReadinessEvaluator
 import com.automatist.app.domain.readiness.ReadinessStatus
+import com.automatist.app.feature.vault.SettingsSection
 import kotlinx.coroutines.launch
+
+/**
+ * Pick the Settings section most likely to contain the fix for an action's
+ * missing setup. AI-driven actions need AI Profiles (the place where provider
+ * profiles + their API keys + default selection live); service-key actions
+ * need Service API Keys. Falls back to Service Keys for any future mix so
+ * the existing catalog behaviour stays the same for non-AI actions.
+ */
+internal fun settingsSectionFor(info: ActionTypeInfo): String {
+    val hasApiKeyReq = info.setupRequirements.any { it.type == RequirementType.API_KEY }
+    return if (hasApiKeyReq) SettingsSection.PROFILES.key
+    else SettingsSection.SERVICE_KEYS.key
+}
 
 /**
  * Full-screen Action Catalog with dynamic readiness checks.
@@ -31,7 +45,12 @@ import kotlinx.coroutines.launch
 fun ActionCatalog(
     readinessEvaluator: ReadinessEvaluator? = null,
     onSelectAction: (WorkflowActionType) -> Unit,
-    onNavigateToSettings: () -> Unit = {},
+    // Section-aware: the catalog deep-links the user to the correct Settings
+    // area based on WHAT the action actually needs — AI Profiles for
+    // AI-driven actions (AI Prompt), Service API Keys for weather/routes,
+    // etc. Prior signature was () -> Unit hardcoded to SERVICE_KEYS, which
+    // sent AI Prompt's "Set Up" tap to the wrong page.
+    onNavigateToSettings: (String) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val categorizedActions = remember { WorkflowActionRegistry.getTypesByCategory() }
@@ -135,7 +154,14 @@ fun ActionCatalog(
                                 },
                                 onSetup = {
                                     onDismiss()
-                                    onNavigateToSettings()
+                                    // Pick the section that actually contains the
+                                    // fix for this action's missing requirement:
+                                    //  - API_KEY  → AI Profiles (the correct home
+                                    //    for AI Prompt and any future AI-driven action)
+                                    //  - SERVICE_KEY → Service API Keys
+                                    //  - anything else → Service API Keys (current
+                                    //    default, preserves prior behaviour)
+                                    onNavigateToSettings(settingsSectionFor(info))
                                 }
                             )
                         }

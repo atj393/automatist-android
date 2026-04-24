@@ -225,18 +225,47 @@ class ReadinessEvaluator @Inject constructor(
             }
 
             RequirementType.API_KEY -> {
-                // For AI provider keys, check via the provider-type-based storage
-                // This is a general check — specific provider checked at runtime by router
+                // "API_KEY" here is really "AI-provider readiness" — i.e. the
+                // action (AI Prompt today, future AI-driven actions tomorrow)
+                // needs a usable AI Profile. The prior version blindly called
+                // `secureStorage.getApiKey(providerType)`, which is WRONG for
+                // LOCAL_AI (no API key exists; the model file is what matters)
+                // and for FAKE (a demo profile that legitimately has no key).
+                // That produced "Needs setup" on AI Prompt even when the user
+                // had a perfectly valid local or default profile.
+                //
+                // Correct logic: reuse [checkProfileReadiness] so LOCAL_AI
+                // checks the offline model status, FAKE is always ready, and
+                // cloud providers still check their API key. The CTA hint
+                // points to AI Profiles (not Service Keys).
                 val defaultProfile = workflowRepository.getDefaultProfile()
-                if (defaultProfile != null) {
-                    val key = secureStorage.getApiKey(defaultProfile.providerType)
-                    if (!key.isNullOrBlank()) {
-                        RequirementStatus(req, ReadinessStatus.READY)
-                    } else {
-                        RequirementStatus(req, ReadinessStatus.NEEDS_SETUP, "Add ${defaultProfile.providerType.displayName} API key in Settings")
-                    }
+                if (defaultProfile == null) {
+                    return RequirementStatus(
+                        req,
+                        ReadinessStatus.NEEDS_SETUP,
+                        "Set a default AI Profile in Settings"
+                    )
+                }
+                if (!defaultProfile.isEnabled) {
+                    return RequirementStatus(
+                        req,
+                        ReadinessStatus.NEEDS_SETUP,
+                        "Enable the default AI Profile in Settings"
+                    )
+                }
+                val issues = checkProfileReadiness(defaultProfile, isDefault = true)
+                if (issues.isEmpty()) {
+                    RequirementStatus(req, ReadinessStatus.READY)
                 } else {
-                    RequirementStatus(req, ReadinessStatus.NEEDS_SETUP, "Set up a provider profile in Settings")
+                    // Profile exists but can't execute (missing cloud key, or
+                    // model not installed). Short hint here — workflow-level
+                    // readiness surfaces the longer message.
+                    val hint = when (defaultProfile.providerType) {
+                        ProviderType.LOCAL_AI -> "Set up the on-device model in Settings → On-device AI"
+                        ProviderType.FAKE -> "Set a default AI Profile in Settings"
+                        else -> "Add ${defaultProfile.providerType.displayName} API key in Settings → AI Profiles"
+                    }
+                    RequirementStatus(req, ReadinessStatus.NEEDS_SETUP, hint)
                 }
             }
 
