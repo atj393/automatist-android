@@ -269,12 +269,15 @@ class VaultViewModel @Inject constructor(
     fun openNewOfflineProfile(modelId: String) {
         val entry = ProviderCatalog.LOCAL_AI_ENTRY
         val modelName = _state.value.offlineModels.find { it.id == modelId }?.displayName ?: "On-device AI"
+        val isBuiltInModel = modelId in entry.suggestedModels.map { it.first }
         _state.update {
             it.copy(
                 isProfileEditorOpen = true, editingProfile = null,
                 editorName = modelName,
-                editorCatalogEntry = entry, editorModel = modelId,
-                editorCustomModel = "", editorUseCustomModel = false,
+                editorCatalogEntry = entry,
+                editorModel = if (isBuiltInModel) modelId else entry.defaultModel,
+                editorCustomModel = if (isBuiltInModel) "" else modelId,
+                editorUseCustomModel = !isBuiltInModel,
                 editorCustomBaseUrl = "", editorCustomProviderName = "",
                 editorApiKey = "", editorHasExistingKey = false, editorError = null
             )
