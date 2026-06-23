@@ -166,6 +166,13 @@ class ModelDownloadManager @Inject constructor(
                 }
                 var totalDownloaded = 0L
                 var lastReportedBytes = 0L
+                // Catalog sizes are estimates, especially for user-provided sources.
+                // Permit a modest CDN/metadata variance but stop a wildly larger payload.
+                val maximumAllowedBytes = if (entry.downloadSizeBytes > 0) {
+                    (entry.downloadSizeBytes * 1.25).toLong()
+                } else {
+                    Long.MAX_VALUE
+                }
 
                 tempFile.outputStream().buffered().use { output ->
                     body.byteStream().use { input ->
@@ -176,6 +183,9 @@ class ModelDownloadManager @Inject constructor(
                             ensureActive()
                             output.write(buffer, 0, bytesRead)
                             totalDownloaded += bytesRead
+                            if (totalDownloaded > maximumAllowedBytes) {
+                                throw IOException("Downloaded file exceeds the declared model size.")
+                            }
                             // Report progress every ~500 KB to avoid excessive UI updates
                             // (8 KB chunks would fire ~68,000 callbacks for a 557 MB file)
                             if (totalDownloaded - lastReportedBytes >= 500_000) {
