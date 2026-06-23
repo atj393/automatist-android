@@ -97,6 +97,21 @@ data class OfflineModelEntry(
 )
 
 /**
+ * User-provided metadata for a MediaPipe-compatible downloadable model.
+ *
+ * The model file itself remains private to this app and is executed only by the
+ * MediaPipe runtime already shipped with Automatist. The checksum and license URL
+ * are required so a source cannot silently change after the user has reviewed it.
+ */
+data class CustomOfflineModelInput(
+    val displayName: String,
+    val modelUrl: String,
+    val sha256: String,
+    val downloadSizeMb: Int,
+    val licenseUrl: String
+)
+
+/**
  * Static catalog of offline AI models available in this release.
  *
  * Contains two models:
