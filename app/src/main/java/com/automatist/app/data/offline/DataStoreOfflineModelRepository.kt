@@ -9,7 +9,6 @@ import com.google.ai.edge.aicore.GenerativeAIException
 import com.google.ai.edge.aicore.GenerativeModel
 import com.google.ai.edge.aicore.generationConfig
 import com.automatist.app.domain.offline.DownloadProgress
-import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelRepository
 import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.offline.OfflineRuntimeType
@@ -46,7 +45,8 @@ private val Context.offlineModelDataStore by preferencesDataStore(name = "offlin
 @Singleton
 class DataStoreOfflineModelRepository @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val modelDownloadManager: ModelDownloadManager
+    private val modelDownloadManager: ModelDownloadManager,
+    private val offlineModelRegistry: OfflineModelRegistry
 ) : OfflineModelRepository {
 
     /** Per-model download progress. Only meaningful during DOWNLOADING state for DOWNLOADABLE models. */
@@ -78,7 +78,7 @@ class DataStoreOfflineModelRepository @Inject constructor(
      * then updates to the final status when the operation completes.
      */
     override suspend fun requestDownload(modelId: String) {
-        val entry = OfflineModelCatalog.findById(modelId)
+        val entry = offlineModelRegistry.findById(modelId)
         // Initialize progress with the catalog's known size so the UI can show
         // a determinate progress bar immediately (before the first HTTP chunk arrives).
         val knownTotal = if (entry != null && entry.downloadSizeBytes > 0) {
@@ -115,7 +115,7 @@ class DataStoreOfflineModelRepository @Inject constructor(
 
     override suspend fun cancelDownload(modelId: String) {
         // Cancel the active OkHttp Call so network I/O stops immediately.
-        val entry = OfflineModelCatalog.findById(modelId)
+        val entry = offlineModelRegistry.findById(modelId)
         if (entry?.runtimeType == OfflineRuntimeType.DOWNLOADABLE) {
             modelDownloadManager.cancelActiveDownload(entry)
         }
@@ -130,7 +130,7 @@ class DataStoreOfflineModelRepository @Inject constructor(
      * For downloadable models (DOWNLOADABLE): deletes the model file from storage, then resets status.
      */
     override suspend fun removeModel(modelId: String) {
-        val entry = OfflineModelCatalog.findById(modelId)
+        val entry = offlineModelRegistry.findById(modelId)
         if (entry?.runtimeType == OfflineRuntimeType.DOWNLOADABLE) {
             withContext(Dispatchers.IO) {
                 modelDownloadManager.deleteModel(entry)
