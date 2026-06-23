@@ -189,13 +189,6 @@ class ModelDownloadManager @Inject constructor(
                 onProgress(totalDownloaded, effectiveTotalBytes)
                 response.close()
 
-                // A declared size protects users from a truncated or unexpectedly
-                // large payload before the model file reaches the native runtime.
-                if (entry.downloadSizeBytes > 0 && totalDownloaded != entry.downloadSizeBytes) {
-                    tempFile.delete()
-                    return@withContext OfflineModelStatus.FAILED
-                }
-
                 // Verify SHA-256 checksum if provided
                 if (entry.fileSha256 != null) {
                     val actualHash = sha256(tempFile)
