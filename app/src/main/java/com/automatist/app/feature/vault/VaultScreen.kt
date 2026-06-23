@@ -119,6 +119,7 @@ fun VaultScreen(
                         onRemove = viewModel::removeOfflineModel,
                         onCancelDownload = viewModel::cancelOfflineModelDownload,
                         onAddCustomModel = viewModel::addCustomOfflineModel,
+                        onForgetCustomModel = viewModel::removeCustomModelSource,
                         onCreateProfile = viewModel::openNewOfflineProfile,
                         hasProfileForModel = viewModel::hasProfileForModel
                     )
@@ -407,6 +408,7 @@ private fun OnDeviceAISection(
     onRemove: (String) -> Unit,
     onCancelDownload: (String) -> Unit,
     onAddCustomModel: (CustomOfflineModelInput) -> Unit,
+    onForgetCustomModel: (String) -> Unit,
     onCreateProfile: (String) -> Unit,
     hasProfileForModel: (String) -> Boolean
 ) {
@@ -434,13 +436,15 @@ private fun OnDeviceAISection(
                     tags = model.tags,
                     status = status,
                     isSystemManaged = model.isSystemManaged,
+                    isUserAdded = model.isUserAdded,
                     downloadProgress = progress,
                     hasProfile = hasProfile,
                     onCheck = { onCheck(model.id) },
                     onRecheck = { onRecheck(model.id) },
                     onRemove = { onRemove(model.id) },
                     onCancelDownload = { onCancelDownload(model.id) },
-                    onCreateProfile = { onCreateProfile(model.id) }
+                    onCreateProfile = { onCreateProfile(model.id) },
+                    onForgetSource = { onForgetCustomModel(model.id) }
                 )
             }
         }
@@ -454,7 +458,9 @@ private fun OnDeviceAISection(
             Text("Add compatible model")
         }
         Text(
-            "Requires a MediaPipe .task model, its SHA-256 checksum, download size, and license link.",
+            "Only MediaPipe-compatible .task language models work in this version. " +
+                "Most Hugging Face .gguf and .safetensors files are not compatible. " +
+                "Requires the .task URL, its SHA-256 checksum, download size, and a license link.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -631,15 +637,18 @@ private fun OfflineModelCard(
     tags: List<String>,
     status: OfflineModelStatus,
     isSystemManaged: Boolean,
+    isUserAdded: Boolean = false,
     downloadProgress: DownloadProgress = DownloadProgress(),
     hasProfile: Boolean = false,
     onCheck: () -> Unit,
     onRecheck: () -> Unit,
     onRemove: () -> Unit,
     onCancelDownload: () -> Unit = {},
-    onCreateProfile: () -> Unit = {}
+    onCreateProfile: () -> Unit = {},
+    onForgetSource: () -> Unit = {}
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
+    var showForgetDialog by remember { mutableStateOf(false) }
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -774,6 +783,17 @@ private fun OfflineModelCard(
                     }
                 }
             }
+            // User-added sources can be forgotten entirely (distinct from removing just
+            // the downloaded file). Available in every state so a failed/unsupported
+            // custom source can still be cleaned up.
+            if (isUserAdded) {
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = { showForgetDialog = true }, modifier = Modifier.align(Alignment.End)) {
+                    Icon(Icons.Default.DeleteOutline, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Remove from list", color = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
     // Confirmation dialog for resetting a non-system-managed model
@@ -784,6 +804,21 @@ private fun OfflineModelCard(
             text = { Text("The model file will be deleted from this device. You can download it again later.") },
             confirmButton = { TextButton(onClick = { onRemove(); showResetDialog = false }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { showResetDialog = false }) { Text("Cancel") } }
+        )
+    }
+    // Confirmation dialog for forgetting a user-added custom source entirely
+    if (showForgetDialog) {
+        AlertDialog(
+            onDismissRequest = { showForgetDialog = false },
+            title = { Text("Remove $displayName from your models?") },
+            text = {
+                Text(
+                    "This removes the custom model source and deletes any downloaded file. " +
+                        "AI profiles that use this model are kept, but will need a different model until you add one again."
+                )
+            },
+            confirmButton = { TextButton(onClick = { onForgetSource(); showForgetDialog = false }) { Text("Remove", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { showForgetDialog = false }) { Text("Cancel") } }
         )
     }
 }

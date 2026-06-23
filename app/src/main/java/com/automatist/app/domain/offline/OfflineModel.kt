@@ -93,7 +93,14 @@ data class OfflineModelEntry(
     /** Maximum input characters for prompt building. Defaults to Gemini Nano's limit. */
     val contextWindowChars: Int = 3_000,
     /** Minimum device RAM in MB required to run this model. 0 means no check. */
-    val minimumRamMb: Int = 0
+    val minimumRamMb: Int = 0,
+    /**
+     * True if this entry was added by the user from an external source rather than
+     * being one of the code-defined built-in catalog entries. User-added entries can
+     * have their source metadata removed; built-in entries cannot. Always false for
+     * [OfflineModelCatalog.ALL_MODELS].
+     */
+    val isUserAdded: Boolean = false
 )
 
 /**

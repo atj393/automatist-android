@@ -197,9 +197,27 @@ class VaultViewModel @Inject constructor(
         viewModelScope.launch { offlineModelRepository.cancelDownload(modelId) }
     }
 
-    /** Remove an installed offline model from device storage. */
+    /** Remove an installed offline model file from device storage (keeps the source entry). */
     fun removeOfflineModel(modelId: String) {
         viewModelScope.launch { offlineModelRepository.removeModel(modelId) }
+    }
+
+    /**
+     * Forget a user-added custom model source entirely.
+     *
+     * Deletes any downloaded file first, then removes the source metadata. This does NOT
+     * delete AI profiles that reference the model — those keep their exact model ID and
+     * will simply show a setup-required state until a supported model is configured again.
+     */
+    fun removeCustomModelSource(modelId: String) {
+        viewModelScope.launch {
+            // Delete the file first, while the entry is still resolvable by the repository.
+            offlineModelRepository.removeModel(modelId)
+            offlineModelRegistry.removeCustomModel(modelId)
+            _state.update {
+                it.copy(offlineInfoMessage = "Custom model source removed. Any profile using it will need a different model.")
+            }
+        }
     }
 
     /** Dismiss the transient offline info message. */
