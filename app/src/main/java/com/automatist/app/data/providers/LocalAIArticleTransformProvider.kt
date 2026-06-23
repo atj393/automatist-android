@@ -89,6 +89,12 @@ class LocalAIArticleTransformProvider @Inject constructor(
     ): Result<TransformResult> {
         val modelId = input.modelOverride ?: OfflineModelCatalog.GEMINI_NANO_ID
         val entry = offlineModelRegistry.findById(modelId)
+            ?: return Result.failure(
+                DiagnosticException(
+                    message = "The selected on-device model is no longer configured. Open Settings and add or select a supported model.",
+                    rawDetail = "Unknown local model ID: '$modelId'"
+                )
+            )
         val status = offlineModelRepository.getModelStatus(modelId).first()
 
         return when (status) {
@@ -144,7 +150,7 @@ class LocalAIArticleTransformProvider @Inject constructor(
             OfflineModelStatus.INSTALLED -> {
                 when (entry?.runtimeType) {
                     OfflineRuntimeType.DOWNLOADABLE -> runDownloadableInference(input, type, modelId, entry)
-                    OfflineRuntimeType.AICORE, null -> runAICoreInference(input, type, modelId, entry)
+                    OfflineRuntimeType.AICORE -> runAICoreInference(input, type, modelId, entry)
                 }
             }
         }
