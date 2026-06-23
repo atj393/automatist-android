@@ -53,6 +53,8 @@ object CustomOfflineModelValidator {
             "Download size must be between $MIN_DOWNLOAD_SIZE_MB MB and $MAX_DOWNLOAD_SIZE_MB MB."
         }
         requireHttpsUrl(input.licenseUrl, "License URL")
+        // sourceUrl is optional (manifest import provides it); validate only when present.
+        input.sourceUrl?.takeIf { it.isNotBlank() }?.let { requireHttpsUrl(it, "Source URL") }
     }
 
     /**
@@ -81,7 +83,12 @@ internal data class StoredCustomOfflineModel(
     val downloadUrl: String,
     val sha256: String,
     val downloadSizeMb: Int,
-    val licenseUrl: String
+    val licenseUrl: String,
+    // Fields below were added with the manifest-import path. Defaults keep older
+    // stored JSON (written before these existed) decodable without migration.
+    val sourceUrl: String? = null,
+    val minimumRamMb: Int = CustomOfflineModelStore.DEFAULT_MINIMUM_RAM_MB,
+    val contextWindowChars: Int = CustomOfflineModelStore.DEFAULT_CONTEXT_WINDOW_CHARS
 ) {
     fun toEntry(): OfflineModelEntry = OfflineModelEntry(
         id = id,
@@ -97,14 +104,30 @@ internal data class StoredCustomOfflineModel(
         // ID is an app-generated UUID (hex + hyphens only), so the derived file name is
         // always a safe single path segment — no user-controlled characters reach the FS.
         modelFileName = "$id.task",
-        contextWindowChars = 2_500,
-        minimumRamMb = 3_000,
+        contextWindowChars = contextWindowChars,
+        minimumRamMb = minimumRamMb,
         isUserAdded = true
     )
 }
 
 internal object CustomOfflineModelStore {
     private val json = Json { ignoreUnknownKeys = true }
+
+    // Safe bounds for hint values that may come from an external manifest. RAM/context
+    // are treated as advisory only — a manifest can never push them outside this range.
+    const val DEFAULT_CONTEXT_WINDOW_CHARS = 2_500
+    const val MIN_CONTEXT_WINDOW_CHARS = 500
+    const val MAX_CONTEXT_WINDOW_CHARS = 4_000
+    const val DEFAULT_MINIMUM_RAM_MB = 3_000
+    const val MAX_MINIMUM_RAM_MB = 16_384
+
+    /** Clamp a (possibly null/external) context hint into the supported range. */
+    fun boundedContextWindowChars(value: Int?): Int =
+        (value ?: DEFAULT_CONTEXT_WINDOW_CHARS).coerceIn(MIN_CONTEXT_WINDOW_CHARS, MAX_CONTEXT_WINDOW_CHARS)
+
+    /** Clamp a (possibly null/external) RAM hint into the supported range. */
+    fun boundedMinimumRamMb(value: Int?): Int =
+        (value ?: DEFAULT_MINIMUM_RAM_MB).coerceIn(0, MAX_MINIMUM_RAM_MB)
 
     /** Decode the stored list, tolerating null/garbage by returning an empty list. */
     fun parse(raw: String?): List<StoredCustomOfflineModel> =
@@ -121,13 +144,20 @@ internal object CustomOfflineModelStore {
         CustomOfflineModelValidator.validate(input)
         val normalizedUrl = CustomOfflineModelValidator.requireHttpsUrl(input.modelUrl, "Model URL").toString()
         val normalizedLicenseUrl = CustomOfflineModelValidator.requireHttpsUrl(input.licenseUrl, "License URL").toString()
+        val normalizedSourceUrl = input.sourceUrl?.takeIf { it.isNotBlank() }
+            ?.let { CustomOfflineModelValidator.requireHttpsUrl(it, "Source URL").toString() }
         return StoredCustomOfflineModel(
             id = "custom-${UUID.randomUUID()}",
             displayName = input.displayName.trim(),
             downloadUrl = normalizedUrl,
             sha256 = input.sha256.trim().lowercase(),
             downloadSizeMb = input.downloadSizeMb,
-            licenseUrl = normalizedLicenseUrl
+            licenseUrl = normalizedLicenseUrl,
+            sourceUrl = normalizedSourceUrl,
+            // RAM/context arrive as untrusted hints (manual import leaves them null);
+            // always clamp to the supported range here so neither path can exceed it.
+            minimumRamMb = boundedMinimumRamMb(input.minimumRamMb),
+            contextWindowChars = boundedContextWindowChars(input.contextWindowChars)
         )
     }
 

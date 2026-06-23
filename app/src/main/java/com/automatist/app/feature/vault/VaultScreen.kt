@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.automatist.app.BuildConfig
 import com.automatist.app.domain.models.*
+import com.automatist.app.data.offline.ManifestImportPreview
 import com.automatist.app.domain.offline.CustomOfflineModelInput
 import com.automatist.app.domain.offline.DownloadProgress
 import com.automatist.app.domain.offline.OfflineModelEntry
@@ -121,7 +122,13 @@ fun VaultScreen(
                         onAddCustomModel = viewModel::addCustomOfflineModel,
                         onForgetCustomModel = viewModel::removeCustomModelSource,
                         onCreateProfile = viewModel::openNewOfflineProfile,
-                        hasProfileForModel = viewModel::hasProfileForModel
+                        hasProfileForModel = viewModel::hasProfileForModel,
+                        manifestInProgress = state.manifestImportInProgress,
+                        manifestPreview = state.manifestPreview,
+                        manifestError = state.manifestImportError,
+                        onImportManifest = viewModel::importManifest,
+                        onConfirmManifest = viewModel::confirmManifestImport,
+                        onCancelManifest = viewModel::cancelManifestImport
                     )
                 }
 
@@ -410,7 +417,13 @@ private fun OnDeviceAISection(
     onAddCustomModel: (CustomOfflineModelInput) -> Unit,
     onForgetCustomModel: (String) -> Unit,
     onCreateProfile: (String) -> Unit,
-    hasProfileForModel: (String) -> Boolean
+    hasProfileForModel: (String) -> Boolean,
+    manifestInProgress: Boolean,
+    manifestPreview: ManifestImportPreview?,
+    manifestError: String?,
+    onImportManifest: (String) -> Unit,
+    onConfirmManifest: () -> Unit,
+    onCancelManifest: () -> Unit
 ) {
     // Auto-check Gemini Nano availability when this section appears, but only once
     // (only if status is still NOT_INSTALLED, meaning it has never been checked).
@@ -422,6 +435,7 @@ private fun OnDeviceAISection(
     }
 
     var showAddCustomModel by remember { mutableStateOf(false) }
+    var showImportManifest by remember { mutableStateOf(false) }
 
     Card2(Icons.Default.PhoneAndroid, "On-device AI", "Run AI offline — no internet or API key required.") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -448,22 +462,29 @@ private fun OnDeviceAISection(
                 )
             }
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(8.dp))
+        HowToAddModelHelp()
+
+        Spacer(Modifier.height(8.dp))
+        // Preferred advanced path: import a manifest URL.
         OutlinedButton(
+            onClick = { showImportManifest = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.CloudDownload, null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Import model manifest")
+        }
+        Spacer(Modifier.height(4.dp))
+        // Fallback: enter every field by hand.
+        TextButton(
             onClick = { showAddCustomModel = true },
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Add compatible model")
+            Text("Enter model details manually")
         }
-        Text(
-            "Only MediaPipe-compatible .task language models work in this version. " +
-                "Most Hugging Face .gguf and .safetensors files are not compatible. " +
-                "Requires the .task URL, its SHA-256 checksum, download size, and a license link.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
 
         Spacer(Modifier.height(8.dp))
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
@@ -521,6 +542,183 @@ private fun OnDeviceAISection(
                 showAddCustomModel = false
             }
         )
+    }
+    if (showImportManifest) {
+        ImportManifestDialog(
+            inProgress = manifestInProgress,
+            preview = manifestPreview,
+            error = manifestError,
+            onFetch = onImportManifest,
+            onConfirm = {
+                onConfirmManifest()
+                showImportManifest = false
+            },
+            onDismiss = {
+                onCancelManifest()
+                showImportManifest = false
+            }
+        )
+    }
+}
+
+/** Compact "How to add a model" help area shown in the On-device AI section. */
+@Composable
+private fun HowToAddModelHelp() {
+    var expanded by remember { mutableStateOf(false) }
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }
+            ) {
+                Icon(Icons.Default.HelpOutline, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "How to add a model",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null,
+                    modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(6.dp))
+                val style = MaterialTheme.typography.bodySmall
+                val color = MaterialTheme.colorScheme.onSurfaceVariant
+                Text("Automatist runs compatible MediaPipe .task language models locally on your device.", style = style, color = color)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Most Hugging Face models are not compatible with this version. Files such as .gguf, " +
+                        ".safetensors, .bin, APKs, scripts, and plug-ins cannot be used.",
+                    style = style, color = color
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "For the easiest setup, choose a built-in or verified model. Advanced users can import a " +
+                        "compatible model manifest or enter verified model details manually.",
+                    style = style, color = color
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Before importing, make sure the publisher provides a direct HTTPS .task file, SHA-256 " +
+                        "checksum, public license link, and model/source page.",
+                    style = style, color = color
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Automatist verifies the checksum, but cannot guarantee a third-party model's quality, " +
+                        "device performance, or license compliance.",
+                    style = style, color = color
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Two-stage manifest import dialog.
+ *
+ * Stage 1: enter the manifest URL and fetch it. Stage 2 (when [preview] is non-null):
+ * review the validated details and acknowledge the license before the model source is
+ * added. The model file itself is downloaded later, from the model card.
+ */
+@Composable
+private fun ImportManifestDialog(
+    inProgress: Boolean,
+    preview: ManifestImportPreview?,
+    error: String?,
+    onFetch: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var manifestUrl by remember { mutableStateOf("") }
+    var acknowledged by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (preview == null) "Import model manifest" else "Review model") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (preview == null) {
+                    Text(
+                        "Enter the HTTPS URL of a model manifest (a small JSON file the publisher provides). " +
+                            "Automatist downloads and checks the manifest only — it does not download the model yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = manifestUrl,
+                        onValueChange = { manifestUrl = it },
+                        label = { Text("HTTPS manifest URL") },
+                        singleLine = true,
+                        enabled = !inProgress,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (inProgress) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Fetching manifest…", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    error?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                } else {
+                    val input = preview.input
+                    ManifestReviewRow("Name", input.displayName)
+                    if (preview.version.isNotBlank()) ManifestReviewRow("Version", preview.version)
+                    ManifestReviewRow("Source", input.sourceUrl ?: "—")
+                    ManifestReviewRow("License", input.licenseUrl)
+                    ManifestReviewRow("Approx. size", "${input.downloadSizeMb} MB")
+                    ManifestReviewRow("Min RAM", input.minimumRamMb?.let { "$it MB" } ?: "Default")
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Automatist will verify the SHA-256 checksum after download, but cannot guarantee the " +
+                            "model's quality, performance, or license compliance.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().clickable { acknowledged = !acknowledged }
+                    ) {
+                        Checkbox(checked = acknowledged, onCheckedChange = { acknowledged = it })
+                        Text(
+                            "I have reviewed the model source and license and have permission to use it.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (preview == null) {
+                TextButton(onClick = { onFetch(manifestUrl) }, enabled = !inProgress && manifestUrl.isNotBlank()) {
+                    Text("Fetch")
+                }
+            } else {
+                TextButton(onClick = onConfirm, enabled = acknowledged) { Text("Add model") }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun ManifestReviewRow(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall)
     }
 }
 
