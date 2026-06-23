@@ -99,10 +99,10 @@ class LocalAIArticleTransformProvider @Inject constructor(
 
         return when (status) {
             OfflineModelStatus.NOT_INSTALLED -> {
-                val action = if (entry?.isSystemManaged == true) "Check Availability" else "Download"
+                val action = if (entry.isSystemManaged == true) "Check Availability" else "Download"
                 Result.failure(
                     DiagnosticException(
-                        message = "${entry?.displayName ?: "On-device AI model"} is not yet available. " +
+                        message = "${entry.displayName ?: "On-device AI model"} is not yet available. " +
                             "Open Settings → On-device AI and tap \"$action\" first.",
                         rawDetail = "Model '$modelId' status: NOT_INSTALLED"
                     )
@@ -110,10 +110,10 @@ class LocalAIArticleTransformProvider @Inject constructor(
             }
 
             OfflineModelStatus.FAILED -> {
-                val action = if (entry?.isSystemManaged == true) "Retry check" else "Retry download"
+                val action = if (entry.isSystemManaged == true) "Retry check" else "Retry download"
                 Result.failure(
                     DiagnosticException(
-                        message = "The ${entry?.displayName ?: "on-device AI"} setup failed. " +
+                        message = "The ${entry.displayName ?: "on-device AI"} setup failed. " +
                             "Open Settings → On-device AI and tap \"$action\" to try again.",
                         rawDetail = "Model '$modelId' status: FAILED"
                     )
@@ -121,10 +121,10 @@ class LocalAIArticleTransformProvider @Inject constructor(
             }
 
             OfflineModelStatus.DOWNLOADING -> {
-                val action = if (entry?.isSystemManaged == true) "checking availability" else "downloading"
+                val action = if (entry.isSystemManaged == true) "checking availability" else "downloading"
                 Result.failure(
                     DiagnosticException(
-                        message = "${entry?.displayName ?: "On-device AI"} is still $action. " +
+                        message = "${entry.displayName ?: "On-device AI"} is still $action. " +
                             "Please wait a moment and try again.",
                         rawDetail = "Model '$modelId' status: DOWNLOADING"
                     )
@@ -132,14 +132,14 @@ class LocalAIArticleTransformProvider @Inject constructor(
             }
 
             OfflineModelStatus.UNSUPPORTED -> {
-                val reason = if (entry?.isSystemManaged == true) {
+                val reason = if (entry.isSystemManaged == true) {
                     "It requires Android 14+ and a compatible Pixel 8+ or Galaxy S24+ device."
                 } else {
                     "This device does not meet the minimum requirements."
                 }
                 Result.failure(
                     DiagnosticException(
-                        message = "${entry?.displayName ?: "On-device AI"} is not supported on this device. " +
+                        message = "${entry.displayName ?: "On-device AI"} is not supported on this device. " +
                             "$reason Cloud-based AI profiles work on all devices.",
                         rawDetail = "Model '$modelId' status: UNSUPPORTED " +
                             "(Android API ${Build.VERSION.SDK_INT})"
@@ -148,7 +148,7 @@ class LocalAIArticleTransformProvider @Inject constructor(
             }
 
             OfflineModelStatus.INSTALLED -> {
-                when (entry?.runtimeType) {
+                when (entry.runtimeType) {
                     OfflineRuntimeType.DOWNLOADABLE -> runDownloadableInference(input, type, modelId, entry)
                     OfflineRuntimeType.AICORE -> runAICoreInference(input, type, modelId, entry)
                 }
