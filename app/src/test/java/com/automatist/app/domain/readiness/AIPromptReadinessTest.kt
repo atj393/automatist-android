@@ -4,6 +4,7 @@ import com.automatist.app.domain.models.ProviderProfile
 import com.automatist.app.domain.models.ProviderType
 import com.automatist.app.domain.models.WorkflowActionType
 import com.automatist.app.domain.offline.FakeOfflineModelRepository
+import com.automatist.app.domain.offline.FakeOfflineModelResolver
 import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.workflow.FakeWorkflowRepository
@@ -38,6 +39,7 @@ class AIPromptReadinessTest {
     private lateinit var repo: FakeWorkflowRepository
     private lateinit var storage: FakeSecureStorage
     private lateinit var offlineRepo: FakeOfflineModelRepository
+    private lateinit var offlineResolver: FakeOfflineModelResolver
     private lateinit var evaluator: ReadinessEvaluator
 
     @Before
@@ -45,7 +47,8 @@ class AIPromptReadinessTest {
         repo = FakeWorkflowRepository()
         storage = FakeSecureStorage()
         offlineRepo = FakeOfflineModelRepository()
-        evaluator = ReadinessEvaluator(storage, repo, offlineRepo)
+        offlineResolver = FakeOfflineModelResolver()
+        evaluator = ReadinessEvaluator(storage, repo, offlineRepo, offlineResolver)
     }
 
     // ── Ready paths ──

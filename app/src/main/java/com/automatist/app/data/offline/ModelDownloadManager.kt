@@ -2,9 +2,9 @@ package com.automatist.app.data.offline
 
 import android.app.ActivityManager
 import android.content.Context
-import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelEntry
 import com.automatist.app.domain.offline.OfflineModelStatus
+import com.automatist.app.domain.offline.OfflineModelUrlSafety
 import com.automatist.app.di.FileDownloadClient
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -14,7 +14,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Call
-import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
 import java.io.IOException
@@ -115,7 +114,7 @@ class ModelDownloadManager @Inject constructor(
             ?: return OfflineModelStatus.FAILED
 
         val parsedUrl = url.toHttpUrlOrNull()
-        if (parsedUrl == null || !isSafeModelUrl(parsedUrl)) {
+        if (parsedUrl == null || !OfflineModelUrlSafety.isSafe(parsedUrl)) {
             return OfflineModelStatus.FAILED
         }
 
@@ -137,7 +136,9 @@ class ModelDownloadManager @Inject constructor(
 
                 // GitHub Releases and Hugging Face may redirect to their download CDN.
                 // The final resolved request must still be an ordinary HTTPS model download.
-                if (!isSafeModelUrl(response.request.url)) {
+                // (The download client also has followSslRedirects disabled, so a redirect
+                // could never have silently downgraded to plaintext before reaching here.)
+                if (!OfflineModelUrlSafety.isSafe(response.request.url)) {
                     response.close()
                     return@withContext OfflineModelStatus.FAILED
                 }
@@ -168,11 +169,7 @@ class ModelDownloadManager @Inject constructor(
                 var lastReportedBytes = 0L
                 // Catalog sizes are estimates, especially for user-provided sources.
                 // Permit a modest CDN/metadata variance but stop a wildly larger payload.
-                val maximumAllowedBytes = if (entry.downloadSizeBytes > 0) {
-                    (entry.downloadSizeBytes * 1.25).toLong()
-                } else {
-                    Long.MAX_VALUE
-                }
+                val maximumAllowedBytes = OfflineModelUrlSafety.maxAllowedBytes(entry.downloadSizeBytes)
 
                 tempFile.outputStream().buffered().use { output ->
                     body.byteStream().use { input ->
@@ -254,12 +251,6 @@ class ModelDownloadManager @Inject constructor(
         tempFile.delete() // Clean up any partial download
         return !file.exists() || file.delete()
     }
-
-    private fun isSafeModelUrl(url: HttpUrl): Boolean =
-        url.isHttps &&
-            url.port == 443 &&
-            url.username.isEmpty() &&
-            url.password.isEmpty()
 
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")

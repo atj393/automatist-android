@@ -52,6 +52,11 @@ object NetworkModule {
      *   the caller's read loop ever executes, stalling progress at 0 bytes.
      * - 5-minute read timeout: mobile networks can stall briefly mid-transfer.
      * - 30-second connect timeout: CDN redirects may add latency.
+     * - followSslRedirects(false): a model download must never silently downgrade from
+     *   HTTPS to plaintext (or vice-versa) across a redirect. Same-scheme HTTPS→HTTPS
+     *   redirects (e.g. GitHub Releases → its object CDN) are still followed, so the
+     *   built-in model download is unaffected. The download manager additionally
+     *   re-checks the final resolved URL.
      */
     @Provides
     @Singleton
@@ -66,6 +71,7 @@ object NetworkModule {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(5, TimeUnit.MINUTES)
             .writeTimeout(30, TimeUnit.SECONDS)
+            .followSslRedirects(false)
             .build()
     }
 

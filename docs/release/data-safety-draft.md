@@ -57,6 +57,7 @@ Yes
 | User-entered text content | User's selected AI provider (OpenAI, Anthropic, or Google Gemini) | Core app functionality — text transformation |
 | Workflow definitions (no secrets) | Google Drive (optional, user-initiated) | Cloud backup |
 | Google Account email | Google Drive API (optional) | Authentication for cloud sync |
+| Network request metadata (e.g. IP address) | A user-supplied model host (optional, only when the user adds and downloads a custom on-device model) | Downloading a user-chosen MediaPipe `.task` model file |
 
 ### Notes for each sharing partner:
 
@@ -67,10 +68,11 @@ Yes
 - Each provider has its own privacy policy and data handling practices
 
 **LOCAL_AI (On-device)**
-- If the user selects LOCAL_AI (Gemini Nano or Gemma 3 1B), all processing occurs on-device
+- If the user selects LOCAL_AI (Gemini Nano, Gemma 3 1B, or a custom model they add), all processing occurs on-device
 - No text content leaves the device for AI processing
 - Gemini Nano is managed by Android system services (AICore)
 - Gemma 3 1B is downloaded once (~529 MB) and stored in app-internal storage
+- A user may optionally add a compatible MediaPipe `.task` model from an HTTPS source they choose. The model file is downloaded only on explicit user action; the chosen host receives the normal download request (including the device IP) under that host's own policy. No workflow text or API keys are sent to the host. The model runs fully on-device after download.
 
 **Google Drive**
 - Optional feature — user must explicitly sign in and initiate backup

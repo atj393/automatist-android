@@ -8,6 +8,7 @@ import com.automatist.app.domain.models.WorkflowActionType
 import com.automatist.app.domain.models.WorkflowTemplate
 import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelRepository
+import com.automatist.app.domain.offline.OfflineModelResolver
 import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.repositories.WorkflowRepository
 import com.automatist.app.platform.security.SecureStorage
@@ -63,7 +64,8 @@ data class WorkflowReadiness(
 class ReadinessEvaluator @Inject constructor(
     private val secureStorage: SecureStorage,
     private val workflowRepository: WorkflowRepository,
-    private val offlineModelRepository: OfflineModelRepository
+    private val offlineModelRepository: OfflineModelRepository,
+    private val offlineModelResolver: OfflineModelResolver
 ) {
 
     /**
@@ -157,9 +159,19 @@ class ReadinessEvaluator @Inject constructor(
         return when (profile.providerType) {
             ProviderType.LOCAL_AI -> {
                 val modelId = profile.modelId.ifBlank { OfflineModelCatalog.GEMINI_NANO_ID }
-                val entry = OfflineModelCatalog.findById(modelId)
-                val modelName = entry?.displayName ?: "On-device AI"
-                val isDownloadable = entry?.isSystemManaged == false
+                // Resolve across built-in AND user-added custom models. A null entry means
+                // the profile references a custom source that has since been removed —
+                // report that honestly rather than mislabelling it as a built-in model.
+                val entry = offlineModelResolver.findById(modelId)
+                if (entry == null) {
+                    return listOf(
+                        "$label uses an on-device model that is no longer configured on this device. " +
+                            "Open Settings → On-device AI to add or download a supported model, " +
+                            "or switch this profile to a cloud-based AI provider."
+                    )
+                }
+                val modelName = entry.displayName
+                val isDownloadable = !entry.isSystemManaged
                 val status = offlineModelRepository.getModelStatus(modelId).first()
                 when (status) {
                     OfflineModelStatus.INSTALLED -> emptyList()

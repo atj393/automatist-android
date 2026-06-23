@@ -7,6 +7,7 @@ import com.automatist.app.domain.models.WorkflowAction
 import com.automatist.app.domain.models.WorkflowActionType
 import com.automatist.app.domain.models.WorkflowTemplate
 import com.automatist.app.domain.offline.FakeOfflineModelRepository
+import com.automatist.app.domain.offline.FakeOfflineModelResolver
 import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.domain.workflow.FakeWorkflowRepository
@@ -20,6 +21,7 @@ class ReadinessEvaluatorTest {
     private lateinit var repo: FakeWorkflowRepository
     private lateinit var storage: FakeSecureStorage
     private lateinit var offlineRepo: FakeOfflineModelRepository
+    private lateinit var offlineResolver: FakeOfflineModelResolver
     private lateinit var evaluator: ReadinessEvaluator
 
     @Before
@@ -27,7 +29,8 @@ class ReadinessEvaluatorTest {
         repo = FakeWorkflowRepository()
         storage = FakeSecureStorage()
         offlineRepo = FakeOfflineModelRepository()
-        evaluator = ReadinessEvaluator(storage, repo, offlineRepo)
+        offlineResolver = FakeOfflineModelResolver()
+        evaluator = ReadinessEvaluator(storage, repo, offlineRepo, offlineResolver)
     }
 
     // ── Empty workflow (zero actions) ──
@@ -495,6 +498,107 @@ class ReadinessEvaluatorTest {
         assertFalse(
             "Gemma 3n E2B profile should not be ready just because Gemini Nano is installed",
             result.isFullyReady
+        )
+    }
+
+    // ── Custom (user-added) LOCAL_AI model readiness ──
+
+    private fun customEntry(id: String) = com.automatist.app.domain.offline.OfflineModelEntry(
+        id = id,
+        displayName = "My Custom Model",
+        description = "Custom MediaPipe model.",
+        sizeLabel = "~521 MB download",
+        isSystemManaged = false,
+        runtimeType = com.automatist.app.domain.offline.OfflineRuntimeType.DOWNLOADABLE,
+        downloadUrl = "https://example.com/model.task",
+        downloadSizeBytes = 521_000_000L,
+        fileSha256 = "a".repeat(64),
+        modelFileName = "$id.task",
+        contextWindowChars = 2_500,
+        minimumRamMb = 3_000,
+        isUserAdded = true
+    )
+
+    @Test
+    fun `custom LOCAL_AI profile with installed model resolves and is ready`() = runTest {
+        val id = "custom-abc"
+        offlineResolver.seedCustom(customEntry(id))
+        offlineRepo.setStatus(id, OfflineModelStatus.INSTALLED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-custom", name = "Custom Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = id, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input"))
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertTrue("Installed custom model should make workflow ready", result.isFullyReady)
+        assertTrue(result.profileIssues.isEmpty())
+    }
+
+    @Test
+    fun `custom LOCAL_AI profile NOT_INSTALLED suggests Download not Check Availability`() = runTest {
+        val id = "custom-def"
+        offlineResolver.seedCustom(customEntry(id)) // defaults to NOT_INSTALLED
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-custom", name = "Custom Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = id, isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input"))
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse(result.isFullyReady)
+        assertTrue(
+            "Custom downloadable model must be treated as downloadable (Download, not Check Availability)",
+            result.profileIssues.any { it.contains("Download") }
+        )
+        assertTrue(
+            "Custom model issue should use its display name",
+            result.profileIssues.any { it.contains("My Custom Model") }
+        )
+    }
+
+    @Test
+    fun `LOCAL_AI profile with unknown custom model fails safely without mislabeling`() = runTest {
+        // Profile points at a custom model ID that the resolver does NOT know
+        // (e.g. the source was removed). Must NOT silently fall back to a built-in model.
+        offlineRepo.setStatus("custom-removed", OfflineModelStatus.INSTALLED)
+        repo.seedProfile(
+            ProviderProfile(
+                id = "prof-ghost", name = "Ghost Offline", providerType = ProviderType.LOCAL_AI,
+                modelId = "custom-removed", isDefault = true
+            )
+        )
+
+        val template = WorkflowTemplate(
+            name = "Offline Workflow",
+            actions = listOf(WorkflowAction(id = "a1", type = WorkflowActionType.PASTE_TEXT, label = "Input"))
+        )
+
+        val result = evaluator.evaluateWorkflow(template)
+
+        assertFalse("Unknown custom model must not be considered ready", result.isFullyReady)
+        assertTrue("Should report an issue", result.profileIssues.isNotEmpty())
+        assertTrue(
+            "Issue should state the model is no longer configured",
+            result.profileIssues.any { it.contains("no longer configured") }
+        )
+        assertTrue(
+            "Must not mislabel the missing model as the built-in Gemini Nano (Pixel/Galaxy)",
+            result.profileIssues.none { it.contains("Pixel 8+") }
         )
     }
 }

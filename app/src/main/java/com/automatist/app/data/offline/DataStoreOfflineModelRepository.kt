@@ -83,13 +83,9 @@ class DataStoreOfflineModelRepository @Inject constructor(
                 setStatus(modelId, OfflineModelStatus.FAILED)
                 return
             }
-        // Initialize progress with the catalog's known size so the UI can show
-        // a determinate progress bar immediately (before the first HTTP chunk arrives).
-        val knownTotal = if (entry != null && entry.downloadSizeBytes > 0) {
-            entry.downloadSizeBytes
-        } else {
-            -1L
-        }
+        // Initialize progress with the known size so the UI can show a determinate
+        // progress bar immediately (before the first HTTP chunk arrives).
+        val knownTotal = if (entry.downloadSizeBytes > 0) entry.downloadSizeBytes else -1L
         progressFlow(modelId).value = DownloadProgress(bytesDownloaded = 0, totalBytes = knownTotal)
         setStatus(modelId, OfflineModelStatus.DOWNLOADING)
         try {
