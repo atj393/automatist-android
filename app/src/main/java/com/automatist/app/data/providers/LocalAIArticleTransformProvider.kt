@@ -10,6 +10,7 @@ import com.automatist.app.data.offline.InputTooLargeException
 import com.automatist.app.data.offline.MediaPipeInferenceEngine
 import com.automatist.app.data.offline.ModelInferenceException
 import com.automatist.app.data.offline.ModelNotAvailableException
+import com.automatist.app.data.offline.OfflineModelRegistry
 import com.automatist.app.domain.engine.DiagnosticException
 import com.automatist.app.domain.models.ArticleInput
 import com.automatist.app.domain.models.ProviderType
@@ -62,6 +63,7 @@ import javax.inject.Singleton
 @Singleton
 class LocalAIArticleTransformProvider @Inject constructor(
     private val offlineModelRepository: OfflineModelRepository,
+    private val offlineModelRegistry: OfflineModelRegistry,
     private val mediaPipeInferenceEngine: MediaPipeInferenceEngine,
     @ApplicationContext private val context: Context
 ) : ArticleTransformProvider {
@@ -86,7 +88,7 @@ class LocalAIArticleTransformProvider @Inject constructor(
         type: TransformType
     ): Result<TransformResult> {
         val modelId = input.modelOverride ?: OfflineModelCatalog.GEMINI_NANO_ID
-        val entry = OfflineModelCatalog.findById(modelId)
+        val entry = offlineModelRegistry.findById(modelId)
         val status = offlineModelRepository.getModelStatus(modelId).first()
 
         return when (status) {
