@@ -79,6 +79,10 @@ class DataStoreOfflineModelRepository @Inject constructor(
      */
     override suspend fun requestDownload(modelId: String) {
         val entry = offlineModelRegistry.findById(modelId)
+            ?: run {
+                setStatus(modelId, OfflineModelStatus.FAILED)
+                return
+            }
         // Initialize progress with the catalog's known size so the UI can show
         // a determinate progress bar immediately (before the first HTTP chunk arrives).
         val knownTotal = if (entry != null && entry.downloadSizeBytes > 0) {
@@ -89,7 +93,7 @@ class DataStoreOfflineModelRepository @Inject constructor(
         progressFlow(modelId).value = DownloadProgress(bytesDownloaded = 0, totalBytes = knownTotal)
         setStatus(modelId, OfflineModelStatus.DOWNLOADING)
         try {
-            val result = when (entry?.runtimeType) {
+            val result = when (entry.runtimeType) {
                 OfflineRuntimeType.DOWNLOADABLE -> {
                     if (entry.downloadUrl == null) {
                         OfflineModelStatus.FAILED
@@ -99,7 +103,7 @@ class DataStoreOfflineModelRepository @Inject constructor(
                         }
                     }
                 }
-                OfflineRuntimeType.AICORE, null -> checkAICoreAvailability()
+                OfflineRuntimeType.AICORE -> checkAICoreAvailability()
             }
             setStatus(modelId, result)
         } catch (e: CancellationException) {
