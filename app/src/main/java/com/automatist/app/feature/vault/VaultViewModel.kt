@@ -3,6 +3,9 @@ package com.automatist.app.feature.vault
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.automatist.app.data.local.SettingsRepository
+import com.automatist.app.data.offline.CustomModelManifestParser
+import com.automatist.app.data.offline.ManifestFetcher
+import com.automatist.app.data.offline.ManifestImportPreview
 import com.automatist.app.data.offline.OfflineModelRegistry
 import com.automatist.app.domain.models.*
 import kotlinx.coroutines.flow.first
@@ -56,7 +59,15 @@ data class VaultUiState(
     /** Download progress for each model, keyed by model ID. Only meaningful during DOWNLOADING. */
     val offlineDownloadProgress: Map<String, DownloadProgress> = emptyMap(),
     /** Shown as a transient info message (e.g. when download not yet available). */
-    val offlineInfoMessage: String? = null
+    val offlineInfoMessage: String? = null,
+
+    // Manifest import
+    /** True while a manifest is being fetched + validated. */
+    val manifestImportInProgress: Boolean = false,
+    /** Validated manifest awaiting user review/confirmation. Non-null shows the review screen. */
+    val manifestPreview: ManifestImportPreview? = null,
+    /** Inline error for the manifest import dialog (bad URL, unsupported schema, etc.). */
+    val manifestImportError: String? = null
 )
 
 @HiltViewModel
@@ -66,6 +77,7 @@ class VaultViewModel @Inject constructor(
     private val workflowRepository: WorkflowRepository,
     private val offlineModelRepository: OfflineModelRepository,
     private val offlineModelRegistry: OfflineModelRegistry,
+    private val manifestFetcher: ManifestFetcher,
     private val defaultProfilePromoter: DefaultProfilePromoter
 ) : ViewModel() {
 
@@ -166,6 +178,47 @@ class VaultViewModel @Inject constructor(
                     }
                 }
         }
+    }
+
+    /**
+     * Fetch and validate a model manifest from [url]. On success, exposes a
+     * [VaultUiState.manifestPreview] for the user to review — it does NOT download the
+     * model. The model is only fetched later, via the normal download flow, after the
+     * user confirms with [confirmManifestImport].
+     */
+    fun importManifest(url: String) {
+        viewModelScope.launch {
+            _state.update { it.copy(manifestImportInProgress = true, manifestImportError = null, manifestPreview = null) }
+            runCatching {
+                val raw = manifestFetcher.fetch(url)
+                CustomModelManifestParser.parseAndValidate(raw)
+            }.onSuccess { preview ->
+                _state.update { it.copy(manifestImportInProgress = false, manifestPreview = preview) }
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        manifestImportInProgress = false,
+                        manifestImportError = error.message ?: "Could not import this manifest. Check the URL and try again."
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Confirm a reviewed manifest: add it as a custom source through the same secure path
+     * the manual form uses. The model file is still only downloaded when the user taps
+     * Download on the model card afterwards.
+     */
+    fun confirmManifestImport() {
+        val preview = _state.value.manifestPreview ?: return
+        _state.update { it.copy(manifestPreview = null, manifestImportError = null) }
+        addCustomOfflineModel(preview.input)
+    }
+
+    /** Dismiss the manifest import dialog/review without adding anything. */
+    fun cancelManifestImport() {
+        _state.update { it.copy(manifestPreview = null, manifestImportError = null, manifestImportInProgress = false) }
     }
 
     /**

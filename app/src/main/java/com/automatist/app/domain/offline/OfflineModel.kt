@@ -109,13 +109,24 @@ data class OfflineModelEntry(
  * The model file itself remains private to this app and is executed only by the
  * MediaPipe runtime already shipped with Automatist. The checksum and license URL
  * are required so a source cannot silently change after the user has reviewed it.
+ *
+ * The manual import form supplies the first five fields. The optional fields are
+ * populated only by the manifest-import path; when null they fall back to safe
+ * defaults, so manual import behaviour is unchanged. RAM/context values are treated
+ * as bounded hints, never trusted verbatim.
  */
 data class CustomOfflineModelInput(
     val displayName: String,
     val modelUrl: String,
     val sha256: String,
     val downloadSizeMb: Int,
-    val licenseUrl: String
+    val licenseUrl: String,
+    /** Optional public model/source page (manifest import only). HTTPS when present. */
+    val sourceUrl: String? = null,
+    /** Optional RAM hint in MB (manifest import only). Bounded before use. */
+    val minimumRamMb: Int? = null,
+    /** Optional prompt context hint in characters (manifest import only). Bounded before use. */
+    val contextWindowChars: Int? = null
 )
 
 /**

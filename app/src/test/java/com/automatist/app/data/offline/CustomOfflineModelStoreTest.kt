@@ -5,6 +5,7 @@ import com.automatist.app.domain.offline.OfflineRuntimeType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -55,6 +56,19 @@ class CustomOfflineModelStoreTest {
         } catch (_: IllegalArgumentException) {
             // Expected.
         }
+    }
+
+    @Test
+    fun manualInputWithoutManifestFieldsUsesSafeDefaults() {
+        // Manual import behaviour is unchanged: the optional manifest fields default to
+        // null, yielding the established 2500-char context, 3000 MB RAM, and no source URL.
+        val stored = CustomOfflineModelStore.create(input())
+        assertNull(stored.sourceUrl)
+        assertEquals(CustomOfflineModelStore.DEFAULT_CONTEXT_WINDOW_CHARS, stored.contextWindowChars)
+        assertEquals(CustomOfflineModelStore.DEFAULT_MINIMUM_RAM_MB, stored.minimumRamMb)
+        val entry = stored.toEntry()
+        assertEquals(2_500, entry.contextWindowChars)
+        assertEquals(3_000, entry.minimumRamMb)
     }
 
     @Test
