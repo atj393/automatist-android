@@ -3,8 +3,10 @@ package com.automatist.app.feature.vault
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.automatist.app.data.local.SettingsRepository
+import com.automatist.app.data.offline.OfflineModelRegistry
 import com.automatist.app.domain.models.*
 import kotlinx.coroutines.flow.first
+import com.automatist.app.domain.offline.CustomOfflineModelInput
 import com.automatist.app.domain.offline.DownloadProgress
 import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelEntry
@@ -47,6 +49,8 @@ data class VaultUiState(
     val setupWorkflowDone: Boolean = false,
 
     // On-device AI
+    /** Built-in and user-added local models shown in Settings. */
+    val offlineModels: List<OfflineModelEntry> = OfflineModelCatalog.ALL_MODELS,
     /** Current status for each offline model, keyed by model ID. */
     val offlineModelStatuses: Map<String, OfflineModelStatus> = emptyMap(),
     /** Download progress for each model, keyed by model ID. Only meaningful during DOWNLOADING. */
@@ -61,6 +65,7 @@ class VaultViewModel @Inject constructor(
     private val secureStorage: SecureStorage,
     private val workflowRepository: WorkflowRepository,
     private val offlineModelRepository: OfflineModelRepository,
+    private val offlineModelRegistry: OfflineModelRegistry,
     private val defaultProfilePromoter: DefaultProfilePromoter
 ) : ViewModel() {
 
@@ -106,7 +111,7 @@ class VaultViewModel @Inject constructor(
                 _state.update { it.copy(setupProviderDone = p.providerDone, setupProfileDone = p.profileDone, setupDefaultDone = p.defaultDone, setupWorkflowDone = p.workflowDone) }
             }
         }
-        collectOfflineModelStatuses()
+        collectOfflineModels()
     }
 
     // ── On-device AI ──
@@ -114,21 +119,52 @@ class VaultViewModel @Inject constructor(
     /** Active download Jobs keyed by model ID, for cancellation support. */
     private val downloadJobs = mutableMapOf<String, Job>()
 
-    private fun collectOfflineModelStatuses() {
-        OfflineModelCatalog.ALL_MODELS.forEach { model ->
+    private val observedOfflineModelIds = mutableSetOf<String>()
+
+    private fun collectOfflineModels() {
+        viewModelScope.launch {
+            offlineModelRegistry.models.collect { models ->
+                _state.update { it.copy(offlineModels = models) }
+                models.forEach(::observeOfflineModel)
+            }
+        }
+    }
+
+    private fun observeOfflineModel(model: OfflineModelEntry) {
+        if (!observedOfflineModelIds.add(model.id)) return
+        viewModelScope.launch {
+            offlineModelRepository.getModelStatus(model.id).collect { status ->
+                _state.update { it.copy(offlineModelStatuses = it.offlineModelStatuses + (model.id to status)) }
+            }
+        }
+        if (!model.isSystemManaged) {
             viewModelScope.launch {
-                offlineModelRepository.getModelStatus(model.id).collect { status ->
-                    _state.update { it.copy(offlineModelStatuses = it.offlineModelStatuses + (model.id to status)) }
+                offlineModelRepository.getDownloadProgress(model.id).collect { progress ->
+                    _state.update { it.copy(offlineDownloadProgress = it.offlineDownloadProgress + (model.id to progress)) }
                 }
             }
-            // Collect download progress for downloadable models
-            if (!model.isSystemManaged) {
-                viewModelScope.launch {
-                    offlineModelRepository.getDownloadProgress(model.id).collect { progress ->
-                        _state.update { it.copy(offlineDownloadProgress = it.offlineDownloadProgress + (model.id to progress)) }
+        }
+    }
+
+    fun addCustomOfflineModel(input: CustomOfflineModelInput) {
+        viewModelScope.launch {
+            runCatching { offlineModelRegistry.addCustomModel(input) }
+                .onSuccess { model ->
+                    _state.update {
+                        it.copy(
+                            offlineInfoMessage =
+                                "${model.displayName} was added. Review the source and tap Download when ready."
+                        )
                     }
                 }
-            }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            offlineInfoMessage =
+                                error.message ?: "Could not add this model. Check the model details and try again."
+                        )
+                    }
+                }
         }
     }
 
@@ -232,7 +268,7 @@ class VaultViewModel @Inject constructor(
      */
     fun openNewOfflineProfile(modelId: String) {
         val entry = ProviderCatalog.LOCAL_AI_ENTRY
-        val modelName = ProviderModels.LOCAL_AI.find { it.first == modelId }?.second ?: "On-device AI"
+        val modelName = _state.value.offlineModels.find { it.id == modelId }?.displayName ?: "On-device AI"
         _state.update {
             it.copy(
                 isProfileEditorOpen = true, editingProfile = null,
@@ -310,7 +346,7 @@ class VaultViewModel @Inject constructor(
 
     /** Returns true if the name matches a known auto-filled model/provider name. */
     private fun isAutoFilledName(name: String): Boolean {
-        val autoNames = ProviderModels.LOCAL_AI.map { it.second }.toSet() +
+        val autoNames = _state.value.offlineModels.map { it.displayName }.toSet() +
             setOf(ProviderCatalog.LOCAL_AI_ENTRY.displayName)
         return name in autoNames
     }
@@ -332,7 +368,7 @@ class VaultViewModel @Inject constructor(
         val s = _state.value
         // When switching between on-device models, update the auto-filled name too
         val newName = if (s.editorCatalogEntry.category == CatalogCategory.OFFLINE && isAutoFilledName(s.editorName)) {
-            ProviderModels.LOCAL_AI.find { it.first == m }?.second ?: s.editorName
+            s.offlineModels.find { it.id == m }?.displayName ?: s.editorName
         } else s.editorName
         _state.update { it.copy(editorModel = m, editorName = newName) }
     }
