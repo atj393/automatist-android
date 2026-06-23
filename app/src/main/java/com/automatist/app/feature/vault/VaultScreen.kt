@@ -30,7 +30,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.automatist.app.BuildConfig
 import com.automatist.app.domain.models.*
+import com.automatist.app.domain.offline.CustomOfflineModelInput
 import com.automatist.app.domain.offline.DownloadProgress
+import com.automatist.app.domain.offline.OfflineModelEntry
 import com.automatist.app.domain.offline.OfflineModelCatalog
 import com.automatist.app.domain.offline.OfflineModelStatus
 import com.automatist.app.platform.support.SupportConfig
@@ -108,6 +110,7 @@ fun VaultScreen(
 
                 item(key = SettingsSection.OFFLINE_AI.key) {
                     OnDeviceAISection(
+                        models = state.offlineModels,
                         statuses = state.offlineModelStatuses,
                         downloadProgress = state.offlineDownloadProgress,
                         profiles = state.profiles,
@@ -115,6 +118,7 @@ fun VaultScreen(
                         onRecheck = viewModel::requestOfflineModelDownload,
                         onRemove = viewModel::removeOfflineModel,
                         onCancelDownload = viewModel::cancelOfflineModelDownload,
+                        onAddCustomModel = viewModel::addCustomOfflineModel,
                         onCreateProfile = viewModel::openNewOfflineProfile,
                         hasProfileForModel = viewModel::hasProfileForModel
                     )
@@ -394,6 +398,7 @@ private fun StatusChip(
 
 @Composable
 private fun OnDeviceAISection(
+    models: List<OfflineModelEntry>,
     statuses: Map<String, OfflineModelStatus>,
     downloadProgress: Map<String, DownloadProgress>,
     profiles: List<ProviderProfile>,
@@ -401,6 +406,7 @@ private fun OnDeviceAISection(
     onRecheck: (String) -> Unit,
     onRemove: (String) -> Unit,
     onCancelDownload: (String) -> Unit,
+    onAddCustomModel: (CustomOfflineModelInput) -> Unit,
     onCreateProfile: (String) -> Unit,
     hasProfileForModel: (String) -> Boolean
 ) {
@@ -413,9 +419,11 @@ private fun OnDeviceAISection(
         }
     }
 
+    var showAddCustomModel by remember { mutableStateOf(false) }
+
     Card2(Icons.Default.PhoneAndroid, "On-device AI", "Run AI offline — no internet or API key required.") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OfflineModelCatalog.ALL_MODELS.forEach { model ->
+            models.forEach { model ->
                 val status = statuses[model.id] ?: OfflineModelStatus.NOT_INSTALLED
                 val progress = downloadProgress[model.id] ?: DownloadProgress()
                 val hasProfile = hasProfileForModel(model.id)
@@ -436,6 +444,21 @@ private fun OnDeviceAISection(
                 )
             }
         }
+        Spacer(Modifier.height(4.dp))
+        OutlinedButton(
+            onClick = { showAddCustomModel = true },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Add compatible model")
+        }
+        Text(
+            "Requires a MediaPipe .task model, its SHA-256 checksum, download size, and license link.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
         Spacer(Modifier.height(8.dp))
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))) {
             Column(modifier = Modifier.padding(12.dp)) {
@@ -484,6 +507,120 @@ private fun OnDeviceAISection(
             }
         }
     }
+    if (showAddCustomModel) {
+        AddCustomOfflineModelDialog(
+            onDismiss = { showAddCustomModel = false },
+            onAdd = { input ->
+                onAddCustomModel(input)
+                showAddCustomModel = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun AddCustomOfflineModelDialog(
+    onDismiss: () -> Unit,
+    onAdd: (CustomOfflineModelInput) -> Unit
+) {
+    var displayName by remember { mutableStateOf("") }
+    var modelUrl by remember { mutableStateOf("") }
+    var sha256 by remember { mutableStateOf("") }
+    var sizeMb by remember { mutableStateOf("") }
+    var licenseUrl by remember { mutableStateOf("") }
+    var acceptedLicense by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add compatible model") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "Automatist can only run MediaPipe .task model files with the built-in local runtime. " +
+                        "Do not add APKs, libraries, scripts, .gguf, or .safetensors files.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    label = { Text("Model name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = modelUrl,
+                    onValueChange = { modelUrl = it },
+                    label = { Text("HTTPS .task model URL") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = sha256,
+                    onValueChange = { sha256 = it },
+                    label = { Text("SHA-256 checksum") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = sizeMb,
+                    onValueChange = { sizeMb = it.filter(Char::isDigit) },
+                    label = { Text("Download size (MB)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = licenseUrl,
+                    onValueChange = { licenseUrl = it },
+                    label = { Text("HTTPS license URL") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { acceptedLicense = !acceptedLicense }
+                ) {
+                    Checkbox(checked = acceptedLicense, onCheckedChange = { acceptedLicense = it })
+                    Text(
+                        "I have reviewed the model license and have permission to use it.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                error?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val parsedSize = sizeMb.toIntOrNull()
+                if (parsedSize == null) {
+                    error = "Enter the download size in MB."
+                } else if (!acceptedLicense) {
+                    error = "Confirm that you have reviewed the model license."
+                } else {
+                    onAdd(
+                        CustomOfflineModelInput(
+                            displayName = displayName,
+                            modelUrl = modelUrl,
+                            sha256 = sha256,
+                            downloadSizeMb = parsedSize,
+                            licenseUrl = licenseUrl
+                        )
+                    )
+                }
+            }) {
+                Text("Add")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
