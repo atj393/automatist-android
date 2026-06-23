@@ -14,6 +14,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Call
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -112,6 +114,11 @@ class ModelDownloadManager @Inject constructor(
         val fileName = entry.modelFileName
             ?: return OfflineModelStatus.FAILED
 
+        val parsedUrl = url.toHttpUrlOrNull()
+        if (parsedUrl == null || !isSafeModelUrl(parsedUrl)) {
+            return OfflineModelStatus.FAILED
+        }
+
         val suitabilityIssue = checkDeviceSuitability(entry)
         if (suitabilityIssue != null) {
             return OfflineModelStatus.UNSUPPORTED
@@ -127,6 +134,13 @@ class ModelDownloadManager @Inject constructor(
                 activeCalls[fileName] = call
 
                 val response = call.execute()
+
+                // GitHub Releases and Hugging Face may redirect to their download CDN.
+                // The final resolved request must still be an ordinary HTTPS model download.
+                if (!isSafeModelUrl(response.request.url)) {
+                    response.close()
+                    return@withContext OfflineModelStatus.FAILED
+                }
 
                 if (!response.isSuccessful) {
                     response.close()
@@ -174,6 +188,13 @@ class ModelDownloadManager @Inject constructor(
                 // Final progress report to ensure 100% is reached
                 onProgress(totalDownloaded, effectiveTotalBytes)
                 response.close()
+
+                // A declared size protects users from a truncated or unexpectedly
+                // large payload before the model file reaches the native runtime.
+                if (entry.downloadSizeBytes > 0 && totalDownloaded != entry.downloadSizeBytes) {
+                    tempFile.delete()
+                    return@withContext OfflineModelStatus.FAILED
+                }
 
                 // Verify SHA-256 checksum if provided
                 if (entry.fileSha256 != null) {
@@ -230,6 +251,12 @@ class ModelDownloadManager @Inject constructor(
         tempFile.delete() // Clean up any partial download
         return !file.exists() || file.delete()
     }
+
+    private fun isSafeModelUrl(url: HttpUrl): Boolean =
+        url.isHttps &&
+            url.port == 443 &&
+            url.username.isEmpty() &&
+            url.password.isEmpty()
 
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
