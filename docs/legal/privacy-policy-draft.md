@@ -34,7 +34,13 @@ This data is not transmitted to any server except as described below.
 
 ### Data processed entirely on-device
 
-If you select the **LOCAL_AI** provider (Gemini Nano or Gemma 3 1B), your text is processed entirely on your device. No content is sent to any external server. The Gemini Nano model is managed by the Android system (AICore). The Gemma 3 1B model is downloaded once and stored in app-internal storage; after download, it runs without internet access.
+If you select the **LOCAL_AI** provider (Gemini Nano, Gemma 3 1B, or a compatible model you add yourself), your text is processed entirely on your device. No workflow content is sent to an external server for local inference. Gemini Nano is managed by the Android system (AICore). Downloadable models are stored in app-internal storage and run without internet access after download.
+
+### User-added local model downloads
+
+You may choose to add a compatible MediaPipe model by entering its HTTPS download URL, SHA-256 checksum, expected download size, and license link. Automatist downloads the model only after you tap **Download**. The selected model host receives the normal download request and related network information, such as your IP address and request metadata, under that host's own privacy policy. Automatist does not send your workflow text or API keys to the model host.
+
+The model URL and its metadata are stored locally on your device. The downloaded model file is stored in app-private storage and is removed when you remove it in the app or uninstall Automatist.
 
 ### Data sent to third-party AI providers
 
@@ -84,6 +90,7 @@ We do not sell, rent, or share your data with any party except:
 1. **AI providers** — text content sent for transformation, as described above, only when you initiate it
 2. **Google Drive** — workflow definitions only, if you opt in to cloud sync
 3. **External service APIs** — query data only, for weather and route actions you configure
+4. **User-selected model hosts** — only when you explicitly download a compatible local model; workflow content is not shared with the host
 
 ---
 
@@ -104,7 +111,7 @@ We do not sell, rent, or share your data with any party except:
 - **Cloud sync:** Entirely optional. You can sign out or stop syncing at any time. Your Google Drive data can be deleted from Drive.
 - **Notifications:** Optional. You can deny the notification permission and the app continues to work — you just won't receive alerts for scheduled workflow results.
 - **Battery optimization:** Optional. Denying the exemption means scheduled workflows may be slightly delayed by the system.
-- **Data deletion:** You can delete individual history items, workflows, and saved notes within the app. You can clear all app data via Android Settings > Apps > Automatist > Clear Data. Uninstalling the app removes all local data.
+- **Data deletion:** You can delete individual history items, workflows, saved notes, and downloaded local models within the app. You can clear all app data via Android Settings > Apps > Automatist > Clear Data. Uninstalling the app removes all local data.
 
 ---
 
