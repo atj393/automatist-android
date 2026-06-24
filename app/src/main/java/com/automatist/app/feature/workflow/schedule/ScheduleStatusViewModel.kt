@@ -124,18 +124,12 @@ class ScheduleStatusViewModel @Inject constructor(
     }
 
     fun openBatterySettings() {
-        // Try direct exemption dialog first (shows "Allow" / "Deny" for this app)
-        try {
-            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                data = Uri.parse("package:${context.packageName}")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            context.startActivity(intent)
-            _state.update { it.copy(batterySettingsMessage = null) }
-            return
-        } catch (_: Exception) { /* Intent not available on this device */ }
-
-        // Fallback: open the system battery optimization list (user finds Automatist manually)
+        // Deep-link to the system battery-optimization list (user finds Automatist and
+        // selects "Don't optimize"). We deliberately do NOT use the direct
+        // ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS allow-dialog: that requires the
+        // Play-restricted REQUEST_IGNORE_BATTERY_OPTIMIZATIONS permission, which this app
+        // is not eligible for (scheduled workflows still run when optimized, only delayed).
+        // This list screen needs no permission and works on all devices.
         try {
             val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK

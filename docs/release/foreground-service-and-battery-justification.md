@@ -29,26 +29,36 @@ WorkManager promotes the job to a foreground service to prevent the system from 
 
 ---
 
-## Battery Optimization Exemption: REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+## Battery Optimization — NO restricted permission requested
 
-**Where to declare:** Play Console > Policy > App content (if flagged during review)
+**Status:** As of the Play Store hardening pass, Automatist **does not** declare the
+`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission and **does not** invoke the direct
+`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` allow-dialog.
 
-### Why the app requests it
+### Why it was removed
 
-Automatist offers time-sensitive scheduled workflows (e.g., "Morning Commute Brief at 7:00 AM" with weather and route data). Battery optimization can delay WorkManager jobs by minutes to hours, making time-sensitive outputs stale or useless.
+Google Play restricts that permission and the direct exemption dialog to apps whose
+**core function is adversely affected** by Doze / App Standby (alarms, calendars,
+real-time messaging, etc.). Automatist's scheduled workflows still run when the app is
+battery-optimized — they may simply be delayed — so the app does **not** meet that bar.
+Declaring the permission would create an unnecessary policy-review risk for no functional
+gain.
 
-The exemption is:
-- **Not requested on app launch** — only surfaced in the Schedule Status screen after the user has configured a scheduled workflow
-- **Explained in-app** before the system dialog appears: "Your device may delay scheduled runs to save battery. Disabling battery optimization for Automatist improves reliability."
-- **Optional** — if the user denies or ignores it, workflows still run but may be delayed. The app continues to function normally.
-- **Contextual** — only relevant to users who set up scheduled (Daily/Weekly) workflows
+### What the app does instead (no permission needed)
 
-### Draft justification text for Play Console
+- The Schedule Status screen still detects whether the app is battery-optimized via the
+  read-only `PowerManager.isIgnoringBatteryOptimizations()` (no permission required) and
+  shows an explanatory card.
+- The "Fix" button deep-links the user to the **system battery-optimization settings list**
+  (`ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`), where the user can find Automatist and
+  choose "Don't optimize." Any app may open this screen; it requires no permission and no
+  Play declaration.
+- If the user does nothing, scheduled workflows still execute (possibly delayed). The app
+  functions normally.
 
-> Automatist allows users to schedule daily or weekly AI-powered workflows (e.g., a morning briefing combining weather, commute, and news data). These workflows are time-sensitive — a "Morning at 7:00" brief delivered at 10:00 loses most of its value. The app requests battery optimization exemption only from the Schedule Status screen, after the user has configured a scheduled workflow, with a clear explanation of why. If denied, workflows still execute but may be delayed by the system. The app does not request this permission at launch or outside the scheduling context.
+### Play Console action
 
-### Supporting evidence to include
-
-- Screenshot of the Schedule Status screen showing the battery optimization card with explanation
-- Screenshot of a configured Daily trigger in the workflow editor
-- Screenshot showing the "Fix" button and its explanation text
+- **None required for battery optimization.** Because the restricted permission is not
+  declared, there is no battery-exemption declaration to fill in. If a reviewer asks, the
+  honest answer is: the app does not request battery-optimization exemption; it only links
+  the user to the standard system settings screen.

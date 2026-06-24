@@ -45,10 +45,9 @@ class WorkflowWorker(
     }
 
     override suspend fun doWork(): Result {
-        Log.i(TAG, ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-        Log.i(TAG, "=== WorkflowWorker.doWork() ENTRY ===")
-        Log.i(TAG, "  workerId=$id, attempt=$runAttemptCount")
-        Log.i(TAG, "  timestamp=${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())}")
+        // Verbose entry banner: Log.d so R8 strips it from release builds (see proguard-rules.pro).
+        Log.d(TAG, ">>> WorkflowWorker.doWork() ENTRY workerId=$id, attempt=$runAttemptCount " +
+            "ts=${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())}")
 
         val entryPoint = EntryPointAccessors.fromApplication(appContext, WorkerEntryPoint::class.java)
         val repo = entryPoint.workflowRepository()
@@ -416,7 +415,7 @@ class WorkflowWorker(
             }
         }
 
-        Log.i(TAG, "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+        Log.d(TAG, "<<< WorkflowWorker.doWork() EXIT")
         return result
     }
 
