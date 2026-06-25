@@ -611,9 +611,13 @@ private fun TriggerSection(
                 modifier = Modifier.padding(start = 48.dp, top = 4.dp)
             )
             val timingNote = if (trigger is WorkflowTrigger.Interval) {
-                "Runs again after each interval, not at fixed clock times. Android may adjust timing by a few minutes."
+                "Runs again after each interval, not at fixed clock times. Android battery optimization " +
+                    "may delay runs to save battery. For best reliability, set Automatist to Unrestricted " +
+                    "in system battery settings (see Schedule Status)."
             } else {
-                "Android may adjust the actual run time by a few minutes to save battery."
+                "Android battery optimization may delay the actual run time to save battery. The workflow " +
+                    "is still scheduled; for best reliability, set Automatist to Unrestricted in system " +
+                    "battery settings (see Schedule Status)."
             }
             Text(
                 timingNote,

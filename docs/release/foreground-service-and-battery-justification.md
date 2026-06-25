@@ -46,15 +46,31 @@ gain.
 
 ### What the app does instead (no permission needed)
 
-- The Schedule Status screen still detects whether the app is battery-optimized via the
+- The Schedule Status screen detects whether the app is battery-optimized via the
   read-only `PowerManager.isIgnoringBatteryOptimizations()` (no permission required) and
-  shows an explanatory card.
-- The "Fix" button deep-links the user to the **system battery-optimization settings list**
-  (`ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`), where the user can find Automatist and
-  choose "Don't optimize." Any app may open this screen; it requires no permission and no
-  Play declaration.
+  shows a compact, **non-alarming** guidance card.
+- An **"Open battery settings"** button deep-links the user to the **normal system
+  battery-optimization settings** (`ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`, with a
+  graceful fallback to `ACTION_APPLICATION_DETAILS_SETTINGS`). The user can find Automatist
+  and choose **Unrestricted** (or "Don't optimize"). Any app may open this screen; it needs
+  no permission and no Play declaration. There is **no** direct allow/exemption dialog.
+- The workflow editor's scheduling section and the Schedule Status page both explain, in
+  plain language, that runs may be delayed and how to improve reliability.
 - If the user does nothing, scheduled workflows still execute (possibly delayed). The app
   functions normally.
+
+### Expected behaviour (document honestly, do not overclaim)
+
+- Scheduled workflows are **saved and will run**; the WorkManager one-shot self-rescheduling
+  architecture is unchanged.
+- Android **Doze / App Standby** and aggressive **OEM battery management** (Samsung, Xiaomi,
+  Huawei, etc.) may **delay** background work — sometimes by minutes, sometimes longer. This
+  is **normal, expected Android behaviour, not a scheduling-engine failure**.
+- The app does **not** promise exact run times. Copy avoids "won't work", "required", or
+  "critical error" language.
+- Setting Automatist to **Unrestricted** in system battery settings is an **optional**
+  reliability improvement the user can choose manually — the app never forces or directly
+  requests it.
 
 ### Play Console action
 

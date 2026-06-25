@@ -170,7 +170,9 @@ fun ScheduleStatusScreen(
                 }
             }
 
-            // Battery optimization warning
+            // Battery optimization guidance — shown when the app can detect that
+            // battery optimization is active (the default state for most installs).
+            // Non-alarming: scheduling still works; this only improves reliability.
             if (state.isBatteryOptimized) {
                 item {
                     Card(
@@ -178,59 +180,84 @@ fun ScheduleStatusScreen(
                             containerColor = MaterialTheme.colorScheme.tertiaryContainer
                         )
                     ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.BatteryAlert, null,
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.BatteryAlert, null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
                                 Text(
-                                    "Battery optimization active",
+                                    "Improve scheduled reliability",
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Medium,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
-                                Text(
-                                    "Your device may delay scheduled runs to save battery. Disabling battery optimization for Automatist improves reliability.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer
-                                )
                             }
-                            TextButton(onClick = { viewModel.openBatterySettings() }) {
-                                Text("Fix")
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Scheduled workflows may be delayed by Android battery optimization. " +
+                                    "Your workflows will still be scheduled, but Android may delay background " +
+                                    "work to save battery. For the most reliable scheduled runs, set Automatist " +
+                                    "to Unrestricted (or \"Don't optimize\") in system battery settings.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            FilledTonalButton(onClick = { viewModel.openBatterySettings() }) {
+                                Icon(Icons.Default.BatteryAlert, null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Open battery settings")
                             }
+                            Text(
+                                "Choose Automatist, then set battery usage to Unrestricted if available.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f),
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
                         }
                     }
                 }
             }
 
             // ── Device limitation info (always shown) ──
+            // Honest framing: delays are expected Android behaviour, not a failure.
             item {
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
                     )
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Icon(
-                            Icons.Default.Info, null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Android may adjust run times by a few minutes to save battery. Some phone brands (Samsung, Xiaomi, Huawei) may restrict background tasks more aggressively. If runs are delayed, check your battery optimization settings above.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Column(modifier = Modifier.padding(12.dp).fillMaxWidth()) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Icon(
+                                Icons.Default.Info, null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Scheduled workflows are saved and will run, but Android battery " +
+                                    "optimization (Doze) may delay background work by a few minutes — " +
+                                    "longer on some brands (Samsung, Xiaomi, Huawei). This is normal Android " +
+                                    "behaviour, not a scheduling error. Setting Automatist to Unrestricted " +
+                                    "improves reliability.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        // When optimization is NOT detected as active, the card above is hidden,
+                        // so offer the settings entry point here too — keeps it always reachable.
+                        if (!state.isBatteryOptimized) {
+                            Spacer(Modifier.height(8.dp))
+                            TextButton(
+                                onClick = { viewModel.openBatterySettings() },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Text("Open battery settings")
+                            }
+                        }
                     }
                 }
             }
