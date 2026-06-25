@@ -22,7 +22,7 @@ Status key: [x] done in repo | [ ] manual action needed | [~] not applicable
 - [x] `data_extraction_rules.xml` + `backup_rules.xml` exclude the three secret DataStores (`secure_prefs_stub`, `product_access`, `cloud_sync`); file names verified to match the real DataStore names
 - [x] Debug Pro override (`debugSetPro` / local `pro_unlocked`) guarded by `BuildConfig.DEBUG`; never set in release, so release entitlement = Play ownership only
 - [x] Notification permission requested contextually (editor + schedule screen), not on launch
-- [x] **Battery optimization: the restricted `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission and the direct allow-dialog were removed.** The Schedule Status screen now deep-links to the system battery-optimization settings list (no permission). See `foreground-service-and-battery-justification.md`.
+- [x] **Battery optimization: the restricted `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission and the direct allow-dialog were removed.** The Schedule Status screen shows non-alarming guidance ("Scheduled workflows may be delayed by Android battery optimization … set Automatist to Unrestricted for the most reliable runs") and an **"Open battery settings"** button that deep-links to the normal system battery settings (no permission, graceful fallback). The workflow editor's scheduling note carries the same honest framing. See `foreground-service-and-battery-justification.md`.
 - [x] Custom local model import is HTTPS-only, `.task`-only, SHA-256-verified, size-bounded, app-private storage; manifest import shows a review + license-acknowledgement screen before any download
 - [x] About section in Settings shows `BuildConfig.VERSION_NAME`; Security/Support section explains data handling
 
@@ -149,8 +149,19 @@ via internal testing). Record pass/fail for each.
 Also confirm during the pass:
 - [ ] No sensitive data in `adb logcat` for a release build (no API keys, prompt/workflow text, or raw responses)
 - [ ] Scheduled (Daily/Weekly) workflow fires; the foreground notification appears during execution
-- [ ] Schedule Status "Fix" button opens the system battery-optimization settings list (no allow-dialog, no crash)
 - [ ] Rotation / app-restart mid-workflow does not crash or lose committed results
+
+### Battery-optimization guidance (UX) test
+
+1. [ ] Enable a scheduled workflow (Daily/Weekly/Interval) in the workflow editor; the scheduling note explains delays may occur and to set Unrestricted for reliability
+2. [ ] Open **Schedule Status**
+3. [ ] Confirm the battery guidance card appears (non-alarming wording; mentions Unrestricted/Don't optimize) and the always-shown info card explains delays are expected Android behaviour
+4. [ ] Tap **Open battery settings**
+5. [ ] Confirm the normal Android battery settings screen opens (battery-optimization list, or app battery details on the fallback path) — **no** direct allow/exemption dialog, no crash
+6. [ ] Return to Automatist; the page still works; the snackbar guidance ("…Don't optimize" / "…Unrestricted") is shown
+7. [ ] Run a short **Interval** schedule with the phone locked
+8. [ ] Confirm the scheduled run still fires, or is honestly delayed (the app does not claim exact timing); no "scheduling broken" messaging
+9. [ ] Confirm `adb shell dumpsys package com.automatist.app | grep -i battery` (or the merged manifest) shows **no** `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission
 
 ---
 

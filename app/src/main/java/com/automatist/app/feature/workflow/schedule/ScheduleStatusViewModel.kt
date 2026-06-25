@@ -135,21 +135,21 @@ class ScheduleStatusViewModel @Inject constructor(
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             context.startActivity(intent)
-            _state.update { it.copy(batterySettingsMessage = "Find Automatist in the list and select \"Don't optimize.\"") }
+            _state.update { it.copy(batterySettingsMessage = "Find Automatist in the list and choose \"Don't optimize.\"") }
             return
         } catch (_: Exception) { /* Intent not available on this device */ }
 
-        // Last resort: open general app settings
+        // Last resort: open general app settings (newer Android shows app battery usage here)
         try {
             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = Uri.parse("package:${context.packageName}")
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             context.startActivity(intent)
-            _state.update { it.copy(batterySettingsMessage = "Look for Battery in the app settings and disable optimization.") }
+            _state.update { it.copy(batterySettingsMessage = "Open Battery and set Automatist to Unrestricted for the most reliable scheduled runs.") }
             return
         } catch (_: Exception) {
-            _state.update { it.copy(batterySettingsMessage = "Could not open settings. Go to Settings > Apps > Automatist > Battery and disable optimization manually.") }
+            _state.update { it.copy(batterySettingsMessage = "Couldn't open settings. Go to Settings > Apps > Automatist > Battery and set it to Unrestricted.") }
         }
     }
 
