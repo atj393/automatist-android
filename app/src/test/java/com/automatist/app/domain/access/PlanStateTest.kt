@@ -3,70 +3,69 @@ package com.automatist.app.domain.access
 import org.junit.Assert.*
 import org.junit.Test
 
+/**
+ * Free/open-source access policy: every plan grants unlimited active workflows.
+ * There is no paid tier that unlocks additional active workflows.
+ */
 class PlanStateTest {
 
-    // ── Active-workflow gating (new model) ──
+    // ── Unlimited active-workflow access ──
 
     @Test
-    fun `free plan allows activating first workflow`() {
-        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
-        assertTrue(state.canActivateWorkflow(0))
+    fun `free plan can activate first workflow`() {
+        assertTrue(PlanState(PlanType.FREE).canActivateWorkflow(0))
     }
 
     @Test
-    fun `free plan blocks activating second workflow`() {
-        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
-        assertFalse(state.canActivateWorkflow(1))
+    fun `free plan can activate second workflow`() {
+        assertTrue(PlanState(PlanType.FREE).canActivateWorkflow(1))
     }
 
     @Test
-    fun `free plan blocks activating when many are active`() {
-        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
-        assertFalse(state.canActivateWorkflow(5))
+    fun `free plan can activate third workflow`() {
+        assertTrue(PlanState(PlanType.FREE).canActivateWorkflow(2))
     }
 
     @Test
-    fun `pro plan allows activating at any count`() {
-        val state = PlanState(PlanType.PRO, Int.MAX_VALUE)
+    fun `free plan can activate when a hundred are already active`() {
+        assertTrue(PlanState(PlanType.FREE).canActivateWorkflow(100))
+    }
+
+    @Test
+    fun `pro plan can activate at any count`() {
+        val state = PlanState(PlanType.PRO)
         assertTrue(state.canActivateWorkflow(0))
         assertTrue(state.canActivateWorkflow(1))
         assertTrue(state.canActivateWorkflow(100))
     }
 
+    // ── Both plans expose the unlimited ceiling ──
+
     @Test
-    fun `free active workflow limit is 1`() {
-        assertEquals(1, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
+    fun `both free and pro grant unlimited active workflows`() {
+        assertEquals(Int.MAX_VALUE, PlanState(PlanType.FREE).maxActiveWorkflows)
+        assertEquals(Int.MAX_VALUE, PlanState(PlanType.PRO).maxActiveWorkflows)
+        assertEquals(Int.MAX_VALUE, PlanState.UNLIMITED_ACTIVE_WORKFLOWS)
     }
 
     @Test
-    fun `free plan is not pro unlocked`() {
-        val state = PlanState(PlanType.FREE)
+    fun `default plan is truthfully free with unlimited access`() {
+        val state = PlanState()
+        assertEquals(PlanType.FREE, state.plan)
         assertFalse(state.isProUnlocked)
+        assertEquals(Int.MAX_VALUE, state.maxActiveWorkflows)
+        assertTrue(state.canActivateWorkflow(5))
+    }
+
+    // ── Identity remains distinct even though access is equal ──
+
+    @Test
+    fun `free plan is not pro unlocked`() {
+        assertFalse(PlanState(PlanType.FREE).isProUnlocked)
     }
 
     @Test
     fun `pro plan is pro unlocked`() {
-        val state = PlanState(PlanType.PRO)
-        assertTrue(state.isProUnlocked)
-    }
-
-    @Test
-    fun `free user can create unlimited workflows - gating is on activation not creation`() {
-        // The free tier no longer limits workflow creation count.
-        // Only activation (isEnabled) is limited to 1 at a time.
-        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
-        // With 0 active, can activate one
-        assertTrue(state.canActivateWorkflow(0))
-        // With 1 active, cannot activate another
-        assertFalse(state.canActivateWorkflow(1))
-        // But creating (saving) workflows is unrestricted - no method to block it
-    }
-
-    @Test
-    fun `seeded workflow counts as active if enabled`() {
-        // The seeded "Article Briefing" workflow is isEnabled=true.
-        // A free user with this active should not be able to activate another.
-        val state = PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
-        assertFalse(state.canActivateWorkflow(1)) // 1 active = at limit
+        assertTrue(PlanState(PlanType.PRO).isProUnlocked)
     }
 }

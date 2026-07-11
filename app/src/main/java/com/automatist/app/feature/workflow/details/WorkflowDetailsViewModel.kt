@@ -58,9 +58,10 @@ class WorkflowDetailsViewModel @Inject constructor(
 
     /**
      * Check whether the user can activate (enable) this workflow.
-     * Free users are limited to 1 active workflow at a time.
-     * Returns null if activation is allowed, or the name of the currently active
-     * workflow that blocks activation (so the UI can offer a switch).
+     * Access is unrestricted (all features are free), so activation is always
+     * allowed and this returns null. Routed through the centralized [PlanState]
+     * policy so a future policy could re-introduce a cap without scattering checks;
+     * when blocked it returns the name of the active workflow that blocks it.
      */
     suspend fun checkActivationBlocked(): String? {
         val plan = accessRepository.currentPlanState()
@@ -157,8 +158,9 @@ class WorkflowDetailsViewModel @Inject constructor(
     }
 
     /**
-     * Toggle enabled state. When enabling, checks activation limit for free users.
-     * Returns the name of the blocking active workflow if gated, or null on success.
+     * Toggle enabled state and sync scheduling. Enabling routes through the
+     * centralized access policy (currently unrestricted, so it never blocks) and
+     * returns null on success; a non-null result would name the blocking workflow.
      */
     suspend fun toggleEnabled(): String? {
         val template = _state.value.template ?: return null

@@ -9,28 +9,37 @@ enum class PlanType(val displayName: String) {
 
 data class PlanState(
     val plan: PlanType = PlanType.FREE,
-    val maxActiveWorkflows: Int = FREE_ACTIVE_WORKFLOW_LIMIT
+    val maxActiveWorkflows: Int = UNLIMITED_ACTIVE_WORKFLOWS
 ) {
     val isProUnlocked: Boolean get() = plan == PlanType.PRO
 
     /**
-     * Free users can create unlimited workflows but only activate one at a time.
-     * "Active" means isEnabled == true on a WorkflowTemplate.
+     * Whether another workflow may be activated (enabled).
+     *
+     * Automatist is free for everyone: every plan is granted
+     * [UNLIMITED_ACTIVE_WORKFLOWS], so this returns true for any realistic
+     * active-workflow count. "Active" means isEnabled == true on a WorkflowTemplate.
+     * Kept as a policy hook so activation decisions stay centralized here.
      */
     fun canActivateWorkflow(currentActiveCount: Int): Boolean =
         isProUnlocked || currentActiveCount < maxActiveWorkflows
 
     companion object {
-        const val FREE_ACTIVE_WORKFLOW_LIMIT = 1
+        /**
+         * No cap on simultaneously-active workflows. There is no paid tier that
+         * unlocks additional active workflows — all features are free.
+         */
+        const val UNLIMITED_ACTIVE_WORKFLOWS = Int.MAX_VALUE
     }
 }
 
 /**
  * Abstraction over product-access / entitlement state.
  *
- * In Phase 5 this is backed by a local DataStore flag.
- * In a later phase, Play Billing replaces the backing implementation.
- * The rest of the app reads only through this interface.
+ * As of the free/open-source migration (Phase 1), entitlement no longer controls
+ * feature access — every plan grants full access (see [PlanState]). Existing Play
+ * Billing ownership is still surfaced as [PlanType.PRO] for identity/compatibility
+ * only. The rest of the app reads only through this interface.
  */
 interface ProductAccessRepository {
     val planState: Flow<PlanState>

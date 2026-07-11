@@ -28,9 +28,9 @@ class LocalProductAccessRepository @Inject constructor(
     private val PRO_UNLOCKED_KEY = booleanPreferencesKey("pro_unlocked")
 
     override val planState: Flow<PlanState> = context.accessDataStore.data.map { prefs ->
+        // Access is unrestricted for all plans; ownership only sets the FREE/PRO label.
         val unlocked = prefs[PRO_UNLOCKED_KEY] ?: false
-        if (unlocked) PlanState(PlanType.PRO, Int.MAX_VALUE)
-        else PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
+        if (unlocked) PlanState(PlanType.PRO) else PlanState(PlanType.FREE)
     }
 
     override suspend fun currentPlanState(): PlanState = planState.first()

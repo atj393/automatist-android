@@ -208,20 +208,15 @@ class WorkflowEditorViewModel @Inject constructor(
 
             val now = System.currentTimeMillis()
 
-            // For new workflows, check if the free user already has an active workflow.
-            // If so, save as paused to respect the 1-active limit.
             val shouldEnable = if (templateId != null) {
                 // Editing existing — preserve current enabled state
                 repository.getTemplateById(templateId)?.isEnabled ?: true
             } else {
-                // New workflow — check activation limit
-                val plan = accessRepository.currentPlanState()
-                if (plan.isProUnlocked) {
-                    true
-                } else {
-                    val activeCount = repository.getAllTemplates().first().count { it.isEnabled }
-                    plan.canActivateWorkflow(activeCount)
-                }
+                // New workflow — enabled by default. Access is unrestricted (all
+                // features are free), so the policy never caps activation. Routed
+                // through PlanState so any future activation policy stays centralized.
+                val activeCount = repository.getAllTemplates().first().count { it.isEnabled }
+                accessRepository.currentPlanState().canActivateWorkflow(activeCount)
             }
 
             val template = WorkflowTemplate(

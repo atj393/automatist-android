@@ -21,8 +21,9 @@ private val Context.accessDataStore by preferencesDataStore(name = "product_acce
 /**
  * Production entitlement implementation.
  *
- * Effective Pro state = billing ownership OR local override (debug).
- * Local cache ensures fast startup; billing refresh updates the truth.
+ * Effective plan identity = billing ownership OR local override (debug).
+ * NOTE: as of the free/open-source migration this only determines the FREE/PRO
+ * *label*; it no longer restricts feature access — every plan has full access.
  */
 @Singleton
 class BillingProductAccessRepository @Inject constructor(
@@ -38,9 +39,11 @@ class BillingProductAccessRepository @Inject constructor(
 
     override val planState: Flow<PlanState> =
         combine(billingManager.proOwned, localOverride) { billingOwned, localFlag ->
+            // Feature access is unrestricted for everyone (free/open-source migration).
+            // Ownership is mapped to PRO only for identity/compatibility; both plans
+            // grant UNLIMITED_ACTIVE_WORKFLOWS via the PlanState defaults.
             val unlocked = billingOwned || localFlag
-            if (unlocked) PlanState(PlanType.PRO, Int.MAX_VALUE)
-            else PlanState(PlanType.FREE, PlanState.FREE_ACTIVE_WORKFLOW_LIMIT)
+            if (unlocked) PlanState(PlanType.PRO) else PlanState(PlanType.FREE)
         }
 
     override suspend fun currentPlanState(): PlanState = planState.first()
