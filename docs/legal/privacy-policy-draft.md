@@ -1,75 +1,156 @@
 # Privacy Policy — Automatist
 
-**Last updated:** [INSERT DATE BEFORE PUBLISHING]
+**Last updated:** 2026-07-11 <!-- set to the actual publish date before going live -->
 
-> **Note:** This is a first draft for review. It is not legal advice. Have it reviewed by a legal professional before publishing. Remove this note before publishing.
+> **Note:** This is a draft for review. It is not legal advice. Have it reviewed by a legal
+> professional before publishing. Remove this note before publishing.
 
 ---
 
 ## Introduction
 
-Automatist ("the app") is a workflow-based AI text transformation utility for Android. This privacy policy explains what data the app collects, how it is used, and your choices.
+Automatist ("the app") is a workflow-based AI text-transformation utility for Android. This
+policy explains what data the app handles, where it goes, and your choices. Automatist is
+**free** — there are no ads, no subscriptions, no in-app purchases, and no feature paywalls.
 
 ## Developer Information
 
-- **Developer:** [INSERT DEVELOPER NAME OR ENTITY]
-- **Contact:** [INSERT CONTACT EMAIL]
+- **Developer:** Alexis Johnson
+- **Contact:** support@automatist.cloud
+
+> Confirm the developer/legal identity and a monitored contact address are correct before
+> publishing.
+
+## No Automatist backend
+
+Automatist does **not** operate a developer-run application server. The app has no analytics,
+telemetry, crash-reporting, advertising, or tracking SDK, and there is no Automatist server that
+receives your content. Data leaves your device only in the specific, user-initiated cases
+described below, and in each case it goes to a third party **you** choose (an AI provider, Google
+Drive, or an external source you configure) — never to Automatist.
+
+`automatist.cloud` is used only as the address of static support and legal pages (see Contact); it
+is not a data-collection endpoint.
 
 ---
 
-## Data We Collect
+## Data stored on your device
 
-### Data stored on your device
+All core app data is stored locally using Android's Room database (`automatist.db`) and DataStore:
 
-All core app data is stored locally on your device using Android's Room database and DataStore:
+- **Workflow definitions** — templates, actions, triggers, instructions, and the URLs/feeds you enter
+- **Workflow run history** — output text, timestamps, token usage, and (redacted) error messages
+- **Transform history** — saved summaries, briefs, and other AI-generated outputs
+- **Saved notes** — reusable text you create
+- **App settings** — provider selection, Morning Brief configuration, onboarding flags
+- **API keys and service keys** — stored locally in DataStore
 
-- **Workflow definitions** — templates, actions, triggers, and instructions you create
-- **Workflow run history** — output text, execution timestamps, token usage, error messages
-- **Transform history** — saved article summaries, meeting briefs, and other AI-generated outputs
-- **Saved notes** — reusable text content you create for use in workflows
-- **App settings** — AI provider selection, display preferences
-- **API keys** — stored locally in DataStore on your device
+This data is not transmitted anywhere except as described below.
 
-This data is not transmitted to any server except as described below.
+## Data processed entirely on-device
 
-### Data processed entirely on-device
+If you select the on-device provider (**LOCAL_AI** — Gemini Nano, the downloadable Gemma model, or
+a compatible model you add yourself), your text is processed entirely on your device. **No workflow
+content is sent to any server for local inference.** Gemini Nano runs via the Android system
+service (AICore); its behaviour depends on your device and that system service. Downloadable models
+run from app-private storage with no network access after they are downloaded.
 
-If you select the **LOCAL_AI** provider (Gemini Nano, Gemma 3 1B, or a compatible model you add yourself), your text is processed entirely on your device. No workflow content is sent to an external server for local inference. Gemini Nano is managed by the Android system (AICore). Downloadable models are stored in app-internal storage and run without internet access after download.
+## Cloud AI providers (optional)
 
-### User-added local model downloads
+When you run a transform or workflow using a **cloud** provider, the app sends the text you provide
+(your input and a system prompt describing the transformation, plus the model id) **directly** to
+the provider you selected, authenticated with the API key you supplied:
 
-You may choose to add a compatible MediaPipe model by entering its HTTPS download URL, SHA-256 checksum, expected download size, and license link. Automatist downloads the model only after you tap **Download**. The selected model host receives the normal download request and related network information, such as your IP address and request metadata, under that host's own privacy policy. Automatist does not send your workflow text or API keys to the model host.
+- **OpenAI** (`api.openai.com`) — [privacy policy](https://openai.com/privacy)
+- **Anthropic** (`api.anthropic.com`) — [privacy policy](https://www.anthropic.com/privacy)
+- **Google Gemini** (`generativelanguage.googleapis.com`) — [privacy policy](https://policies.google.com/privacy)
+- **A custom, OpenAI-compatible endpoint you configure** — if you create a profile with your own
+  base URL (for example a self-hosted or alternative provider), the same content is sent to **the
+  host you entered**, under that host's terms. Review the terms and privacy policy of any endpoint
+  you configure.
 
-The model URL and its metadata are stored locally on your device. The downloaded model file is stored in app-private storage and is removed when you remove it in the app or uninstall Automatist.
+**What is sent:** your input text and the system prompt. No device identifiers, and no API keys for
+other providers, are included. **When:** only when you explicitly start a transform, or when a
+workflow you configured runs on its schedule. **Why it is optional:** the on-device provider above
+performs the same operations without sending any content off the device.
 
-### Data sent to third-party AI providers
+The provider processes your data under its own terms and retention practices; Automatist does not
+control or receive that processing.
 
-When you run a workflow or transform content using a cloud AI provider, the text you provide is sent to the provider you selected:
+## API keys and service keys
 
-- **OpenAI** (api.openai.com) — governed by [OpenAI's privacy policy](https://openai.com/privacy)
-- **Anthropic** (api.anthropic.com) — governed by [Anthropic's privacy policy](https://www.anthropic.com/privacy)
-- **Google Gemini** (generativelanguage.googleapis.com) — governed by [Google's privacy policy](https://policies.google.com/privacy)
+You supply your own keys. They are stored locally on your device in DataStore and are sent only to
+the matching provider/service as the authentication for your own requests. They are excluded from
+Android backup and device transfer, and are stripped from workflow exports and cloud backups.
 
-**What is sent:** Your input text and a system prompt describing the desired transformation. No device identifiers, personal information, or API keys for other providers are included in these requests.
+**Known limitation:** keys are currently stored in DataStore **without encryption at rest**. A
+future update is planned to move them to the Android Keystore / EncryptedSharedPreferences.
 
-**When it is sent:** Only when you explicitly initiate a transform or when a workflow you configured runs on its schedule.
+## External model downloads (optional)
 
-### Data sent to external service APIs
+You may download a built-in model or add a compatible MediaPipe `.task` model by entering its HTTPS
+download URL, SHA-256 checksum, expected size, and license link. The model is downloaded only after
+you tap **Download**.
 
-Some workflow actions fetch data from external services:
+- The **model host** (for the built-in model, GitHub Releases; for a model you add, the host you
+  chose) receives the normal file-download request and associated network information such as your
+  IP address, under that host's own privacy policy.
+- The host does **not** receive your workflow text or API keys merely because you download a model.
+- You are responsible for reviewing the third-party model's license.
+- Checksum verification protects download **integrity**; it does not guarantee a model's quality,
+  performance, or license compliance.
 
-- **OpenWeatherMap** (api.openweathermap.org) — location name sent for weather data
-- **OpenRouteService** (api.openrouteservice.org) — origin and destination sent for route/travel time data
-- **RSS feed sources** — your configured feed URLs are fetched directly
+The downloaded file is stored in app-private storage and is removed when you remove it in the app or
+uninstall Automatist.
 
-These services receive only the query data needed for their function (location, URL). No personal information is sent.
+## Google Drive sync (optional)
 
-### Data sent to Google (optional features)
+If you opt in to cloud backup:
 
-- **Google Drive Cloud Sync** — If you opt in to cloud backup, workflow definitions (without API keys or secrets) are uploaded to your Google Drive private app folder (`appDataFolder`). This requires signing in with your Google Account. Your Google Account email is used for authentication only and is not stored permanently by the app.
-- **Google Play Billing** — If you purchase Automatist Pro, the transaction is handled by Google Play. The app does not collect or store payment information.
+- You sign in with your Google Account and grant the **Drive app-data scope**
+  (`DRIVE_APPDATA`) only.
+- The app accesses your **Google Account email**, which it stores locally to show the connected
+  account. No other Google profile data is stored.
+- Only **workflow definitions** are uploaded — API keys and other secrets are stripped before
+  upload. The backup is written to Drive's **`appDataFolder`**, a private, app-scoped folder that
+  is not visible in your normal Drive files.
+- Because `appDataFolder` is tied to your own Google Account and there is no Automatist backend,
+  **the developer cannot access your Drive backup.**
+- **Disconnecting** cloud sync clears the app's **local** sync status (connected flag, stored
+  email, last-backup info). It does **not** delete the backup file already stored in your Drive and
+  does not sign you out of Google. To remove a backup from Drive, use your Google Account's
+  app-data controls (Google Account → Data & privacy → Third-party apps/services). The app does not
+  provide an in-app "delete cloud backup" button.
 
----
+## External workflow sources (optional)
+
+Workflows you configure may connect to external services. Each receives only the normal network
+request needed to return the result you asked for:
+
+- **URLs / RSS feeds / REST APIs** you enter — fetched directly from the host you specify
+- **OpenWeatherMap** (`api.openweathermap.org`) — the location text you enter, plus your service key
+- **OpenRouteService** (`api.openrouteservice.org`) — the origin/destination you enter, plus your
+  service key
+- **Model hosts** — as described under model downloads
+
+Location and route inputs are **text you type**; the app does not read device GPS or sensor
+location (it holds no location permission).
+
+## Support and feedback
+
+The developer receives information only when **you** choose to send it — for example by emailing
+`feedback@automatist.cloud` or opening a support page. A support email may optionally include the
+app version, basic device info, a run id, or an error message, but only the fields you include, and
+only if you send it. Nothing is transmitted automatically.
+
+## Security
+
+- All network communication uses HTTPS; cleartext HTTP is disabled app-wide (Android network
+  security configuration).
+- Release builds do not log request/response bodies, prompts, or keys; error messages are redacted
+  of keys/tokens before they are shown or stored.
+- API keys are excluded from Android backup and device transfer, and stripped from exports/backups.
+- See the encryption-at-rest limitation noted above.
 
 ## Data We Do NOT Collect
 
@@ -77,58 +158,32 @@ These services receive only the query data needed for their function (location, 
 - No crash reporting (no Firebase, Sentry, or similar SDK)
 - No advertising identifiers
 - No device fingerprinting
-- No location tracking (location names for weather/route actions are entered by the user, not read from device sensors)
-- No contact or phone data
-- No usage tracking beyond what is stored locally on your device
+- No device location (weather/route inputs are typed by you, not read from sensors)
+- No contacts or phone data
+- No payment or purchase data (the app has no billing integration)
 
----
+## Your Choices and Data Deletion
 
-## Data Sharing
-
-We do not sell, rent, or share your data with any party except:
-
-1. **AI providers** — text content sent for transformation, as described above, only when you initiate it
-2. **Google Drive** — workflow definitions only, if you opt in to cloud sync
-3. **External service APIs** — query data only, for weather and route actions you configure
-4. **User-selected model hosts** — only when you explicitly download a compatible local model; workflow content is not shared with the host
-
----
-
-## Data Security
-
-- All network communication uses HTTPS (enforced via Android network security configuration)
-- API keys are stored locally on your device
-- Workflow exports and cloud backups automatically strip API keys and sensitive fields
-- Android backup and data transfer exclude API key storage
-
-**Known limitation:** API keys are currently stored in Android DataStore without encryption. We plan to migrate to Android Keystore or EncryptedSharedPreferences in a future update.
-
----
-
-## Your Choices
-
-- **AI provider:** You choose which provider processes your text. You can change providers or stop using them at any time.
-- **Cloud sync:** Entirely optional. You can sign out or stop syncing at any time. Your Google Drive data can be deleted from Drive.
-- **Notifications:** Optional. You can deny the notification permission and the app continues to work — you just won't receive alerts for scheduled workflow results.
-- **Battery optimization:** Optional. Denying the exemption means scheduled workflows may be slightly delayed by the system.
-- **Data deletion:** You can delete individual history items, workflows, saved notes, and downloaded local models within the app. You can clear all app data via Android Settings > Apps > Automatist > Clear Data. Uninstalling the app removes all local data.
-
----
+- **AI provider:** you choose which provider (if any) processes your text, and can switch to the
+  on-device provider or stop at any time.
+- **Cloud sync:** entirely optional; you can disconnect at any time (see the Drive section for what
+  disconnect does and how to remove a Drive backup).
+- **Notifications / battery optimization:** optional; the app works if you decline them (scheduled
+  runs may be delayed).
+- **Local deletion:** delete individual history items, workflows, saved notes, and downloaded
+  models in the app; clear everything via Android Settings → Apps → Automatist → Storage → Clear
+  data; or uninstall to remove all local data.
 
 ## Children's Privacy
 
-Automatist is not directed at children under 13. We do not knowingly collect personal information from children. The app relies on third-party AI APIs that may have their own age restrictions.
-
----
+Automatist is intended for adults (the app's Play target audience is 18+, and third-party AI
+providers commonly require adult users). It is not directed at children, and the developer does not
+knowingly collect personal information from children.
 
 ## Changes to This Policy
 
-We may update this privacy policy from time to time. The "Last updated" date at the top will reflect the most recent revision. Continued use of the app after changes constitutes acceptance.
-
----
+We may update this policy from time to time; the "Last updated" date reflects the latest revision.
 
 ## Contact
 
-If you have questions about this privacy policy, contact us at:
-
-**[INSERT CONTACT EMAIL]**
+Questions about this policy: **support@automatist.cloud**

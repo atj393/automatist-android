@@ -1,8 +1,15 @@
 # Automatist — End User License Agreement (EULA)
 
-**Effective date:** April 22, 2026
+**Effective date:** 2026-07-11 <!-- update to the actual publishing date before going live -->
 **Publisher:** Alexis Johnson ("we", "our")
 **Product:** Automatist Android application ("the App")
+
+> **Draft note — not legal advice; requires professional legal review before publishing.**
+> This revision removes the in-app-purchase / paid-tier terms: Automatist is now free with
+> no in-app purchases, no subscriptions, and no feature paywalls. The App remains proprietary
+> for now — the "proprietary source license" references below are intentionally retained and
+> **must be revisited when the source is relicensed under an approved open-source licence**
+> (a later phase). Remove this note before publishing.
 
 By downloading, installing, or using the App, you agree to the terms of
 this End User License Agreement (this "EULA"). If you do not agree, do
@@ -13,11 +20,11 @@ This EULA is in addition to:
 - the separate [Terms of Use](https://automatist.cloud/terms.html),
 - the [Privacy Policy](https://automatist.cloud/privacy.html), and
 - the Google Play Store's terms (which govern the distribution
-  channel and any in-app purchases).
+  channel).
 
 In case of conflict between this EULA and the Google Play terms, the
-Google Play terms control with respect to the distribution channel and
-payment processing only. In case of conflict between this EULA and the
+Google Play terms control with respect to the distribution channel only.
+In case of conflict between this EULA and the
 [proprietary source license](LICENSE.md), the proprietary source license
 controls with respect to the source code.
 
@@ -43,9 +50,7 @@ You may not:
    the App to a third party;
 5. use the App to build or train a competing product or service;
 6. use the App to violate applicable law, the terms of any connected
-   third-party service, or the rights of any other person;
-7. circumvent the entitlement and billing checks that separate the
-   Free and Pro tiers.
+   third-party service, or the rights of any other person.
 
 ## 3. Your content
 
@@ -82,17 +87,12 @@ produced by any AI provider or model. You are responsible for reviewing
 and validating all generated content before acting on it. The App is
 designed around this manual-review principle.
 
-## 5. In-app purchases (Automatist Pro)
+## 5. No charges
 
-The App offers an optional one-time in-app purchase, "Automatist Pro",
-that unlocks unlimited custom workflows. Purchases are processed
-exclusively by Google Play. Refunds, chargebacks, and renewals (where
-applicable) are handled by Google under its own policies. We do not
-receive or store your payment information.
-
-Your Pro entitlement is tied to the Google account that completed the
-purchase and can be restored on other devices via the Restore Purchases
-option in the App.
+The App is free to use. It contains no in-app purchases, no subscriptions,
+and no feature paywalls — every feature is available to all users. We do not
+process, receive, or store any payment information, and the App does not
+integrate a billing or purchase flow.
 
 ## 6. Updates
 
@@ -121,10 +121,10 @@ ANY SPECIFIC TIME.
 TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT WILL WE BE LIABLE
 FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR
 PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, REVENUE, DATA, OR GOODWILL,
-ARISING OUT OF OR IN CONNECTION WITH YOUR USE OF THE APP. OUR TOTAL
-AGGREGATE LIABILITY TO YOU FOR DIRECT DAMAGES WILL NOT EXCEED THE
-AMOUNT YOU PAID FOR THE APP IN THE TWELVE MONTHS PRECEDING THE CLAIM,
-OR EUR 20, WHICHEVER IS GREATER.
+ARISING OUT OF OR IN CONNECTION WITH YOUR USE OF THE APP. THE APP IS
+PROVIDED FREE OF CHARGE; TO THE MAXIMUM EXTENT PERMITTED BY LAW, OUR
+TOTAL AGGREGATE LIABILITY TO YOU FOR DIRECT DAMAGES WILL NOT EXCEED
+EUR 20. <!-- legal review: confirm liability cap wording for a free product -->
 
 ## 10. Governing law and disputes
 

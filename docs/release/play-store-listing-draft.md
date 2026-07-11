@@ -38,8 +38,8 @@ All data stays on your device. No backend server, no analytics, no tracking. API
 YOU STAY IN CONTROL
 Automatist never auto-posts or auto-shares. You always review AI output before copying, sharing, or saving. Every workflow produces a concrete artifact — not a chat conversation.
 
-PRO UPGRADE
-The free plan includes 1 custom workflow. Upgrade to Pro with a one-time purchase to unlock unlimited workflow slots, all action types, full scheduling, and workflow import/export.
+FREE — NO ADS, NO SUBSCRIPTIONS, NO PAYWALLS
+Every feature is available to everyone: unlimited custom workflows, all action types, daily and weekly scheduling, and workflow import/export. There are no in-app purchases and no ads.
 
 Bring your own API keys. Transform your content. Keep your data.
 
@@ -59,4 +59,16 @@ Everyone (expected — no violent, sexual, or gambling content)
 No
 
 ## In-App Purchases
-Yes — one-time purchase "Automatist Pro" for unlimited workflows
+No — the app is free with no in-app purchases, no subscriptions, and no feature paywalls.
+
+---
+
+## Release Notes Draft (public-facing)
+
+Use for the "What's new" release notes of the first billing-free version. Keep it
+user-facing — do not mention internal migration phases.
+
+> Automatist is now free — every feature is available to everyone.
+> Unlimited workflows, all action types, and scheduling are unlocked for all users.
+> Your existing workflows, history, notes, and settings are unchanged, and no action
+> is needed on your part.

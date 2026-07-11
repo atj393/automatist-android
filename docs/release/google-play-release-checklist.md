@@ -9,18 +9,55 @@ Status key: [x] done in repo | [ ] manual action needed | [~] not applicable
 
 ---
 
+## Billing-free release — required verification (this release)
+
+This is the first release after Google Play Billing and the Pro entitlement were removed.
+Verify all of the following before promoting to production:
+
+1. [ ] Verify the uploaded AAB has **no BillingClient** (`apkanalyzer dex packages` shows no
+   `com.android.billingclient`; `dependencyInsight --dependency billingclient --configuration
+   releaseRuntimeClasspath` finds nothing)
+2. [ ] Verify the merged release manifest has **no `com.android.vending.BILLING`** permission
+3. [ ] Store listing set to **no in-app purchases** (and Free)
+4. [ ] Review/deactivate the legacy `automatist_pro` product only at the safe point (see sequence)
+5. [ ] Confirm Data Safety answers match the billing-free binary (see `data-safety-draft.md`)
+6. [ ] Confirm the privacy policy contains no billing/purchase/refund/restore language
+7. [ ] Complete the AI-generated-content policy review/declaration
+8. [ ] Complete the foreground-service (`dataSync`) declaration
+9. [ ] Confirm the privacy-policy URL works publicly (`https://automatist.cloud/privacy`)
+10. [ ] Confirm the support email (`feedback@automatist.cloud`) is monitored
+11. [ ] Confirm the app contains **no sponsor / donation / payment link**
+12. [ ] Test upgrade from `versionCode = 6` (previous billing build) → data intact, all features free
+13. [ ] Confirm the old `product_access` data is inert and harmless (no code reads it; no crash)
+14. [ ] Confirm fresh installs and upgraded users have **identical** feature access
+15. [ ] Confirm content rating (IARC) and target audience are set
+16. [ ] Confirm the model-download and cloud-provider disclosures are present and accurate
+
+### Safe Play Console sequence
+
+1. Finish and test the billing-free build.
+2. Upload it to the intended testing track and confirm the new artifact is active and functioning.
+3. Update the store listing, Data Safety, and policy declarations to match the billing-free binary.
+4. Handle the old `automatist_pro` product (deactivate) **only** once it can no longer affect the
+   current production build or existing users — i.e. after the billing-free build is the live
+   production artifact.
+
+> Do not perform Play Console actions from the codebase; this checklist documents them for the
+> release owner.
+
+---
+
 ## Codebase (handled in repo)
 
 - [x] App icons — launcher icons in all mipmap densities + adaptive icon (foreground/background/monochrome)
 - [x] `strings.xml` with `app_name`; manifest uses `@string/app_name`
 - [x] `versionCode = 6`, `versionName = "1.0.0"` in `build.gradle.kts`
 - [x] Release build: `isMinifyEnabled = true` + `isShrinkResources = true` (R8)
-- [x] ProGuard/R8 rules cover all deps (Retrofit, Gson, Room, Hilt, Billing, Drive, Auth, OkHttp, Coroutines, WorkManager, Compose, kotlinx.serialization, MediaPipe LLM Inference, Google AI Edge AICore)
+- [x] ProGuard/R8 rules cover all deps (Retrofit, Gson, Room, Hilt, Drive, Auth, OkHttp, Coroutines, WorkManager, Compose, kotlinx.serialization, MediaPipe LLM Inference, Google AI Edge AICore) — billing keep rules removed with the billing dependency
 - [x] R8 strips `Log.v`/`Log.d` from release (`-assumenosideeffects`); surviving `Log.i/w/e` logs carry only metadata (no API keys, no workflow text, no raw provider responses); OkHttp BODY/HEADERS logging is `BuildConfig.DEBUG`-only
 - [x] Signing config reads from `keystore.properties` (gitignored; never committed)
 - [x] `network_security_config.xml` enforces HTTPS only (`cleartextTrafficPermitted="false"`)
-- [x] `data_extraction_rules.xml` + `backup_rules.xml` exclude the three secret DataStores (`secure_prefs_stub`, `product_access`, `cloud_sync`); file names verified to match the real DataStore names
-- [x] Debug Pro override (`debugSetPro` / local `pro_unlocked`) guarded by `BuildConfig.DEBUG`; never set in release, so release entitlement = Play ownership only
+- [x] `data_extraction_rules.xml` + `backup_rules.xml` exclude `secure_prefs_stub` (API/service keys) and `cloud_sync` (Drive session metadata); the legacy `product_access` file is also excluded (inert — billing removed, no longer written or read); file names verified to match the real DataStore names
 - [x] Notification permission requested contextually (editor + schedule screen), not on launch
 - [x] **Battery optimization: the restricted `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission and the direct allow-dialog were removed.** The Schedule Status screen shows non-alarming guidance ("Scheduled workflows may be delayed by Android battery optimization … set Automatist to Unrestricted for the most reliable runs") and an **"Open battery settings"** button that deep-links to the normal system battery settings (no permission, graceful fallback). The workflow editor's scheduling note carries the same honest framing. See `foreground-service-and-battery-justification.md`.
 - [x] Custom local model import is HTTPS-only, `.task`-only, SHA-256-verified, size-bounded, app-private storage; manifest import shows a review + license-acknowledgement screen before any download
@@ -81,28 +118,30 @@ SHA-1 signing cert**.
 - [ ] **Target audience & content** — declare 18+ (third-party AI provider terms commonly require adult users)
 - [ ] **Ads** — declare: no ads
 - [ ] **Government app** — declare: no
-- [ ] **AI-generated content** — declare per current Play "AI-generated content" policy (the app transforms text via AI providers and on-device models)
-- [ ] **Account deletion** — `[~]` N/A: the app does **not** create an app account. Google sign-in is only used to access the user's own Drive. Document this if asked; offer "clear app data / uninstall" and "remove Drive backup" as the data-deletion paths.
+- [ ] **AI-generated content** — review under the current Play policy **"AI-Generated Content"** (`support.google.com/googleplay/android-developer/answer/14094294`). Automatist transforms user-provided text via cloud AI providers and on-device models and appears to fall under the policy's **productivity-tool** scope (it enhances existing content and hosts no user-to-user AI content); still ensure outputs cannot facilitate prohibited content and follow "Best Practices to Safeguard AI-Generated Content." Confirm the exact declaration in Play Console.
+- [ ] **Payments / in-app products** — declare **no in-app purchases** (Play policy "Payments"); the app has no billing integration. Nothing to test.
+- [ ] **Account deletion** — `[~]` N/A: the app does **not** create an app account (no developer backend). Google sign-in is only used to access the user's own Drive. Data-deletion paths: "clear app data / uninstall" for on-device data, and remove the Drive backup via the user's Google account (the app does not delete the Drive backup automatically — see privacy policy).
 
 ## App access (for review)
 
-- [ ] `[~]` No login/paywall gates app functionality. Core features (article transform, workflows, on-device + cloud AI with the user's own keys) are usable without an account. Pro is an optional one-time IAP. Provide reviewer notes:
+- [ ] `[~]` No login and no paywall gate app functionality — every feature is free and available to all users. Core features (article transform, workflows, on-device + cloud AI with the user's own keys) are usable without an account. Provide reviewer notes:
   - To exercise cloud AI, a reviewer must supply their own provider API key in Settings (the app ships none)
   - On-device models require a one-time download (Wi-Fi recommended)
 
 ## Play Console — Monetization
 
-- [ ] Create in-app product ID `automatist_pro` (must match `BillingManager.kt` exactly)
-- [ ] One-time purchase (not subscription); set prices; name "Automatist Pro"; description "Unlock unlimited custom workflows"
-- [ ] **Activate** the product (starts in draft)
-- [ ] Verify restore-purchases works (UpgradeScreen "Restore"); free user with no purchase sees a neutral "No previous purchase found", not an error
+- [~] **No monetization.** The app has no in-app products, no subscriptions, and no ads. Set the
+  app to **Free** with **no in-app purchases**. There is no billing integration to test.
+- [ ] Handle the legacy `automatist_pro` Play product only at the safe point (see the release
+  sequence below). The current build never references or queries it, so it cannot affect the
+  billing-free binary or existing users; deactivate it only once the billing-free build is the
+  active production artifact.
 
 ## Play Console — Testing track
 
-- [ ] Add license testers (Settings → License testing)
 - [ ] Upload AAB to **Internal testing** first
-- [ ] Test purchase + restore on a real device with a tester account (Play test track)
-- [ ] Test free-tier limit (create 1 workflow, attempt a 2nd → UpgradePrompt)
+- [ ] Confirm every feature is available with no purchase prompt and no Pro/Free UI
+- [ ] Confirm creating multiple workflows and enabling several at once works (no activation limit)
 - [ ] Review the Pre-launch Report (auto-tests on many devices) for crashes/ANRs
 - [ ] Graduate Internal → Closed → Production when confident
 
@@ -143,7 +182,7 @@ via internal testing). Record pass/fail for each.
 8. [ ] **Remove file → remove source → re-download** — remove the downloaded file (source stays "Not installed"); remove the custom source entirely (any profile using it shows setup-required, not a crash); re-add + re-download works
 9. [ ] **Cloud AI profile workflow** — add a real provider API key (OpenAI/Anthropic/Gemini); create a profile; run a workflow end to end; output + token usage shown; key never logged
 10. [ ] **Google Drive sync** (if configured) — sign in; back up workflows; sign out; restore; verify no secrets in the backup envelope
-11. [ ] **Pro purchase/restore** — on the Play internal-test track with a license tester: purchase `automatist_pro` → Pro unlocked → workflow limit removed; reinstall → restore re-grants Pro; no-purchase restore shows the neutral message
+11. [ ] **No purchase path** — confirm there is no Upgrade screen, no Pro/Free badge, and no purchase or restore control anywhere in the UI; no path can open a Google Play purchase flow
 12. [ ] **Airplane-mode after download** — download a local model, enable airplane mode, run a LOCAL_AI workflow → succeeds fully offline; a cloud-provider workflow fails with a clear "no network" message (no crash)
 
 Also confirm during the pass:

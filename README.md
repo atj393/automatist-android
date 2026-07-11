@@ -4,7 +4,9 @@ A workflow-first AI utility for Android that transforms text content into struct
 
 Automatist is not a chatbot. It takes articles, meeting notes, and RSS feeds as input and produces summaries, social media posts, professional briefs, and strategic insights using pluggable AI providers.
 
-> **Proprietary software.** Automatist is a commercial product. The source in this repository is **All Rights Reserved** and is not open source. It is published for transparency, security review, and personal evaluation only. See [LICENSE.md](LICENSE.md), [EULA.md](EULA.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Do not copy, fork, redistribute, or reuse this code without prior written permission.
+**Automatist is free** — no ads, no subscriptions, no in-app purchases, and no feature paywalls. Every feature is available to everyone.
+
+> **Proprietary software.** Automatist's source in this repository is currently **All Rights Reserved** and is not (yet) open source. It is published for transparency, security review, and personal evaluation only. See [LICENSE.md](LICENSE.md), [EULA.md](EULA.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Do not copy, fork, redistribute, or reuse this code without prior written permission.
 
 ---
 
@@ -41,12 +43,6 @@ Create reusable custom workflow templates with multiple data sources:
 - **Workflow portability** — import, export, and duplicate workflows (secret-free portable format)
 - **Background scheduling** — via WorkManager for reliable scheduled execution
 - **Schedule dashboard** — view next run times, last run status, and manage all schedules
-
-### Pro Upgrade (Google Play Billing)
-- **Free tier** — 1 custom workflow, all built-in templates browsable
-- **Pro tier** — unlimited workflows via one-time purchase (`automatist_pro`)
-- **Upgrade prompt** — non-dismissable modal when free tier limit is reached
-- **Restore purchases** — for existing customers on new devices
 
 ### Cloud Sync (Google Drive)
 - **Backup workflows** to Google Drive `appDataFolder` (private, app-scoped storage)
@@ -88,7 +84,6 @@ ui/               Theme + navigation graph
 - **Provider router** — strategy pattern routes AI calls to the active provider/profile
 - **Repository pattern** — Room-backed history and workflows with Flow-based reactivity
 - **Readiness system** — dynamic prerequisite checks for actions and workflows
-- **Entitlement layer** — `ProductAccessRepository` abstracts Free/Pro state from billing implementation
 
 ---
 
@@ -105,7 +100,6 @@ ui/               Theme + navigation graph
 | HTTP | Retrofit + OkHttp |
 | Async | Coroutines + Flow |
 | Serialization | Gson (Retrofit) + kotlinx.serialization (DataStore) |
-| Billing | Google Play Billing Library v7.0.0 |
 | Cloud Sync | Google Drive API (appDataFolder) |
 | Auth | Google Play Services Auth |
 | On-device AI (system) | Google AI Edge AICore 0.0.1-exp01 (Gemini Nano) |
@@ -179,7 +173,6 @@ app/src/main/java/com/automatist/app/
 ├── AutomatistApp.kt             # Application class (@HiltAndroidApp)
 │
 ├── domain/                      # Business logic (pure Kotlin)
-│   ├── access/                  # Product access / entitlements (Free vs Pro)
 │   ├── actions/                 # Workflow action registry + metadata
 │   ├── engine/                  # Workflow execution engine + state
 │   ├── models/                  # Data classes + enums
@@ -191,8 +184,6 @@ app/src/main/java/com/automatist/app/
 │   └── workflow/                # Workflow portability (import/export)
 │
 ├── data/                        # Implementation layer
-│   ├── access/                  # Billing-backed + local entitlement repos
-│   ├── billing/                 # Google Play Billing Manager
 │   ├── local/                   # Room DB, DAO, entity, settings
 │   ├── network/                 # RSS parser
 │   ├── providers/               # AI provider implementations + router
@@ -207,7 +198,6 @@ app/src/main/java/com/automatist/app/
 │   ├── history/                 # History list + detail
 │   ├── notes/                   # Saved Notes manager
 │   ├── vault/                   # Settings (profiles, API keys, service keys)
-│   ├── upgrade/                 # Pro upgrade screen + purchase prompt
 │   ├── sync/                    # Cloud sync (Google Drive backup)
 │   └── workflow/                # Workflow builder, editor, run, templates,
 │                                #   details, history, schedule, components
@@ -218,7 +208,7 @@ app/src/main/java/com/automatist/app/
 │   ├── scheduling/              # Schedule manager
 │   └── security/                # Secure API key storage
 │
-├── di/                          # Hilt modules (7 modules)
+├── di/                          # Hilt modules
 └── ui/                          # Navigation graph + theme
 ```
 
@@ -253,11 +243,6 @@ WorkManager trigger → Load config → Fetch RSS (snippets only) → Parse top 
 ### Share Intent
 ```
 External app → Share text → ShareEntryActivity → Article Transformer (pre-filled)
-```
-
-### Pro Upgrade (Billing)
-```
-Free user hits limit → UpgradePrompt → UpgradeScreen → Google Play purchase → BillingManager acknowledges → Pro state updates app-wide
 ```
 
 ### Cloud Sync
@@ -368,7 +353,7 @@ Automatist is proprietary software. Copyright © 2026 Alexis Johnson. All Rights
 - [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — detailed inventory of third-party components and their licenses
 - Hosted legal pages: [Terms](https://automatist.cloud/terms.html) · [Privacy](https://automatist.cloud/privacy.html)
 
-Third-party dependencies (AndroidX, Kotlin, OkHttp, Retrofit, Hilt, MediaPipe, Google Play Billing, Google Drive API, AICore, etc.) remain governed by their own licenses, as listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Gemma model weights that the app can optionally download at runtime remain governed by the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and [Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy); Automatist does not claim ownership of those weights.
+Third-party dependencies (AndroidX, Kotlin, OkHttp, Retrofit, Hilt, MediaPipe, Google Drive API, AICore, etc.) remain governed by their own licenses, as listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Gemma model weights that the app can optionally download at runtime remain governed by the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and [Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy); Automatist does not claim ownership of those weights.
 
 For commercial licensing, partnership, or reuse enquiries, contact **support@automatist.cloud**.
 
