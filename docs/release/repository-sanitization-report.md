@@ -8,9 +8,21 @@
 > `.gradle/`, and `local.properties` from all history; normalized the owner's two personal Gmail
 > addresses to `atj393@users.noreply.github.com`; removed the 4 AI-tool `Co-Authored-By: Claude`
 > trailers; rewrote the tag; deleted `refs/original/*`; and gc'd (~40.9 MiB → ~1.3 MiB). Verified
-> clean afterward. **Not pushed** — every commit hash changed; force-pushing to `origin` is the
-> owner's step. No credential secrets ever existed → no rotation. See
+> clean afterward. No credential secrets ever existed → no rotation. See
 > `open-source-publication-checklist.md` for the mapping and remaining owner actions.
+
+> **REMOTE REPLACEMENT & PUBLICATION (executed 2026-07-11, owner-approved).** The sanitized
+> history was subsequently pushed to `origin` using explicit per-ref force-with-lease pushes
+> (`main`: `6d1af1e…`→`b93d628…`; tag `offline-models-v1`: `46004147…`→`5004f4a…`) — never
+> `push --force --all`. 5 obsolete migration branches were deleted from the remote (content
+> confirmed contained in `main`). A fresh clone of the public remote was audited clean (no old
+> SHA reachable, single sanitized author, no secrets/models/personal data) and built green. The
+> repository was then made **public**; unauthenticated access, README, and LICENSE were confirmed
+> reachable. Advertised public refs are only `main` (`b93d628…`), tag `offline-models-v1`
+> (`5004f4a…`), and read-only `refs/pull/1|2/head`. Security hardening enabled (secret scanning +
+> push protection, Dependabot alerts + automated fixes, private vulnerability reporting, `main`
+> branch protection). §15–§16 below reflect the *pre-publication* recommendation and are
+> superseded by this outcome. The pre-rewrite backup bundle is retained and untouched.
 
 ## 1. Audit date
 2026-07-11.
