@@ -24,7 +24,6 @@ import com.automatist.app.feature.workflow.history.WorkflowHistoryScreen
 import com.automatist.app.feature.workflow.schedule.ScheduleStatusScreen
 import com.automatist.app.feature.workflow.templates.WorkflowTemplatesScreen
 import com.automatist.app.feature.sync.CloudSyncScreen
-import com.automatist.app.feature.upgrade.UpgradeScreen
 import com.automatist.app.feature.vault.SettingsSection
 import com.automatist.app.feature.notes.NotesScreen
 import com.automatist.app.feature.onboarding.NotificationOnboardingGate
@@ -48,7 +47,6 @@ object Routes {
     const val WORKFLOW_HISTORY = "workflow_history"
     const val SAVED_NOTES = "saved_notes"
     const val SCHEDULE_STATUS = "schedule_status"
-    const val UPGRADE = "upgrade"
     const val CLOUD_SYNC = "cloud_sync"
 }
 
@@ -98,7 +96,6 @@ fun AutomatistNavGraph(
                 onNavigateToNotes = { navController.navigate(Routes.SAVED_NOTES) },
                 onNavigateToTemplates = { navController.navigate(Routes.WORKFLOW_TEMPLATES) },
                 onCreateBlankWorkflow = { navController.navigate(Routes.WORKFLOW_EDITOR) },
-                onNavigateToUpgrade = { navController.navigate(Routes.UPGRADE) },
                 onNavigateToCloudSync = { navController.navigate(Routes.CLOUD_SYNC) }
             )
         }
@@ -164,8 +161,7 @@ fun AutomatistNavGraph(
                 onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") },
                 onViewHistory = { id -> navController.navigate("${Routes.WORKFLOW_HISTORY}/$id") },
                 onViewSchedules = { navController.navigate(Routes.SCHEDULE_STATUS) },
-                onNavigateToImported = { id -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$id") },
-                onNavigateToUpgrade = { navController.navigate(Routes.UPGRADE) }
+                onNavigateToImported = { id -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$id") }
             )
         }
 
@@ -181,8 +177,7 @@ fun AutomatistNavGraph(
                 onRun = { id -> navController.navigate("${Routes.WORKFLOW_RUN}/$id") },
                 onViewHistory = { id -> navController.navigate("${Routes.WORKFLOW_HISTORY}/$id") },
                 onViewRunDetail = { runId -> navController.navigate("${Routes.WORKFLOW_RUN_DETAIL}/$runId") },
-                onNavigateToDuplicated = { newId -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$newId") },
-                onNavigateToUpgrade = { navController.navigate(Routes.UPGRADE) }
+                onNavigateToDuplicated = { newId -> navController.navigate("${Routes.WORKFLOW_DETAILS}/$newId") }
             )
         }
 
@@ -265,12 +260,6 @@ fun AutomatistNavGraph(
 
         composable(Routes.SAVED_NOTES) {
             NotesScreen(onBack = { navController.popBackStack() })
-        }
-
-        // ── Upgrade ──
-
-        composable(Routes.UPGRADE) {
-            UpgradeScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Cloud Sync ──

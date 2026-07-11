@@ -36,7 +36,6 @@ fun WorkflowListScreen(
     onViewHistory: (Long) -> Unit,
     onViewSchedules: () -> Unit = {},
     onNavigateToImported: (Long) -> Unit = {},
-    onNavigateToUpgrade: () -> Unit = {},
     viewModel: WorkflowListViewModel = hiltViewModel()
 ) {
     val workflows by viewModel.workflows.collectAsState()

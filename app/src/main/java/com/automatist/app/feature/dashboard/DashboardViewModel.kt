@@ -2,8 +2,6 @@ package com.automatist.app.feature.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.automatist.app.domain.access.PlanState
-import com.automatist.app.domain.access.ProductAccessRepository
 import com.automatist.app.domain.models.*
 import com.automatist.app.domain.repositories.WorkflowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,8 +12,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    workflowRepository: WorkflowRepository,
-    accessRepository: ProductAccessRepository
+    workflowRepository: WorkflowRepository
 ) : ViewModel() {
 
     // First-run seeding is handled centrally by FirstRunSeeder in AutomatistApp.onCreate,
@@ -34,7 +31,4 @@ class DashboardViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
-
-    val planState: StateFlow<PlanState> = accessRepository.planState
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlanState())
 }

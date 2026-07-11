@@ -3,8 +3,6 @@ package com.automatist.app.feature.workflow.details
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.automatist.app.domain.access.PlanState
-import com.automatist.app.domain.access.ProductAccessRepository
 import com.automatist.app.domain.models.*
 import com.automatist.app.domain.repositories.WorkflowRepository
 import com.automatist.app.domain.templates.BuiltInTemplates
@@ -44,7 +42,6 @@ class WorkflowDetailsViewModel @Inject constructor(
     private val repository: WorkflowRepository,
     private val scheduleManager: ScheduleManager,
     private val portabilityManager: WorkflowPortabilityManager,
-    private val accessRepository: ProductAccessRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -52,60 +49,6 @@ class WorkflowDetailsViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(WorkflowDetailsUiState())
     val state = _state.asStateFlow()
-
-    val planState = accessRepository.planState
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PlanState())
-
-    /**
-     * Check whether the user can activate (enable) this workflow.
-     * Access is unrestricted (all features are free), so activation is always
-     * allowed and this returns null. Routed through the centralized [PlanState]
-     * policy so a future policy could re-introduce a cap without scattering checks;
-     * when blocked it returns the name of the active workflow that blocks it.
-     */
-    suspend fun checkActivationBlocked(): String? {
-        val plan = accessRepository.currentPlanState()
-        if (plan.isProUnlocked) return null
-
-        val thisId = templateId
-        val allTemplates = repository.getAllTemplates().first()
-        val activeOthers = allTemplates.filter { it.isEnabled && it.id != thisId }
-        return if (plan.canActivateWorkflow(activeOthers.size)) null
-        else activeOthers.firstOrNull()?.name ?: "another workflow"
-    }
-
-    /**
-     * Deactivate all other active workflows, then enable this one.
-     * Used by the "Switch Active" flow for free users.
-     */
-    fun switchActiveToThis() {
-        viewModelScope.launch {
-            val template = _state.value.template ?: return@launch
-            val allTemplates = repository.getAllTemplates().first()
-
-            // Disable all other enabled workflows and cancel their schedules
-            allTemplates.filter { it.isEnabled && it.id != template.id }.forEach { other ->
-                repository.updateTemplate(
-                    other.copy(isEnabled = false, updatedAtMillis = System.currentTimeMillis())
-                )
-                scheduleManager.cancelSchedule(other.id)
-            }
-
-            // Enable this one
-            val updated = template.copy(isEnabled = true, updatedAtMillis = System.currentTimeMillis())
-            repository.updateTemplate(updated)
-            _state.update { it.copy(template = updated) }
-
-            if (updated.trigger !is WorkflowTrigger.Manual) {
-                scheduleManager.scheduleWorkflow(templateId, updated.trigger)
-            }
-
-            val info = withContext(Dispatchers.IO) {
-                scheduleManager.getScheduleStatusSync(templateId)
-            }
-            _state.update { it.copy(scheduleInfo = info) }
-        }
-    }
 
     init {
         loadWorkflow()
@@ -158,19 +101,13 @@ class WorkflowDetailsViewModel @Inject constructor(
     }
 
     /**
-     * Toggle enabled state and sync scheduling. Enabling routes through the
-     * centralized access policy (currently unrestricted, so it never blocks) and
-     * returns null on success; a non-null result would name the blocking workflow.
+     * Toggle the workflow's enabled state and sync scheduling. Enabling registers
+     * the schedule (for non-manual triggers); disabling cancels it. Enabling one
+     * workflow never affects any other workflow.
      */
-    suspend fun toggleEnabled(): String? {
-        val template = _state.value.template ?: return null
+    suspend fun toggleEnabled() {
+        val template = _state.value.template ?: return
         val newEnabled = !template.isEnabled
-
-        // If enabling, check activation limit
-        if (newEnabled) {
-            val blockingName = checkActivationBlocked()
-            if (blockingName != null) return blockingName
-        }
 
         val updated = template.copy(
             isEnabled = newEnabled,
@@ -192,7 +129,6 @@ class WorkflowDetailsViewModel @Inject constructor(
             scheduleManager.getScheduleStatusSync(templateId)
         }
         _state.update { it.copy(scheduleInfo = info) }
-        return null
     }
 
     fun showDeleteDialog() {

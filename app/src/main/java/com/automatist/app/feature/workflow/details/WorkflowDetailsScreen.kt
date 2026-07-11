@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.automatist.app.domain.actions.WorkflowActionRegistry
 import com.automatist.app.domain.models.*
-import com.automatist.app.feature.upgrade.ActivationLimitDialog
 import com.automatist.app.platform.scheduling.ScheduleInfo
 import com.automatist.app.platform.scheduling.ScheduleState
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +33,6 @@ fun WorkflowDetailsScreen(
     onViewHistory: (Long) -> Unit,
     onViewRunDetail: (Long) -> Unit,
     onNavigateToDuplicated: (Long) -> Unit = {},
-    onNavigateToUpgrade: () -> Unit = {},
     viewModel: WorkflowDetailsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -42,19 +40,6 @@ fun WorkflowDetailsScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var overflowExpanded by remember { mutableStateOf(false) }
-    var activationBlockedByName by remember { mutableStateOf<String?>(null) }
-
-    if (activationBlockedByName != null) {
-        ActivationLimitDialog(
-            activeWorkflowName = activationBlockedByName ?: "",
-            onUpgrade = { activationBlockedByName = null; onNavigateToUpgrade() },
-            onSwitchActive = {
-                activationBlockedByName = null
-                viewModel.switchActiveToThis()
-            },
-            onDismiss = { activationBlockedByName = null }
-        )
-    }
 
     // ── SAF launcher for export ──
     // Holds the JSON + warnings to surface once the user picks a destination.
@@ -262,12 +247,7 @@ fun WorkflowDetailsScreen(
                     Switch(
                         checked = template.isEnabled,
                         onCheckedChange = {
-                            scope.launch {
-                                val blockedBy = viewModel.toggleEnabled()
-                                if (blockedBy != null) {
-                                    activationBlockedByName = blockedBy
-                                }
-                            }
+                            scope.launch { viewModel.toggleEnabled() }
                         }
                     )
                 }

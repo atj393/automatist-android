@@ -70,10 +70,79 @@ Persistent-data guarantees (verified — see Phase 7 below):
 - No DataStore name or key changed; `product_access` untouched.
 - `applicationId` stays `com.automatist.app`.
 
+## Phase 2 completed
+
+- Upgrade screen removed
+- Upgrade navigation removed
+- paid-plan badges removed
+- purchase and restore controls removed from the UI
+- old activation-limit dialog removed
+- switch-active workaround removed
+- every feature remains available to all users
+- billing runtime is still temporarily compiled but has no user-facing entry
+- this intermediate build is still not the final release because BillingClient
+  and billing declarations remain until Phase 3
+
+What was removed (files):
+
+- `feature/upgrade/UpgradeScreen.kt` and `feature/upgrade/UpgradePrompt.kt` (deleted;
+  the `feature/upgrade` package is now empty).
+- `Routes.UPGRADE`, the Upgrade composable destination, and all three
+  `onNavigateToUpgrade` wirings in `AutomatistNavGraph.kt`.
+- The Dashboard "Free"/"Pro" `AssistChip` and `DashboardViewModel.planState`
+  (the badge was its only consumer).
+- The `WorkflowDetailsViewModel` activation gate: `checkActivationBlocked()`,
+  `switchActiveToThis()`, the `planState` field, and the blocking return of
+  `toggleEnabled()` (now returns `Unit`); the details screen's
+  `ActivationLimitDialog` and `activationBlockedByName` state.
+- The dead `onNavigateToUpgrade` parameter on `WorkflowListScreen`.
+
+What was intentionally retained for Phase 3 (billing runtime, no UI entry):
+
+- `BillingManager` (incl. `launchPurchaseFlow`, `queryOwnedPurchases`, restore),
+  `BillingClient` dependency, `automatist_pro`, `BillingProductAccessRepository`,
+  `LocalProductAccessRepository`, `AccessModule`, the `ProductAccess` domain,
+  `AutomatistApp` billing bootstrap, `product_access` DataStore, and the billing
+  ProGuard rules. `WorkflowEditorViewModel.save()` still reads the internal plan
+  identity to decide default enablement (unrestricted); this is not user-facing.
+
+### Phase 3 checklist
+
+- remove BillingManager
+- remove billing dependency
+- remove product ID
+- remove entitlement repositories
+- simplify/remove ProductAccess domain
+- remove AccessModule binding
+- remove billing app bootstrap
+- remove billing ProGuard rules
+- verify merged manifest no longer contains BILLING
+- verify AAB has no BillingClient classes
+- leave old product_access data inert without migration
+- update billing-related tests
+
+## Manual smoke-test checklist (device)
+
+Scheduling registration/cancellation is WorkManager-backed and not JVM-unit-tested;
+verify on-device:
+
+1. Fresh install
+2. Dashboard shows no Pro/Free status
+3. Settings contains no Upgrade or restore-purchase action
+4. Create three workflows
+5. Enable all three
+6. Confirm none is automatically paused
+7. Disable one workflow
+8. Confirm only that workflow is disabled
+9. Re-enable it
+10. Confirm scheduling remains registered
+11. Open every main app screen and verify no paid UI remains
+12. Verify no path can start a purchase
+
 ## Future phases
 
-### Phase 2 — remove Upgrade UI
-- Remove `UpgradeScreen`, `UpgradePrompt` (both dialogs), the dashboard Pro/Free chip,
+### Phase 2 — remove Upgrade UI ✅ (done — see "Phase 2 completed" above)
+- Removed `UpgradeScreen`, `UpgradePrompt` (both dialogs), the dashboard Pro/Free chip,
   the `Routes.UPGRADE` route and all `onNavigateToUpgrade` wiring, Pro badges, and paid
   marketing strings.
 

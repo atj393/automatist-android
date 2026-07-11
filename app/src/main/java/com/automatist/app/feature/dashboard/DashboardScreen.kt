@@ -32,35 +32,17 @@ fun DashboardScreen(
     onNavigateToNotes: () -> Unit = {},
     onNavigateToTemplates: () -> Unit = {},
     onCreateBlankWorkflow: () -> Unit = {},
-    onNavigateToUpgrade: () -> Unit = {},
     onNavigateToCloudSync: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val recentRuns by viewModel.recentRuns.collectAsState()
     val myWorkflows by viewModel.customWorkflows.collectAsState()
-    // Creation is no longer gated — free users can create workflows freely.
-    // The free-tier limit is enforced on activation (enabling) instead.
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Automatist", fontWeight = FontWeight.Bold) },
                 actions = {
-                    val plan by viewModel.planState.collectAsState()
-                    AssistChip(
-                        onClick = onNavigateToUpgrade,
-                        label = {
-                            Text(
-                                if (plan.isProUnlocked) "Pro" else "Free",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(14.dp))
-                        },
-                        modifier = Modifier.height(28.dp)
-                    )
                     IconButton(onClick = onNavigateToCloudSync) {
                         Icon(Icons.Default.CloudSync, contentDescription = "Cloud Sync")
                     }
