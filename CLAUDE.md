@@ -1,5 +1,9 @@
 # Automatist
 
+> **Agent note:** [AGENTS.md](AGENTS.md) is an archived, full-length copy of an earlier
+> version of this file (including the removed Data Flow and Navigation Routes sections).
+> This file is canonical — if the two conflict, follow this one.
+
 ## Project Identity
 
 **Type:** Workflow-first AI utility (not chatbot, not agent)
@@ -467,106 +471,6 @@ Every workflow output can be saved. Stored in Room (`history_items` table) with:
 
 API keys stored per-provider in DataStore. Current implementation is plaintext DataStore (TODO: upgrade to Android Keystore / EncryptedSharedPreferences).
 
-### Navigation Routes
-
-| Route | Screen |
-|-------|--------|
-| `dashboard` | DashboardScreen |
-| `article_transformer` | ArticleScreen (legacy) |
-| `meeting_strategist` | MeetingScreen (legacy) |
-| `morning_brief` | BriefScreen (legacy) |
-| `history` | HistoryScreen |
-| `history_detail/{id}` | HistoryDetailScreen |
-| `vault` | VaultScreen (settings) |
-| `workflow_templates` | WorkflowTemplatesScreen |
-| `workflow_list` | WorkflowListScreen |
-| `workflow_editor` | WorkflowEditorScreen |
-| `workflow_run/{id}` | WorkflowRunScreen |
-| `workflow_run_detail/{id}` | WorkflowRunDetailScreen |
-| `workflow_details/{id}` | WorkflowDetailsScreen |
-| `workflow_history` | WorkflowHistoryScreen |
-| `saved_notes` | NotesScreen |
-| `schedule_status` | ScheduleStatusScreen |
-| `upgrade` | UpgradeScreen |
-| `cloud_sync` | CloudSyncScreen |
-
-Legacy quick-access screens (`article_transformer`, `meeting_strategist`, `morning_brief`) remain available via direct routes but are no longer shown on the dashboard.
-
----
-
-## Data Flow
-
-### Article / Meeting Transform
-```
-User input (text) → ViewModel → TransformProviderRouter
-  → reads activeProvider from SettingsRepository
-  → delegates to concrete provider
-  → provider fetches API key from SecureStorage (cloud) or runs on-device (LOCAL_AI)
-  → builds prompt + calls API or runs MediaPipe/AICore inference
-  → returns TransformResult
-  → ViewModel updates UI state
-  → user reviews → copy / share / save to history
-```
-
-### Morning Brief
-```
-WorkManager triggers SynthesizerWorker
-  → loads BriefConfig from DataStore
-  → RssParser fetches + parses RSS URLs (snippet only)
-  → aggregates top 5 items (max ~8k chars)
-  → builds systemPromptOverride from config (output type, platforms, custom)
-  → calls TransformProviderRouter with MORNING_SUMMARY
-  → saves result to Room history
-  → fires notification if enabled
-```
-
-### Share Intent
-```
-External app → ACTION_SEND text/plain → ShareEntryActivity
-  → launches MainActivity with shared text
-  → auto-navigates to article_transformer with text pre-filled
-```
-
-### Workflow Builder (custom run)
-```
-User creates WorkflowTemplate via editor
-  → saves to Room (workflow_templates table)
-  → manual run: WorkflowRunViewModel → WorkflowExecutionEngine → Flow<ExecutionState>
-  → scheduled run: WorkManager → WorkflowWorker → WorkflowExecutionEngine
-  → engine executes actions in order:
-      - per-action preprocessing (AI pass) if action has instruction
-      - per-action compaction (TextCompactor) to fit context window
-      - USE_ACTION_OUTPUT / AI_PROMPT for in-workflow chaining
-  → combines results, builds system prompt from config
-  → calls TransformProviderRouter with CUSTOM_WORKFLOW + systemPromptOverride
-  → saves WorkflowRun to Room (workflow_runs table)
-  → fires notification if enabled
-  → user reviews output → copy / share
-```
-
-### Pro Upgrade (billing)
-```
-Free user hits workflow limit → UpgradePrompt modal
-  → navigates to UpgradeScreen
-  → UpgradeViewModel queries BillingManager for product details
-  → user taps Purchase → BillingManager.launchPurchase(activity)
-  → Google Play purchase flow
-  → BillingManager acknowledges purchase
-  → proOwned StateFlow updates → BillingProductAccessRepository reflects Pro
-  → PlanState updates across app → workflow limit removed
-```
-
-### Cloud Sync (Google Drive backup)
-```
-User opens CloudSyncScreen → signs in with Google Account
-  → CloudSyncManager obtains OAuth2 credential (Drive appdata scope)
-  → user taps Backup → WorkflowPortabilityManager exports all workflows
-  → creates CloudBackupEnvelope (portable, secret-free DTOs)
-  → uploads to Google Drive appDataFolder
-  → CloudSyncRepository stores sync status (email, timestamp, count)
-  → Restore: downloads envelope → WorkflowPortabilityManager imports workflows
-```
-
 ---
 
 ## Workflow Builder
@@ -651,13 +555,6 @@ Users can create workflows from curated templates OR from scratch. Templates are
 
 **Per-action config:** Stored in `WorkflowAction.extraConfig` as JSON. Each action type has its own config model: `RssFeedConfig`, `ApiGetConfig`, `SavedNoteReference`, `PreviousOutputConfig`.
 
-**Navigation routes:**
-`workflow_templates` → Browse built-in templates, "Use Template" creates instance
-`workflow_list` → My Workflows (user-owned instances)
-`workflow_editor?templateId={id}` | `workflow_editor?sourceTemplateId={builtInId}` → Edit or create from template
-`workflow_run/{templateId}` | `workflow_run_detail/{runId}` → Execution + history
-`saved_notes` — Saved Notes Manager (CRUD for reusable note content)
-
 ---
 
 ## DO NOT
@@ -678,6 +575,7 @@ Users can create workflows from curated templates OR from scratch. Templates are
 - Delete or rename the `offline-models-v1` GitHub Release tag — existing installs have this URL hardcoded in `OfflineModelCatalog`; changing it breaks downloads for all users on v1.0.0
 - Change `downloadUrl` or `fileSha256` in `OfflineModelCatalog` without also bumping the catalog entry's ID and adding a migration — these values are trust anchors for download integrity
 - Bypass the `estimateTokens` / `MAX_INPUT_TOKENS` preflight guard in `MediaPipeInferenceEngine` — oversized prompts cause a native JNI crash (SIGABRT), not a graceful exception
+- Make drive-by refactors, reformatting, or unrelated "improvements" — a recurring agent failure in this repo; every changed line must trace back to the current request
 
 ---
 
@@ -690,6 +588,17 @@ Users can create workflows from curated templates OR from scratch. Templates are
 ./gradlew bundleRelease      # produces signed AAB for Play Store
 ./gradlew assembleRelease    # produces signed APK for sideloading / testing
 ```
+
+### Test & Lint
+```bash
+./gradlew test                # JVM unit tests (app/src/test)
+./gradlew testDebugUnitTest --tests "com.automatist.app.domain.engine.StageResetTest"  # single class
+./gradlew lint                # report: app/build/reports/lint-results-*.html (abortOnError = false)
+```
+
+### Command Safety (agents)
+- Run without asking: `./gradlew test`, `./gradlew assembleDebug`, `./gradlew lint`
+- Ask first: `installDebug`, `assembleRelease`, `bundleRelease`, `buildReleaseAndInstall`, any `adb` command
 
 ### Adding a New AI Provider
 1. Create API interface in `data/providers/{name}/` (`{Name}Api.kt`, `{Name}Models.kt`)
