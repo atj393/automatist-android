@@ -42,17 +42,38 @@ Gate before making `atj393/automatist-android` public. `[x]` = done in-repo with
     `keystore.properties` stay untracked and out of the public repo (verified gitignored).
 22. [ ] **Physical-device smoke tests passed** — per `docs/release/google-play-release-checklist.md`.
 
-## History publication options (item 10)
+## History rewrite (item 10) — EXECUTED with owner approval
 
-The only sensitive item in Git history is `local.properties` containing
-`sdk.dir=C:\Users\johnson\AppData\Local\Android\Sdk` — a local Windows **username path, not a
-secret**. No API keys, tokens, keystores, or model files are in history. Options:
+A full-history rewrite was approved and performed locally with `git filter-branch` over all refs
+(`git-filter-repo` was unavailable). A verified backup bundle was created first
+(`../automatist-android-before-sanitization.bundle`). The rewrite:
 
-1. **Keep existing history** — accept the harmless username-path metadata. Lowest effort; safe
-   because no secret is exposed. **Recommended as acceptable.**
-2. **Rewrite history** with `git filter-repo` (remove `local.properties`) — only after explicit
-   approval; rewrites shared history and requires force-push. Higher risk; not necessary here.
-3. **Publish a new repository from the current clean snapshot** — pristine history with no personal
-   metadata, at the cost of losing commit history. Safest if a spotless public history is desired.
+- **Stripped from all history:** `.claude/` (local tool config: local paths + a device serial),
+  `app/build/` and `.gradle/` (committed build artifacts / bloat), and `local.properties`
+  (a local Windows SDK path, e.g. `C:\Users\<user>\…\Android\Sdk` — a username path, **not a
+  secret**).
+- **Normalized author/committer emails** — the owner's two personal Gmail addresses →
+  `atj393@users.noreply.github.com` (name preserved: Alexis Johnson).
+- **Removed** the 4 AI-tool `Co-Authored-By: Claude` trailers.
+- **Rewrote the tag** `offline-models-v1`; deleted `refs/original/*`; ran `gc --prune=now`
+  (repo ~40.9 MiB → ~1.3 MiB).
 
-**Do not execute any rewrite/new-repo action automatically** — this is the owner's decision.
+**Verified after rewrite:** no personal Gmail, no device serial, no `.claude`/`app/build`/
+`.gradle`/`local.properties` in any reachable ref; author identity is only
+`Alexis Johnson <atj393@users.noreply.github.com>` (+ the `GitHub <noreply@github.com>` merge);
+HEAD source tree unchanged except the removed `.claude/` files. No credential secrets ever
+existed, so no rotation was needed.
+
+**Remaining (owner actions — not performed here):**
+
+- Every commit hash changed. **Force-push** the rewritten refs + tag to `origin` (strategy A).
+  The local remote-tracking cache was cleared during sanitization, so use plain `git push --force`
+  (a `--force-with-lease` has no baseline) and **do not `git fetch` before pushing** — fetching
+  first would re-pull the old history into the local clone. After the private repo shows only the
+  clean history, a later fetch is safe. (Not done here — pushing is the owner's step.)
+- If a numeric-ID GitHub no-reply (`<id>+atj393@users.noreply.github.com`) is preferred for
+  commit-attribution linkage, re-run the email step with that address before force-pushing.
+- Optionally delete intermediate migration branches before making the repo public.
+
+The pre-rewrite state is fully recoverable from the backup bundle
+(`git clone ../automatist-android-before-sanitization.bundle`).

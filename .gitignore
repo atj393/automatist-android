@@ -78,6 +78,9 @@ fastlane/test_output
 *~
 app context.txt
 
+# Local AI/agent tool config (machine-specific: local paths, device serials)
+.claude/
+
 # On-device model weights & caches (downloaded at runtime; never commit)
 models/
 *.task

@@ -1,376 +1,183 @@
-# Automatist
+<p align="center">
+  <img src="docs/assets/readme/automatist-logo.png" width="112" alt="Automatist logo">
+</p>
 
-A workflow-first AI utility for Android that transforms text content into structured, shareable outputs — entirely on-device with no backend.
+<h1 align="center">Automatist</h1>
 
-Automatist is not a chatbot. It takes articles, meeting notes, and RSS feeds as input and produces summaries, social media posts, professional briefs, and strategic insights using pluggable AI providers.
+<p align="center">
+  <strong>Mobile-first AI automation for Android.</strong><br>
+  Useful AI workflows from the phone you already carry — no server, no homelab, no always-on laptop.
+</p>
 
-Automatist is a **free, privacy-focused, open-source** Android workflow automation app. Build scheduled workflows that run on cloud AI (with your own API keys), on-device AI, or compatible offline models. There are **no ads, no subscriptions, and no feature paywalls** — every feature is available to everyone.
+<p align="center">
+  Free • Open source • No ads • No subscriptions • No feature paywalls
+</p>
 
-> **Open source.** The first-party source code is licensed under the **Apache License 2.0** (see [LICENSE](LICENSE)). Third-party dependencies keep their own upstream licences ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)); AI model weights remain under their upstream model terms; and the Automatist name, logo, and store artwork are **not** covered by the code licence ([TRADEMARKS.md](TRADEMARKS.md)).
-
----
-
-## Features
-
-### Article Transformer
-Paste or share text from any app and transform it into:
-- **Summary** — concise bulleted digest
-- **Thread Draft** — Twitter/X-style multi-post thread
-- **Professional Post** — LinkedIn-ready insight post
-
-### Meeting Strategist
-Input meeting title and notes to generate:
-- **Meeting Brief** — executive summary with action items
-- **Strategic Questions** — follow-up questions for deeper discussion
-
-### Morning Brief (Automated)
-Configure RSS feeds and get AI-generated digests on a schedule:
-- Set trigger interval (every N hours or daily at a specific hour)
-- Choose output format: summary, bullet insights, social post, or custom
-- Target specific social platforms (LinkedIn, X, Facebook, Instagram, Threads) with platform-appropriate tone
-- Background processing via WorkManager with optional notifications
-
-### Workflow Builder (Custom Workflows)
-Create reusable custom workflow templates with multiple data sources:
-- **Template library** — 7 built-in templates (Morning Commute Brief, Competitor Monitor, Research Digest, etc.)
-- **Multi-step builder** — guided sections for basics, trigger, actions, instructions, and output
-- **11 action types** — Fetch URL, Paste Text, RSS Feed, Multi-RSS, API GET, Saved Notes, Previous Output, Weather, Route Time, Action Output, AI Prompt
-- **Action Catalog** — full-screen categorized browser with search, readiness badges, and detail views
-- **Flexible triggers** — manual, daily schedule, or weekly schedule
-- **Output options** — briefing, social post, both, or custom format
-- **Live execution screen** — stage-by-stage progress, action status, token usage, and duration
-- **Run history** — all runs persisted with full output, token stats, and error details
-- **Workflow portability** — import, export, and duplicate workflows (secret-free portable format)
-- **Background scheduling** — via WorkManager for reliable scheduled execution
-- **Schedule dashboard** — view next run times, last run status, and manage all schedules
-
-### Cloud Sync (Google Drive)
-- **Backup workflows** to Google Drive `appDataFolder` (private, app-scoped storage)
-- **Restore workflows** from backup on any device
-- **Secret-free exports** — API keys are never included in sync payloads
-- **Sync status tracking** — last backup time, workflow count, connected account
-
-### Additional Features
-- **History** — all outputs saved locally with full search and detail view
-- **Vault (Settings)** — AI provider profiles, API keys, service keys, legacy provider fallback
-- **Saved Notes** — reusable note content that workflows can reference
-- **Readiness System** — dynamic checks for action/workflow prerequisites with setup CTAs
-- **Share Intent** — receive text from any app via Android share sheet
-- **Multi-Provider** — switch between OpenAI, Anthropic, Gemini, a fully on-device LOCAL_AI mode (Gemini Nano or Gemma 3 1B int4), or a local demo mode
-- **Provider Profiles** — named provider+model configurations, one set as default
-- **Token Usage Tracking** — real token counts from OpenAI, Anthropic, and Gemini APIs
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84" alt="Android 8.0+">
+  <img src="https://img.shields.io/badge/language-Kotlin-7F52FF" alt="Kotlin">
+  <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4" alt="Jetpack Compose">
+  <img src="https://img.shields.io/badge/status-active%20development-brightgreen" alt="Active development">
+</p>
 
 ---
+
+## Project status
+
+- **Source:** open source under **Apache-2.0**, in **active development**.
+- **Google Play:** **not yet published** — for now, install by building from source (see [Build from source](#build-from-source)).
+- **On-device AI:** availability depends on your device — see [Cloud, on-device & offline AI](#cloud-on-device--offline-ai).
+
+## Why Automatist
+
+Automatist turns the Android phone you already own into a small runner for recurring AI tasks — no cloud account to create, no server to host, no subscription to pay.
+
+- **Automate recurring AI tasks** — summaries, briefs, social posts, and digests — on a schedule.
+- **Combine sources** — articles, RSS feeds, URLs, REST APIs, saved notes, weather, and routes — then hand the result to AI.
+- **No backend** — everything runs on your device; there is no Automatist server that receives your content.
+- **Your AI, your keys** — bring your own cloud-provider keys, or run fully on-device with no key and no network.
+- **You stay in control** — every workflow produces a concrete artifact you review before copying, sharing, or saving. Nothing is auto-posted.
+
+## What you can build
+
+Pick a template or start from an empty canvas, chain reusable actions, add AI instructions, then run it manually or on a schedule.
+
+- **Morning Brief** — summarize your RSS feeds into a daily digest.
+- **Article Transformer** — turn any article or shared text into a summary, thread, or professional post.
+- **Meeting Strategist** — turn meeting notes into a brief with action items or strategic questions.
+- **News to Social Posts** — fetch news and generate platform-tailored posts.
+- **Morning Commute Brief** — combine weather, travel time, and headlines before you leave.
+- **Custom** — e.g. a stock or flight tracker assembled from the REST-API action, or anything you build from the action catalog.
+
+> Some actions require your own keys (AI providers; weather/route services), and some AI options require a compatible device or a one-time model download. Automatist does not bundle or pay for third-party services.
+
+## Core capabilities
+
+- **Workflow builder** with 11 action types: fetch URL, RSS, multi-RSS, REST API (GET), saved notes, previous-run output, another action's output, weather, route time, mid-workflow AI pass, and paste text.
+- **Templates + blank canvas**, plus secret-free workflow import/export.
+- **Scheduling** — manual, daily, weekly, or interval — via Android WorkManager.
+- **Provider profiles** — named provider + model configurations, assignable per workflow.
+- **Transparent run logs** — stage-by-stage progress, estimated token usage, duration, and error details.
+- **Optional Google Drive sync** — back up workflow definitions to your own private Drive app folder.
 
 ## Screenshots
 
-<!-- Add screenshots here -->
+<p align="center">
+  <img src="docs/assets/readme/screenshot-templates.png" width="220" alt="Workflow templates">
+  <img src="docs/assets/readme/screenshot-editor.png" width="220" alt="Workflow editor">
+  <img src="docs/assets/readme/screenshot-workflow-details.png" width="220" alt="Workflow details and schedule">
+  <img src="docs/assets/readme/screenshot-run-results.png" width="220" alt="Run results and log">
+</p>
 
----
+## Cloud, on-device & offline AI
+
+| Mode | Providers / models | Where your prompt goes |
+|---|---|---|
+| **Cloud** | OpenAI, Anthropic, Google Gemini, or any user-configured OpenAI-compatible endpoint | Sent **directly** to the provider you choose, using **your** API key |
+| **On-device (system)** | Gemini Nano via Android AICore | Stays on the device; requires a supported device / Android version |
+| **Offline (downloadable)** | Compatible MediaPipe `.task` models — built-in Gemma 3 1B (int4), or a model you add | Stays on the device after a one-time download |
+
+- Downloaded models are integrity-checked with **SHA-256**. For on-device and offline inference, **prompts never leave the device**; the model host only ever receives a file-download request.
+- **`.gguf` and `.safetensors` are not supported** by the MediaPipe runtime, and not every model on Hugging Face is compatible — only MediaPipe `.task` language models. See [docs/local-model-import.md](docs/local-model-import.md).
+- On-device availability and performance vary by device; nothing is guaranteed.
+
+## Privacy & data ownership
+
+- **No Automatist backend, no analytics, no tracking, no ads, no billing.**
+- Cloud AI: your text goes **directly** to the provider you select, authenticated with your own key.
+- On-device / offline AI: prompts stay on the device.
+- External workflow requests (URLs, RSS, REST APIs, weather, routes) go only to the services **you** configure.
+- Google Drive sync is **optional** and uses your private `appDataFolder`; the developer cannot access it.
+- API keys are stored **locally** on the device.
+
+See the [privacy policy draft](docs/legal/privacy-policy-draft.md) — *pending publication at `automatist.cloud/privacy`.*
+
+## Quick start
+
+For everyday use (until a Play release is available):
+
+1. **Build & install** from source (see below).
+2. In **Settings**, choose **on-device AI** (no key needed) or add a **cloud provider** API key.
+3. Open **Templates → Use Template**, or start from an empty workflow.
+4. Add actions and an output instruction.
+5. **Run** it once, or set a **schedule**.
+6. Review the result and the run log.
+
+## Build from source
+
+```bash
+git clone https://github.com/atj393/automatist-android.git
+cd automatist-android
+```
+
+**Requirements:** Android Studio (latest stable), JDK 17, Android SDK (compileSdk/targetSdk 35, minSdk 26).
+
+Create a `local.properties` file (gitignored) pointing at your SDK:
+
+```properties
+sdk.dir=/path/to/your/Android/Sdk
+```
+
+Build, test, and lint:
+
+```bash
+./gradlew :app:assembleDebug        # build the debug APK
+./gradlew :app:testDebugUnitTest    # run unit tests
+./gradlew :app:lintDebug            # run Android lint
+./gradlew :app:assembleRelease      # release APK (requires your own keystore.properties)
+```
+
+Release signing reads `keystore.properties` (gitignored) — see `keystore.properties.example`. **Never commit signing credentials, keystores, or API keys.**
+
+### Forking
+
+Automatist is Apache-2.0, so forks are welcome. If you publish a fork:
+
+- Use a different **`applicationId`** (not `com.automatist.app`).
+- Configure your **own Google OAuth client** (your package name + signing-cert SHA-1) and enable the Drive API if you want cloud sync — see the [release checklist](docs/release/google-play-release-checklist.md).
+- Use your **own signing key** and **branding** — see [TRADEMARKS.md](TRADEMARKS.md).
+
+## Supported providers & model formats
+
+- **Cloud:** OpenAI, Anthropic, Google Gemini, and any OpenAI-compatible endpoint you configure (with your own base URL + key).
+- **On-device:** Gemini Nano (Android AICore) on supported devices.
+- **Offline:** MediaPipe `.task` LLMs — the built-in Gemma 3 1B (int4), or a compatible model you add via URL or a JSON manifest (HTTPS-only, SHA-256-verified). `.gguf` / `.safetensors` are **not** supported.
+
+## Scheduling & Android limitations
+
+Schedules run through **WorkManager**. Android **Doze** and aggressive **OEM battery management** can **delay** background runs — sometimes by minutes or more. Automatist does **not** promise exact run times; for more reliable timing, set Automatist to **Unrestricted** in the system battery settings. The app requests **no** special battery-exemption permission.
 
 ## Architecture
 
-```
-feature/          UI layer (Compose screens + ViewModels)
-domain/           Interfaces, models, enums (no dependencies)
-data/             Implementations (Room, Retrofit, DataStore, providers)
-platform/         OS concerns (WorkManager, secure storage)
-di/               Hilt modules
-ui/               Theme + navigation graph
-```
-
-- **Single-activity** with Jetpack Compose navigation
-- **MVVM** — each screen backed by a `@HiltViewModel` with `StateFlow`
-- **Provider router** — strategy pattern routes AI calls to the active provider/profile
-- **Repository pattern** — Room-backed history and workflows with Flow-based reactivity
-- **Readiness system** — dynamic prerequisite checks for actions and workflows
-
----
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Language | Kotlin |
-| UI | Jetpack Compose + Material3 |
-| DI | Hilt |
-| Database | Room |
-| Preferences | DataStore |
-| Background | WorkManager |
-| HTTP | Retrofit + OkHttp |
-| Async | Coroutines + Flow |
-| Serialization | Gson (Retrofit) + kotlinx.serialization (DataStore) |
-| Cloud Sync | Google Drive API (appDataFolder) |
-| Auth | Google Play Services Auth |
-| On-device AI (system) | Google AI Edge AICore 0.0.1-exp01 (Gemini Nano) |
-| On-device AI (download) | MediaPipe LLM Inference / tasks-genai (Gemma 3 1B int4) |
-
-**Min SDK:** 26 (Android 8.0) | **Target SDK:** 35 (Android 15) | **Java:** 17
-
----
-
-## Getting Started
-
-### Prerequisites
-- Android Studio Hedgehog (2023.1.1) or later
-- JDK 17
-- Android SDK 34
-
-### Setup
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/atj393/automatist-android.git
-   cd automatist-android
-   ```
-
-2. Open in Android Studio and sync Gradle.
-
-3. (Optional) Set up release signing:
-   ```bash
-   cp keystore.properties.example keystore.properties
-   # Generate a keystore and fill in passwords — see keystore.properties.example for details
-   ```
-
-4. Build and run:
-   ```bash
-   ./gradlew assembleDebug
-   ./gradlew installDebug
-   ```
-
-5. Configure an AI provider in **Settings**:
-   - Create a provider profile (OpenAI, Anthropic, or Gemini) with your API key
-   - Or use **Fake (Local Demo)** to explore without an API key
-   - Optionally add service API keys (OpenWeatherMap, OpenRouteService) for weather/route actions
-
-### API Keys
-
-Automatist requires an API key for whichever AI provider you choose:
-
-| Provider | Get a key at |
-|----------|-------------|
-| OpenAI | https://platform.openai.com/api-keys |
-| Anthropic | https://console.anthropic.com/ |
-| Gemini | https://aistudio.google.com/apikey |
-
-Some workflow actions require additional service API keys:
-
-| Service | Used By | Get a key at |
-|---------|---------|-------------|
-| OpenWeatherMap | Weather action | https://openweathermap.org/api |
-| OpenRouteService | Route Time action | https://openrouteservice.org/ |
-
-All keys are stored on-device only. No data leaves the device except direct API calls to the respective provider/service.
-
-### Google Cloud Sync setup (optional; required only if you fork and want Drive backup)
-
-Cloud Sync uses Google Sign-In + the Drive `appDataFolder` scope — no Firebase, no `google-services.json`, no server client. OAuth resolves from **package name + signing-cert SHA-1**, so a fork must register its own client:
-
-- Change the fork's `applicationId` (do not reuse `com.automatist.app`) — see [TRADEMARKS.md](TRADEMARKS.md).
-- In Google Cloud Console, create an **Android OAuth client** for `<your.application.id>` + your debug/release SHA-1 fingerprints, enable the **Drive API**, and configure the OAuth consent screen (use your own app name/support email — placeholders only, never commit secrets).
-
-Full step-by-step is in [docs/release/google-play-release-checklist.md](docs/release/google-play-release-checklist.md).
-
----
-
-## Project Structure
-
-```
-app/src/main/java/com/automatist/app/
-├── MainActivity.kt              # Launcher + share intent handler
-├── ShareEntryActivity.kt        # Receives shared text from other apps
-├── AutomatistApp.kt             # Application class (@HiltAndroidApp)
-│
-├── domain/                      # Business logic (pure Kotlin)
-│   ├── actions/                 # Workflow action registry + metadata
-│   ├── engine/                  # Workflow execution engine + state
-│   ├── models/                  # Data classes + enums
-│   ├── providers/               # ArticleTransformProvider interface
-│   ├── readiness/               # Dynamic readiness evaluator
-│   ├── repositories/            # History + Workflow repository interfaces
-│   ├── sync/                    # Cloud sync models + interfaces
-│   ├── templates/               # Built-in workflow templates
-│   └── workflow/                # Workflow portability (import/export)
-│
-├── data/                        # Implementation layer
-│   ├── local/                   # Room DB, DAO, entity, settings
-│   ├── network/                 # RSS parser
-│   ├── providers/               # AI provider implementations + router
-│   ├── repositories/            # Room-backed history + workflow repos
-│   └── sync/                    # Google Drive sync manager + local repo
-│
-├── feature/                     # Screens (Compose + ViewModel)
-│   ├── article/                 # Article Transformer
-│   ├── meeting/                 # Meeting Strategist
-│   ├── brief/                   # Morning Brief config + results
-│   ├── dashboard/               # Home screen
-│   ├── history/                 # History list + detail
-│   ├── notes/                   # Saved Notes manager
-│   ├── vault/                   # Settings (profiles, API keys, service keys)
-│   ├── sync/                    # Cloud sync (Google Drive backup)
-│   └── workflow/                # Workflow builder, editor, run, templates,
-│                                #   details, history, schedule, components
-│
-├── platform/
-│   ├── automation/              # WorkManager workers (Brief + Workflow)
-│   ├── notifications/           # Notification helper
-│   ├── scheduling/              # Schedule manager
-│   └── security/                # Secure API key storage
-│
-├── di/                          # Hilt modules
-└── ui/                          # Navigation graph + theme
-```
-
----
-
-## Supported AI Providers
-
-| Provider | Default Model | Notes |
-|----------|--------------|-------|
-| Fake | — | Local mock responses, no API key needed |
-| OpenAI | gpt-3.5-turbo (overridable) | Bearer token auth |
-| Anthropic | claude-3-haiku-20240307 (overridable) | x-api-key header |
-| Gemini | gemini-1.5-flash | API key query param |
-| LOCAL_AI | gemini-nano / gemma-3n-e2b | Fully on-device, no API key or internet needed |
-
-All providers implement the same `ArticleTransformProvider` interface. Create named **provider profiles** (provider + model combinations) in Settings and assign them as defaults or per-workflow overrides.
-
-**Offline models:** the on-device runtime uses **MediaPipe LLM Inference**, which runs compatible **MediaPipe `.task`** models — the built-in Gemma model, or a model you add via a direct URL or a JSON manifest. `.gguf` and `.safetensors` files are **not** supported by the current MediaPipe runtime. On-device performance varies by device and is not guaranteed. See [docs/local-model-import.md](docs/local-model-import.md).
-
----
-
-## How It Works
-
-### Content Transformation
-```
-User input → ViewModel → TransformProviderRouter → Active AI Provider → TransformResult → UI preview → User action (copy/share/save)
-```
-
-### Morning Brief Automation
-```
-WorkManager trigger → Load config → Fetch RSS (snippets only) → Parse top 5 items → Build prompt → AI provider → Save to history → Notify
-```
-
-### Share Intent
-```
-External app → Share text → ShareEntryActivity → Article Transformer (pre-filled)
-```
-
-### Cloud Sync
-```
-Sign in with Google → CloudSyncManager → Export workflows (secret-free) → Upload to Drive appDataFolder → Track sync status locally
-```
-
----
-
-## Design Principles
-
-- **User always reviews before acting** — no auto-posting, auto-sharing, or auto-sending
-- **Snippets only** — RSS parsing extracts titles and descriptions, never full articles
-- **On-device first** — no backend server, no analytics; Google Drive sync is optional and user-initiated
-- **Template-driven outputs** — transform types define output shape, not free-form generation
-- **Secret-free portability** — workflow exports and cloud backups never include API keys
-- **Idempotent workers** — Brief and Workflow runs are safe to retry
-
----
-
-## Extending the codebase
-
-> Automatist is open source under Apache-2.0. Contributions are welcome — see
-> [CONTRIBUTING.md](CONTRIBUTING.md) for setup, build/test commands, and the
-> contribution terms, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
-
-### Adding a New AI Provider
-1. Create API interface + models in `data/providers/{name}/`
-2. Implement `ArticleTransformProvider` in `data/providers/`
-3. Add `ProviderType` enum value in `domain/models/Types.kt`
-4. Add Retrofit instance in `di/NetworkModule.kt`
-5. Wire into `TransformProviderRouter`
-6. Add key management UI in `feature/vault/`
-
-### Adding a New Transform Type
-1. Add enum value to `TransformType` in `domain/models/Types.kt`
-2. Add system prompt in each provider's prompt builder
-3. Add mock response in `FakeArticleTransformProvider`
-4. Add UI option in the relevant feature screen
-
----
-
-## Privacy
-
-- All data stored locally on-device (Room database + DataStore)
-- API keys never leave the device except in direct provider API calls
-- Cloud sync (Google Drive) is optional and user-initiated — uses private `appDataFolder` scope
-- Workflow backups are secret-free — API keys are stripped before sync/export
-- No telemetry, analytics, or tracking
-- No backend server
-- RSS feeds fetched directly from source — no proxy
-
----
-
-## App Icon Assets
-
-The Automatist launcher icon uses Android adaptive icon layers (API 26+) with monochrome themed icon support (API 33+), plus legacy pre-composed bitmaps for older launchers.
-
-### Background
-
-The original icon artwork filled ~76% of the adaptive icon canvas, which caused the three circular nodes of the symbol to be cropped by launcher masking on Samsung One UI and other OEMs that apply aggressive circular or squircle masks. The fix was to reduce the artwork scale to 45% fill with 89px padding per side on the 432px adaptive canvas, keeping the design identical but ensuring full visibility under all launcher mask shapes including parallax-shifted states.
-
-### Final approved sizing
-
-| Parameter | Value |
-|-----------|-------|
-| Adaptive canvas | 432 x 432 px |
-| Artwork fill | 45% of canvas width |
-| Scaled artwork size | 254 x 254 px |
-| Padding per side | 89 px |
-
-### Android resource locations
-
-| File | Location |
-|------|----------|
-| Foreground layer | `app/src/main/res/drawable/ic_launcher_foreground.png` |
-| Background layer | `app/src/main/res/drawable/ic_launcher_background.png` |
-| Monochrome layer | `app/src/main/res/drawable/ic_launcher_monochrome.png` |
-| Adaptive XML | `app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` |
-| Adaptive XML (round) | `app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml` |
-| Legacy mdpi (48x48) | `app/src/main/res/mipmap-mdpi/ic_launcher.png` |
-| Legacy hdpi (72x72) | `app/src/main/res/mipmap-hdpi/ic_launcher.png` |
-| Legacy xhdpi (96x96) | `app/src/main/res/mipmap-xhdpi/ic_launcher.png` |
-| Legacy xxhdpi (144x144) | `app/src/main/res/mipmap-xxhdpi/ic_launcher.png` |
-| Legacy xxxhdpi (192x192) | `app/src/main/res/mipmap-xxxhdpi/ic_launcher.png` |
-| Play Store icon (512x512) | `play-store/play_store_icon_512.png` |
-
-The Play Store icon is not an Android runtime resource. Upload it manually to Google Play Console during release.
-
-### Source files
-
-The master source image and all generated exports are kept in `icons/` at the project root for reference. The Android project resources in `res/` are the copies that ship with the app.
-
-### Future changes
-
-Do not regenerate or resize icons without testing on a real device with an aggressive launcher mask (e.g., Samsung One UI circular mask). The 45% fill ratio was chosen specifically to prevent cropping across Samsung, Pixel, and stock Android launchers. If the icon design changes, regenerate all assets from the new master and re-verify on-device before merging.
-
----
+- **Single-activity** Jetpack Compose app; **MVVM** with Hilt.
+- **Room** (database v17) for history, workflows, notes, and provider profiles; **DataStore** for settings and keys.
+- **WorkManager** for scheduled/background execution; **Retrofit + OkHttp** for network calls (HTTPS enforced).
+- A pluggable **provider router** dispatches to the active cloud or on-device provider.
+
+## Documentation
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [SUPPORT.md](SUPPORT.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [CHANGELOG.md](CHANGELOG.md)
+- [LICENSE](LICENSE) · [NOTICE](NOTICE) · [TRADEMARKS.md](TRADEMARKS.md) · [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- [Local model import](docs/local-model-import.md) · [Privacy policy (draft)](docs/legal/privacy-policy-draft.md)
 
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, build/test commands, and PR expectations (no secrets or model binaries in PRs), and the [Code of Conduct](CODE_OF_CONDUCT.md). By contributing, you agree that your contributions are licensed under the same Apache-2.0 licence (inbound = outbound).
 
+## Security
+
+Please report vulnerabilities privately — see [SECURITY.md](SECURITY.md). Do not open a public issue for security problems.
+
 ## Support
 
-Automatist is free and open source. Bug reports and feature requests are welcome through **GitHub Issues** on [atj393/automatist-android](https://github.com/atj393/automatist-android). For private matters, including security reports, see [SECURITY.md](SECURITY.md) and [SUPPORT.md](SUPPORT.md). There is no paid or priority support, and no guaranteed response time.
+Automatist is free and open source. Use **GitHub Issues** for bugs and feature requests on [atj393/automatist-android](https://github.com/atj393/automatist-android/issues); for private matters see [SUPPORT.md](SUPPORT.md) and [SECURITY.md](SECURITY.md). There is no paid or priority support and no guaranteed response time.
 
-## License
+## License & branding
 
-- **First-party source code:** [Apache License 2.0](LICENSE) — Copyright © 2026 Alexis Johnson. See also [NOTICE](NOTICE).
-- **Third-party dependencies:** their own upstream licences, listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (AndroidX, Kotlin, OkHttp, Retrofit, Hilt, Room, WorkManager, MediaPipe, Google Drive/API clients, AICore, etc.).
-- **AI model weights** (e.g. Gemma, downloaded at runtime): governed by their upstream model terms — the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and [Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy). **Not** covered by Apache-2.0; Automatist claims no ownership of any model weights.
-- **Branding** (the Automatist name, logo, launcher icon, and store artwork): **not** granted by the code licence — see [TRADEMARKS.md](TRADEMARKS.md).
-- **Official app EULA:** [EULA.md](EULA.md). Hosted legal pages: [Terms](https://automatist.cloud/terms.html) · [Privacy](https://automatist.cloud/privacy.html).
+- **First-party source code:** [Apache License 2.0](LICENSE) — Copyright © 2026 Alexis Johnson (see [NOTICE](NOTICE)).
+- **Third-party dependencies:** their own upstream licences — see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- **AI model weights** (e.g. Gemma, downloaded at runtime): their upstream model terms — the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and [Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy). **Not** covered by Apache-2.0.
+- **Branding** — the Automatist name, logo, launcher icon, and store artwork are **not** granted by the code licence. See [TRADEMARKS.md](TRADEMARKS.md).
 
----
-
-## Trademarks
-
-The "Automatist" name and logo are marks of Alexis Johnson and are **not** licensed under Apache-2.0 — see [TRADEMARKS.md](TRADEMARKS.md) for brand-use and fork guidance. "Android", "Google Play", "Gemma", and "Gemini" are trademarks of Google LLC. Automatist is an independent project and is not affiliated with, endorsed by, or sponsored by Google LLC.
+"Android", "Google Play", "Gemma", and "Gemini" are trademarks of Google LLC. Automatist is an independent project and is not affiliated with, endorsed by, or sponsored by Google LLC.
