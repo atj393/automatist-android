@@ -47,10 +47,6 @@
 -keep class javax.inject.** { *; }
 -keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
 
-# ── Google Play Billing ───────────────────────────────────────────────
--keep class com.android.vending.billing.** { *; }
--keep class com.android.billingclient.** { *; }
-
 # ── Google Drive API ──────────────────────────────────────────────────
 -keep class com.google.api.services.drive.** { *; }
 -keep class com.google.api.client.** { *; }

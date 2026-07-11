@@ -5,7 +5,9 @@
 
     Strategy:
     - EXCLUDE secure_prefs_stub (API keys, service keys)
-    - EXCLUDE product_access (billing entitlement cache — re-derived from Play)
+    - EXCLUDE product_access (inert legacy entitlement file — billing removed; no longer
+      written or read. Exclusion kept so stale files don't start entering backups; may be
+      dropped in a later cleanup release once upgrade behavior is established.)
     - EXCLUDE cloud_sync (Drive session metadata — re-created on sign-in)
     - INCLUDE settings (non-sensitive app preferences)
     - INCLUDE Room database (workflow definitions — no secrets stored in DB)

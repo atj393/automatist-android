@@ -140,9 +140,6 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    // Billing
-    implementation(libs.billing)
-
     // Google AI Edge — AICore (on-device Gemini Nano via Android system service)
     // RELEASE NOTE: This is an experimental library (0.0.1-exp01). The API surface is
     // small and stable for our use (GenerativeModel, prepareInferenceEngine, generateContent),

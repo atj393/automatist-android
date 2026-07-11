@@ -3,7 +3,6 @@ package com.automatist.app.feature.workflow.editor
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.automatist.app.domain.access.ProductAccessRepository
 import com.automatist.app.domain.actions.WorkflowActionRegistry
 import com.automatist.app.domain.models.*
 import com.automatist.app.domain.readiness.ReadinessEvaluator
@@ -16,7 +15,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -64,7 +62,6 @@ class WorkflowEditorViewModel @Inject constructor(
     val readinessEvaluator: ReadinessEvaluator,
     private val scheduleManager: ScheduleManager,
     private val notificationHelper: NotificationHelper,
-    private val accessRepository: ProductAccessRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -212,11 +209,8 @@ class WorkflowEditorViewModel @Inject constructor(
                 // Editing existing — preserve current enabled state
                 repository.getTemplateById(templateId)?.isEnabled ?: true
             } else {
-                // New workflow — enabled by default. Access is unrestricted (all
-                // features are free), so the policy never caps activation. Routed
-                // through PlanState so any future activation policy stays centralized.
-                val activeCount = repository.getAllTemplates().first().count { it.isEnabled }
-                accessRepository.currentPlanState().canActivateWorkflow(activeCount)
+                // New workflow — enabled by default (matches WorkflowTemplate's default).
+                true
             }
 
             val template = WorkflowTemplate(

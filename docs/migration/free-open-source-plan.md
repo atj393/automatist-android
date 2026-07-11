@@ -121,23 +121,76 @@ What was intentionally retained for Phase 3 (billing runtime, no UI entry):
 - leave old product_access data inert without migration
 - update billing-related tests
 
+## Phase 3 completed
+
+- Google Play Billing runtime removed
+- BillingClient dependency removed
+- automatist_pro references removed from app code
+- purchase query, acknowledgement, and restore logic removed
+- Pro-entitlement repositories removed
+- ProductAccess domain removed
+- app startup no longer initializes billing
+- every feature remains free without an entitlement layer
+- old product_access data remains inert and unread
+- no Room migration was required
+- no DataStore migration was required
+- merged release manifest contains no BILLING permission
+- packaged release contains no BillingClient classes, if verified
+
+What was removed (files):
+
+- `data/billing/BillingManager.kt` (whole file).
+- `domain/access/ProductAccess.kt`, `data/access/BillingProductAccessRepository.kt`,
+  `data/access/LocalProductAccessRepository.kt`, `di/AccessModule.kt` (all deleted).
+- The `com.android.billingclient:billing-ktx` dependency + version-catalog alias, and
+  the billing keep rules in `proguard-rules.pro`.
+- `AutomatistApp`'s BillingManager injection and its `queryOwnedPurchases()` startup call.
+- `WorkflowEditorViewModel`'s ProductAccess dependency (a new workflow now defaults to
+  enabled via `WorkflowTemplate`'s own default; no plan, entitlement, or count consulted).
+- Obsolete tests `BillingEntitlementTest` and `PlanStateTest`.
+
+Legacy data note:
+
+- `product_access.preferences_pb` may remain on existing devices. No code opens it, no
+  migration or cleanup runs, and it is never deleted from the device. Its backup/transfer
+  exclusion is retained (see `data_extraction_rules.xml` / `backup_rules.xml`) so stale
+  files don't start entering backups; the exclusion may be dropped in a later cleanup release.
+
+## Phase 4 (next) — legal, Play, and website
+
+- update privacy policy
+- update EULA/terms
+- update Data Safety draft
+- update Play Store listing
+- update release checklist
+- remove purchase-data and billing disclosures
+- update website pricing/Pro content
+- add free/open-source product wording
+- do not add sponsorship links inside the Android app
+
+Not yet (deferred beyond Phase 4): replace the proprietary licence / add Apache-2.0,
+add GitHub Sponsors, change the website repository, or deactivate the Play product.
+
 ## Manual smoke-test checklist (device)
 
-Scheduling registration/cancellation is WorkManager-backed and not JVM-unit-tested;
-verify on-device:
+Scheduling registration/cancellation is WorkManager-backed and not JVM-unit-tested.
+For this billing-free build, verify on-device:
 
 1. Fresh install
-2. Dashboard shows no Pro/Free status
-3. Settings contains no Upgrade or restore-purchase action
-4. Create three workflows
-5. Enable all three
-6. Confirm none is automatically paused
-7. Disable one workflow
-8. Confirm only that workflow is disabled
-9. Re-enable it
-10. Confirm scheduling remains registered
-11. Open every main app screen and verify no paid UI remains
-12. Verify no path can start a purchase
+2. Existing-user upgrade from versionCode 6
+3. App opens without billing initialization
+4. No Play Billing connection or error appears
+5. Create at least three workflows
+6. Keep all three enabled
+7. Edit an enabled workflow and confirm it remains enabled
+8. Edit a disabled workflow and confirm it remains disabled
+9. Run a cloud workflow
+10. Run a local/offline workflow
+11. Test scheduling with the phone locked
+12. Test Google Drive sync
+13. Confirm no Pro/Upgrade/purchase UI
+14. Confirm no Google Play purchase prompt can open
+15. Confirm existing user data remains intact
 
 ## Future phases
 
@@ -146,8 +199,8 @@ verify on-device:
   the `Routes.UPGRADE` route and all `onNavigateToUpgrade` wiring, Pro badges, and paid
   marketing strings.
 
-### Phase 3 — remove billing runtime
-- Remove `BillingManager`, the `com.android.billingclient:billing-ktx` dependency,
+### Phase 3 — remove billing runtime ✅ (done — see "Phase 3 completed" above)
+- Removed `BillingManager`, the `com.android.billingclient:billing-ktx` dependency,
   `BillingProductAccessRepository` / `LocalProductAccessRepository`, Play product references,
   the restore flow, and the billing ProGuard keep rules. Collapse or delete the
   `ProductAccessRepository`/`AccessModule` layer once nothing reads a plan.

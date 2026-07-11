@@ -1,7 +1,5 @@
 package com.automatist.app.domain.workflow
 
-import com.automatist.app.domain.access.PlanState
-import com.automatist.app.domain.access.PlanType
 import com.automatist.app.domain.models.WorkflowTemplate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -9,72 +7,69 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /**
- * Verifies workflow activation behavior after the free/open-source migration.
+ * Verifies workflow enable/disable behavior after billing + entitlement removal.
+ * Feature availability is ordinary app behavior now — there is no plan, entitlement,
+ * purchase, or active-workflow count involved.
  *
- * - The editor's new-workflow enable decision (WorkflowEditorViewModel.save())
- *   still routes through PlanState.canActivateWorkflow and is always permissive.
- * - The details enable toggle (WorkflowDetailsViewModel.toggleEnabled()) simply
- *   flips isEnabled on one workflow; it never blocks and never disables another
- *   (the old one-active-workflow gate and its "switch active" workaround are gone).
- *
- * The ViewModels are Android components backed by a WorkManager ScheduleManager and
- * are not directly unit-testable in this JVM suite, so — as with BillingEntitlementTest —
- * we exercise the exact repository/decision logic against a real FakeWorkflowRepository.
- * The scheduling registration/cancellation side effects are device-tested (see the
- * migration doc's smoke-test checklist), not reproduced here.
+ * The editor/details ViewModels are Android components backed by a WorkManager
+ * ScheduleManager and aren't directly unit-testable in this JVM suite, so — as with
+ * the other workflow tests — we exercise the exact create/edit/toggle decision logic
+ * against a real FakeWorkflowRepository. Scheduling registration/cancellation is
+ * device-tested (see the migration doc's smoke-test checklist), not reproduced here.
  */
 class WorkflowActivationPolicyTest {
 
-    // Mirror of WorkflowEditorViewModel.save() enable-decision for a NEW workflow.
-    private suspend fun shouldEnableNewWorkflow(repo: FakeWorkflowRepository, plan: PlanState): Boolean {
-        val activeCount = repo.getAllTemplates().first().count { it.isEnabled }
-        return plan.canActivateWorkflow(activeCount)
-    }
+    // Mirror of WorkflowEditorViewModel.save()'s enabled-state decision:
+    // editing preserves the stored state; a new workflow uses the default (enabled).
+    private suspend fun shouldEnableOnSave(repo: FakeWorkflowRepository, templateId: Long?): Boolean =
+        if (templateId != null) repo.getTemplateById(templateId)?.isEnabled ?: true
+        else true
 
-    // Mirror of WorkflowDetailsViewModel.toggleEnabled()'s repository effect (the
-    // ScheduleManager/WorkManager calls are device-tested, not reproduced here).
+    // Mirror of WorkflowDetailsViewModel.toggleEnabled()'s repository effect.
     private suspend fun toggleEnabledOn(repo: FakeWorkflowRepository, id: Long) {
         val t = repo.getTemplateById(id) ?: return
         repo.updateTemplate(t.copy(isEnabled = !t.isEnabled))
     }
 
-    private fun repoWithActiveWorkflows(count: Int): FakeWorkflowRepository {
-        val repo = FakeWorkflowRepository()
-        repeat(count) { i ->
-            repo.seedTemplate(WorkflowTemplate(name = "Active $i", isEnabled = true))
-        }
-        return repo
-    }
-
     private suspend fun enabledCount(repo: FakeWorkflowRepository): Int =
         repo.getAllTemplates().first().count { it.isEnabled }
 
-    // ── New-workflow enablement (editor) ──
+    // ── Create ──
 
     @Test
-    fun `new workflow is enabled when a first workflow is already active`() = runTest {
-        val repo = repoWithActiveWorkflows(1)
-        assertTrue(shouldEnableNewWorkflow(repo, PlanState(PlanType.FREE)))
-    }
-
-    @Test
-    fun `new workflow is not silently paused for a free user with many active`() = runTest {
-        val repo = repoWithActiveWorkflows(25)
-        assertTrue(shouldEnableNewWorkflow(repo, PlanState(PlanType.FREE)))
-    }
-
-    // ── Enable toggle (details) ──
-
-    @Test
-    fun `enabling a second workflow leaves both enabled without a dialog`() = runTest {
+    fun `new workflow is created enabled by default`() = runTest {
         val repo = FakeWorkflowRepository()
-        repo.seedTemplate(WorkflowTemplate(name = "First", isEnabled = true))
-        val second = repo.seedTemplate(WorkflowTemplate(name = "Second", isEnabled = false))
+        assertTrue(shouldEnableOnSave(repo, templateId = null))
+        // The decision uses WorkflowTemplate's own default, not a plan/entitlement.
+        assertTrue(WorkflowTemplate(name = "X").isEnabled)
+    }
 
-        toggleEnabledOn(repo, second)
-
+    @Test
+    fun `creating a workflow does not pause existing workflows`() = runTest {
+        val repo = FakeWorkflowRepository()
+        val existing = repo.seedTemplate(WorkflowTemplate(name = "Existing", isEnabled = true))
+        repo.saveTemplate(WorkflowTemplate(name = "New", isEnabled = shouldEnableOnSave(repo, null)))
+        assertTrue(repo.getTemplateById(existing)!!.isEnabled)
         assertEquals(2, enabledCount(repo))
     }
+
+    // ── Edit preserves state ──
+
+    @Test
+    fun `editing a disabled workflow preserves disabled state`() = runTest {
+        val repo = FakeWorkflowRepository()
+        val id = repo.seedTemplate(WorkflowTemplate(name = "Paused", isEnabled = false))
+        assertFalse(shouldEnableOnSave(repo, id))
+    }
+
+    @Test
+    fun `editing an enabled workflow preserves enabled state`() = runTest {
+        val repo = FakeWorkflowRepository()
+        val id = repo.seedTemplate(WorkflowTemplate(name = "Active", isEnabled = true))
+        assertTrue(shouldEnableOnSave(repo, id))
+    }
+
+    // ── Independent enable/disable ──
 
     @Test
     fun `multiple workflows can be enabled independently`() = runTest {
@@ -91,27 +86,26 @@ class WorkflowActivationPolicyTest {
     }
 
     @Test
-    fun `enabling one workflow does not disable any other workflow`() = runTest {
+    fun `enabling one workflow does not disable another`() = runTest {
         val repo = FakeWorkflowRepository()
         val first = repo.seedTemplate(WorkflowTemplate(name = "First", isEnabled = true))
         val second = repo.seedTemplate(WorkflowTemplate(name = "Second", isEnabled = false))
 
         toggleEnabledOn(repo, second)
 
-        // The previously-active workflow must remain active (no switch-active workaround).
         assertTrue(repo.getTemplateById(first)!!.isEnabled)
         assertTrue(repo.getTemplateById(second)!!.isEnabled)
     }
 
     @Test
-    fun `disabling a workflow only disables that workflow`() = runTest {
+    fun `disabling one workflow does not disable another`() = runTest {
         val repo = FakeWorkflowRepository()
         val keep = repo.seedTemplate(WorkflowTemplate(name = "Keep", isEnabled = true))
-        val turnOff = repo.seedTemplate(WorkflowTemplate(name = "TurnOff", isEnabled = true))
+        val off = repo.seedTemplate(WorkflowTemplate(name = "Off", isEnabled = true))
 
-        toggleEnabledOn(repo, turnOff)
+        toggleEnabledOn(repo, off)
 
-        assertFalse(repo.getTemplateById(turnOff)!!.isEnabled)
+        assertFalse(repo.getTemplateById(off)!!.isEnabled)
         assertTrue(repo.getTemplateById(keep)!!.isEnabled)
     }
 }
