@@ -77,4 +77,22 @@ fastlane/test_output
 *.swp
 *~
 app context.txt
+
+# On-device model weights & caches (downloaded at runtime; never commit)
 models/
+*.task
+*.litertlm
+*.gguf
+*.safetensors
+*.onnx
+
+# Secrets / credentials (never commit)
+# NOTE: keep patterns specific so legitimate JSON docs/examples and the
+# gradle wrapper stay tracked. Do NOT add a blanket "*.json" rule.
+*service-account*.json
+*service_account*.json
+client_secret*.json
+*-oauth-client*.json
+*.p12
+*.pem
+*.der

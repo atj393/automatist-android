@@ -4,6 +4,20 @@
 > version of this file (including the removed Data Flow and Navigation Routes sections).
 > This file is canonical — if the two conflict, follow this one.
 
+> **⚠️ Status update (free + open-source migration — read first).** Automatist is now a
+> **free, open-source** app; several architecture sections below predate the migration and are
+> **historical**. Corrections that override any stale text below:
+> - **Licence:** first-party source is **Apache-2.0** (`LICENSE`); the app is no longer
+>   proprietary. Model weights stay under upstream terms; branding is excluded (`TRADEMARKS.md`).
+> - **No billing / no Pro tier:** Google Play Billing, `BillingManager`, the `billing-ktx`
+>   dependency, `automatist_pro`, `ProductAccessRepository`/`ProductAccess`/`PlanType`/`PlanState`,
+>   `AccessModule`, the Upgrade screen/route, the Pro/Free badge, the `UpgradePrompt` dialogs, and
+>   the one-active-workflow limit have all been **removed**. Every feature is free; enabling
+>   multiple workflows is unrestricted. Ignore billing/entitlement architecture described below.
+> - **Room:** the database is **version 17** (`automatist.db`) — any "v3" mention below is stale.
+> - **Contributions:** open under Apache-2.0 (inbound = outbound) — see `CONTRIBUTING.md`.
+> - **Sponsorship:** optional and **external only** (GitHub/website); never inside the Android app.
+
 ## Project Identity
 
 **Type:** Workflow-first AI utility (not chatbot, not agent)

@@ -5,11 +5,13 @@
 **Product:** Automatist Android application ("the App")
 
 > **Draft note — not legal advice; requires professional legal review before publishing.**
-> This revision removes the in-app-purchase / paid-tier terms: Automatist is now free with
-> no in-app purchases, no subscriptions, and no feature paywalls. The App remains proprietary
-> for now — the "proprietary source license" references below are intentionally retained and
-> **must be revisited when the source is relicensed under an approved open-source licence**
-> (a later phase). Remove this note before publishing.
+> This EULA governs the **official Automatist app binary** distributed on Google Play, the
+> Automatist brand, and any official support. It does **not** govern the source code: the
+> first-party source is licensed under the Apache License 2.0 (see [LICENSE](LICENSE)), and
+> nothing here limits the rights that licence grants. Automatist is free — no in-app purchases,
+> no subscriptions, no paywalls. Whether a standalone EULA is still needed for a free app with no
+> developer backend (versus folding this into a "Terms of Use" for the official binary) is an open
+> question flagged for legal review. Remove this note before publishing.
 
 By downloading, installing, or using the App, you agree to the terms of
 this End User License Agreement (this "EULA"). If you do not agree, do
@@ -22,35 +24,43 @@ This EULA is in addition to:
 - the Google Play Store's terms (which govern the distribution
   channel).
 
-In case of conflict between this EULA and the Google Play terms, the
-Google Play terms control with respect to the distribution channel only.
-In case of conflict between this EULA and the
-[proprietary source license](LICENSE.md), the proprietary source license
-controls with respect to the source code.
+The Automatist **source code** is licensed separately under the Apache
+License 2.0 (see [LICENSE](LICENSE)); this EULA does not restrict the rights
+that licence grants. In case of conflict between this EULA and the Apache-2.0
+licence with respect to the **source code**, the Apache-2.0 licence controls.
+In case of conflict between this EULA and the Google Play terms with respect to
+the distribution channel, the Google Play terms control. Use of the Automatist
+name, logo, and brand assets is governed by [TRADEMARKS.md](TRADEMARKS.md).
 
 ---
 
-## 1. Licence grant
+## 1. Licence grant (official app)
 
 We grant you a personal, non-exclusive, non-transferable, revocable
-licence to install and use the App on Android devices that you own or
-control, solely for your own personal or internal business use, and
-subject to the restrictions below.
+licence to install and use the **official Automatist app** (as distributed
+on Google Play) on Android devices that you own or control. This concerns the
+official binary and does **not** narrow your rights in the source code, which
+are governed by the Apache-2.0 [LICENSE](LICENSE). You may also build the app
+yourself from source under that licence, subject to the branding terms in
+[TRADEMARKS.md](TRADEMARKS.md).
 
 ## 2. Restrictions
 
-You may not:
+These restrictions concern the **official binary and the Automatist brand**;
+they do **not** limit the rights granted for the source code under the
+Apache-2.0 [LICENSE](LICENSE):
 
-1. copy, modify, translate, or create derivative works of the App;
-2. reverse engineer, decompile, or disassemble the App, except to the
-   limited extent that applicable law expressly permits despite this
-   limitation;
-3. remove or alter any proprietary notices or trademarks;
-4. rent, lease, lend, sell, sublicense, distribute, or otherwise transfer
-   the App to a third party;
-5. use the App to build or train a competing product or service;
-6. use the App to violate applicable law, the terms of any connected
+1. Do not use the "Automatist" name, logo, launcher icon, or store artwork in a
+   way that implies endorsement by or affiliation with the Automatist project,
+   and do not present a modified build as the official Automatist release
+   (see [TRADEMARKS.md](TRADEMARKS.md)).
+2. Do not use the App to violate applicable law, the terms of any connected
    third-party service, or the rights of any other person.
+
+Modifying, building, and redistributing the source code is permitted under the
+Apache-2.0 licence. If you publicly redistribute a modified build, follow the
+fork guidance in [TRADEMARKS.md](TRADEMARKS.md) (use a different app name,
+application ID, icon, and signing key).
 
 ## 3. Your content
 

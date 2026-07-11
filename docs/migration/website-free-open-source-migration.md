@@ -7,8 +7,9 @@ published (a later phase). URLs referenced by the app today live in
 `app/src/main/java/com/automatist/app/platform/support/SupportConfig.kt` and `EULA.md` / `README.md`.
 
 **Status now:** the Android app is **free** (no ads, no subscriptions, no in-app purchases, no
-paywalls) and contains **no** Google Play Billing. The source is still **proprietary** — do **not**
-publish open-source claims on the site yet.
+paywalls) and contains **no** Google Play Billing. The first-party source is now **Apache-2.0
+licensed**, but the repository is **not yet public** — do **not** publish open-source claims or a
+"View on GitHub" link on the site until the repository is actually public.
 
 **Guardrails**
 - No sponsorship / donation / payment link is added **inside** the Android app (Play-distributed) —
@@ -61,7 +62,7 @@ content deferred until the app is truly open source · **(4)** future GitHub Spo
 
 ### Terms (`/terms`, `/terms.html`)
 1. Remove in-app-purchase / paid-entitlement / restore / refund clauses.
-2. Publish terms consistent with the updated `EULA.md` (free product; still proprietary for now).
+2. Publish terms consistent with the updated `EULA.md` (free product; source now Apache-2.0).
 3. Deferred: reconcile with the open-source licence when the source is relicensed (Phase 5).
 4. Sponsors: none.
 

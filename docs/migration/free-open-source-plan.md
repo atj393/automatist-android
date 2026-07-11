@@ -205,24 +205,47 @@ For this billing-free build, verify on-device:
   the restore flow, and the billing ProGuard keep rules. Collapse or delete the
   `ProductAccessRepository`/`AccessModule` layer once nothing reads a plan.
 
-### Phase 4 — legal & external materials
-- Update legal documents, Play Store materials, privacy policy, website, and support pages
-  for a free product (remove IAP/pricing/restore references; set "In-App Purchases: No").
+### Phase 4 — legal & external materials ✅ (done)
+- Updated privacy policy, Data Safety, Play listing, EULA, and the release checklist for the
+  free product; created the website migration plan. (The website repository itself was not edited.)
 
-### Phase 5 — licensing
-- Replace the proprietary source licence with the approved open-source licence.
-- Preserve separate upstream licences for model weights (e.g. Gemma terms — weights are
-  downloaded at runtime, never redistributed in-repo).
-- Add GitHub Sponsors support **outside** the Android app (e.g. `.github/FUNDING.yml`).
+### Phase 5 — open-source licensing & repository readiness ✅ (done)
+- Relicensed the first-party source to **Apache-2.0** (`LICENSE`); removed the proprietary
+  `LICENSE.md`; added `NOTICE`, `TRADEMARKS.md`, and community files
+  (CONTRIBUTING/SECURITY/CODE_OF_CONDUCT/SUPPORT/CHANGELOG + `.github` issue/PR templates);
+  rewrote the README for public OSS using the real remote
+  (`github.com/atj393/automatist-android`); reconciled the EULA + THIRD_PARTY_NOTICES; hardened
+  `.gitignore`. Model weights stay under upstream terms; branding is excluded from Apache-2.0.
+- Ownership/authorization was confirmed by the project owner before relicensing.
+- **Deliberately NOT done in this phase:** the repository was not made public, no branch was
+  pushed, no Git history was rewritten, and no release was published.
 
-### Phase 6 — release validation
+### Phase 6 — release validation & publication (remaining)
 - Complete upgrade testing (install-over-existing at a higher `versionCode`, same
-  `applicationId`, same `automatist.db`) and release validation.
+  `applicationId`, same `automatist.db`); make the repository public; enable GitHub Issues and
+  branch protection; update the website + Play listing with the real repo URL; and handle the
+  legacy `automatist_pro` Play product per the release checklist.
+
+## Sponsorship (external only) — future step
+
+Support/sponsorship stays **outside** the Android app (GitHub README, GitHub Sponsors, project
+website, release announcements). Sponsorship is optional, unlocks no features, and grants no
+priority support.
+
+- GitHub Sponsors is **not yet active** for `atj393`. Therefore `.github/FUNDING.yml` was **not**
+  created and no Sponsors link was added anywhere.
+- **Future step:** once Sponsors is enabled for the GitHub account, add `.github/FUNDING.yml`
+  with `github: [atj393]` and a small, non-manipulative optional-support note in the README.
+  Never add a sponsorship/donation/payment link inside the Play-distributed Android app.
 
 ## Notes / known follow-ups
 
-- `UpgradePrompt.kt` still contains the "one active workflow at a time" dialog strings. The
-  dialog is now unreachable during normal use (access checks never block); the strings are
-  removed with the Upgrade UI in Phase 2.
-- `LocalProductAccessRepository` is unbound dead code that shares the `product_access` store
-  delegate with the production repo; it is removed alongside billing in Phase 3.
+- The `automatist_pro` Play Console product is still active and must be handled at the safe point
+  in the release sequence (see `docs/release/google-play-release-checklist.md`) — not before the
+  billing-free build is the live production artifact.
+- Historical `local.properties` in Git history contains only an SDK path with a local Windows
+  username (no secret). History-publication options are in
+  `docs/release/open-source-publication-checklist.md`.
+- Internal reference docs `CLAUDE.md` / `AGENTS.md` describe the pre-migration architecture and
+  carry a status banner noting that billing/Pro/ProductAccess were removed and the source is now
+  Apache-2.0.

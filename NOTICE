@@ -1,0 +1,22 @@
+Automatist
+Copyright 2026 Alexis Johnson
+
+This product's first-party source code is licensed under the Apache License,
+Version 2.0 (see the LICENSE file).
+
+This product includes and depends on third-party software components that are
+licensed under their own terms; those components are not relicensed by the
+Apache License above. See THIRD_PARTY_NOTICES.md for the inventory and
+attributions.
+
+On-device AI model weights that the app can optionally download at runtime
+(for example, Google's Gemma models and Gemini Nano via AICore) are NOT part of
+this source distribution and are NOT licensed under Apache-2.0. They remain
+governed by their upstream model terms (see THIRD_PARTY_NOTICES.md).
+
+The "Automatist" name, logo, launcher icon, store artwork, screenshots, and
+other brand assets are not granted under the Apache License. See TRADEMARKS.md.
+
+Third-party marks such as "Google Play", "Android", "Gemma", and "Gemini" are
+trademarks of Google LLC. Automatist is not affiliated with, endorsed by, or
+sponsored by Google LLC.

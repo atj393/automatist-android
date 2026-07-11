@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an idea or improvement for Automatist
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do, and what's missing or painful today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like Automatist to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you've thought about.
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: |
+        Automatist stays on-device with no developer backend, no ads, and no tracking.
+        Requests that fit those principles are more likely to be accepted. There is no
+        guaranteed response time.

@@ -1,5 +1,12 @@
 # Automatist
 
+> **⚠️ HISTORICAL / SUPERSEDED.** This file is an archived snapshot of an earlier version of
+> the project notes. It is **not** canonical — see `CLAUDE.md`. It predates the free/open-source
+> migration and describes removed architecture. In the current app: the source is **Apache-2.0**
+> (free, open source); Google Play Billing, the Pro tier, `ProductAccess`/entitlement, the Upgrade
+> UI, and the one-active-workflow limit have been **removed**; the Room database is **v17**.
+> Treat any billing/Pro/proprietary-licence content below as historical only.
+
 ## Project Identity
 
 **Type:** Workflow-first AI utility (not chatbot, not agent)

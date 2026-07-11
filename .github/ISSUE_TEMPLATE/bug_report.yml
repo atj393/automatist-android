@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a problem with Automatist
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please do **not** include API keys, tokens, or other
+        people's personal data. For security vulnerabilities, use SECURITY.md instead of a
+        public issue.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Tap ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Settings → About (e.g. 1.0.0), or the build you ran.
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device & Android version
+      placeholder: e.g. Pixel 7, Android 15
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: AI provider in use (if relevant)
+      options:
+        - Not relevant
+        - Fake / Demo
+        - OpenAI
+        - Anthropic
+        - Google Gemini
+        - Custom OpenAI-compatible
+        - On-device (Gemini Nano / AICore)
+        - On-device (downloaded / custom .task model)
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: Relevant logcat output. Redact any keys or personal data first.
+      render: shell
+    validations:
+      required: false

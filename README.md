@@ -4,9 +4,9 @@ A workflow-first AI utility for Android that transforms text content into struct
 
 Automatist is not a chatbot. It takes articles, meeting notes, and RSS feeds as input and produces summaries, social media posts, professional briefs, and strategic insights using pluggable AI providers.
 
-**Automatist is free** — no ads, no subscriptions, no in-app purchases, and no feature paywalls. Every feature is available to everyone.
+Automatist is a **free, privacy-focused, open-source** Android workflow automation app. Build scheduled workflows that run on cloud AI (with your own API keys), on-device AI, or compatible offline models. There are **no ads, no subscriptions, and no feature paywalls** — every feature is available to everyone.
 
-> **Proprietary software.** Automatist's source in this repository is currently **All Rights Reserved** and is not (yet) open source. It is published for transparency, security review, and personal evaluation only. See [LICENSE.md](LICENSE.md), [EULA.md](EULA.md), and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Do not copy, fork, redistribute, or reuse this code without prior written permission.
+> **Open source.** The first-party source code is licensed under the **Apache License 2.0** (see [LICENSE](LICENSE)). Third-party dependencies keep their own upstream licences ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)); AI model weights remain under their upstream model terms; and the Automatist name, logo, and store artwork are **not** covered by the code licence ([TRADEMARKS.md](TRADEMARKS.md)).
 
 ---
 
@@ -120,8 +120,8 @@ ui/               Theme + navigation graph
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-org/automatist.git
-   cd automatist
+   git clone https://github.com/atj393/automatist-android.git
+   cd automatist-android
    ```
 
 2. Open in Android Studio and sync Gradle.
@@ -161,6 +161,15 @@ Some workflow actions require additional service API keys:
 | OpenRouteService | Route Time action | https://openrouteservice.org/ |
 
 All keys are stored on-device only. No data leaves the device except direct API calls to the respective provider/service.
+
+### Google Cloud Sync setup (optional; required only if you fork and want Drive backup)
+
+Cloud Sync uses Google Sign-In + the Drive `appDataFolder` scope — no Firebase, no `google-services.json`, no server client. OAuth resolves from **package name + signing-cert SHA-1**, so a fork must register its own client:
+
+- Change the fork's `applicationId` (do not reuse `com.automatist.app`) — see [TRADEMARKS.md](TRADEMARKS.md).
+- In Google Cloud Console, create an **Android OAuth client** for `<your.application.id>` + your debug/release SHA-1 fingerprints, enable the **Drive API**, and configure the OAuth consent screen (use your own app name/support email — placeholders only, never commit secrets).
+
+Full step-by-step is in [docs/release/google-play-release-checklist.md](docs/release/google-play-release-checklist.md).
 
 ---
 
@@ -226,6 +235,8 @@ app/src/main/java/com/automatist/app/
 
 All providers implement the same `ArticleTransformProvider` interface. Create named **provider profiles** (provider + model combinations) in Settings and assign them as defaults or per-workflow overrides.
 
+**Offline models:** the on-device runtime uses **MediaPipe LLM Inference**, which runs compatible **MediaPipe `.task`** models — the built-in Gemma model, or a model you add via a direct URL or a JSON manifest. `.gguf` and `.safetensors` files are **not** supported by the current MediaPipe runtime. On-device performance varies by device and is not guaranteed. See [docs/local-model-import.md](docs/local-model-import.md).
+
 ---
 
 ## How It Works
@@ -263,12 +274,11 @@ Sign in with Google → CloudSyncManager → Export workflows (secret-free) → 
 
 ---
 
-## Extending the codebase (internal)
+## Extending the codebase
 
-> Automatist is proprietary (see [LICENSE.md](LICENSE.md)). These notes are
-> for the project maintainer's internal reference and for reviewers with
-> written permission. External pull requests and forks are not accepted.
-> If you have an idea or a security report, email **support@automatist.cloud**.
+> Automatist is open source under Apache-2.0. Contributions are welcome — see
+> [CONTRIBUTING.md](CONTRIBUTING.md) for setup, build/test commands, and the
+> contribution terms, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
 ### Adding a New AI Provider
 1. Create API interface + models in `data/providers/{name}/`
@@ -343,22 +353,24 @@ Do not regenerate or resize icons without testing on a real device with an aggre
 
 ---
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, build/test commands, and PR expectations (no secrets or model binaries in PRs), and the [Code of Conduct](CODE_OF_CONDUCT.md). By contributing, you agree that your contributions are licensed under the same Apache-2.0 licence (inbound = outbound).
+
+## Support
+
+Automatist is free and open source. Bug reports and feature requests are welcome through **GitHub Issues** on [atj393/automatist-android](https://github.com/atj393/automatist-android). For private matters, including security reports, see [SECURITY.md](SECURITY.md) and [SUPPORT.md](SUPPORT.md). There is no paid or priority support, and no guaranteed response time.
+
 ## License
 
-Automatist is proprietary software. Copyright © 2026 Alexis Johnson. All Rights Reserved.
-
-- [LICENSE.md](LICENSE.md) — proprietary source-code license (viewing and evaluation only; no redistribution or reuse)
-- [EULA.md](EULA.md) — end-user licence agreement for the installed app
-- [NOTICE.md](NOTICE.md) — short third-party attribution notice
-- [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) — detailed inventory of third-party components and their licenses
-- Hosted legal pages: [Terms](https://automatist.cloud/terms.html) · [Privacy](https://automatist.cloud/privacy.html)
-
-Third-party dependencies (AndroidX, Kotlin, OkHttp, Retrofit, Hilt, MediaPipe, Google Drive API, AICore, etc.) remain governed by their own licenses, as listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The Gemma model weights that the app can optionally download at runtime remain governed by the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and [Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy); Automatist does not claim ownership of those weights.
-
-For commercial licensing, partnership, or reuse enquiries, contact **support@automatist.cloud**.
+- **First-party source code:** [Apache License 2.0](LICENSE) — Copyright © 2026 Alexis Johnson. See also [NOTICE](NOTICE).
+- **Third-party dependencies:** their own upstream licences, listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (AndroidX, Kotlin, OkHttp, Retrofit, Hilt, Room, WorkManager, MediaPipe, Google Drive/API clients, AICore, etc.).
+- **AI model weights** (e.g. Gemma, downloaded at runtime): governed by their upstream model terms — the [Gemma Terms of Use](https://ai.google.dev/gemma/terms) and [Gemma Prohibited Use Policy](https://ai.google.dev/gemma/prohibited_use_policy). **Not** covered by Apache-2.0; Automatist claims no ownership of any model weights.
+- **Branding** (the Automatist name, logo, launcher icon, and store artwork): **not** granted by the code licence — see [TRADEMARKS.md](TRADEMARKS.md).
+- **Official app EULA:** [EULA.md](EULA.md). Hosted legal pages: [Terms](https://automatist.cloud/terms.html) · [Privacy](https://automatist.cloud/privacy.html).
 
 ---
 
 ## Trademarks
 
-"Automatist" and the Automatist logo are trademarks of Alexis Johnson. "Android", "Google Play", "Gemma", and "Gemini" are trademarks of Google LLC. Automatist is not affiliated with, endorsed by, or sponsored by Google LLC.
+The "Automatist" name and logo are marks of Alexis Johnson and are **not** licensed under Apache-2.0 — see [TRADEMARKS.md](TRADEMARKS.md) for brand-use and fork guidance. "Android", "Google Play", "Gemma", and "Gemini" are trademarks of Google LLC. Automatist is an independent project and is not affiliated with, endorsed by, or sponsored by Google LLC.
