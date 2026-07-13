@@ -6,10 +6,17 @@ All notable changes to Automatist are documented here. The format is based on
 
 For detailed history of individual changes, see the Git commit log.
 
-## [Unreleased] — Free & open source
+## [1.1.0] — 2026-07-13
 
-The first free, open-source release. (The `versionName`/`versionCode` for this release are
-set at release time and are not bumped in this change.)
+`versionName = "1.1.0"`, `versionCode = 7`. The free, open-source release, prepared for
+Google Play closed testing (supersedes the `1.0.0` / `versionCode 6` testing build).
+
+### Added
+- Import compatible on-device **MediaPipe `.task`** models via an app-managed manifest, in
+  addition to the bundled downloadable model. (`.gguf`/`.safetensors` are not supported;
+  compatibility depends on the model — not every third-party model will work.)
+- Clearer battery-optimization guidance for scheduled workflows on the Schedule Status
+  screen, to improve on-time execution. (The system may still adjust scheduled timing.)
 
 ### Changed
 - Automatist is now **free** — every feature is available to all users. There are no ads,

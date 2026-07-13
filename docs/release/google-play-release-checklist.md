@@ -2,10 +2,16 @@
 
 Status key: [x] done in repo | [ ] manual action needed | [~] not applicable
 
-> **Version:** `versionName = "1.0.0"`, `versionCode = 6` (see `app/build.gradle.kts`).
+> **Version:** `versionName = "1.1.0"`, `versionCode = 7` (see `app/build.gradle.kts`).
 > Every Play upload must use a `versionCode` strictly **greater** than the last one
 > already uploaded to that track. Bump `versionCode` (and `versionName` for user-visible
 > releases) before each upload.
+>
+> **Release log:**
+> - `1.0.0` / `versionCode 6` — free & open-source build; active in Internal + Closed testing.
+> - `1.1.0` / `versionCode 7` — prepared 2026-07-13 for the next closed-testing round
+>   (adds MediaPipe `.task` model import + battery guidance; supersedes `6`, which must not be
+>   reused). Release notes: `docs/release/play-release-notes-1.1.0.txt`.
 
 ---
 
