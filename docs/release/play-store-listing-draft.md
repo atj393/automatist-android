@@ -79,3 +79,8 @@ The current "What's new" text for the next closed-testing round lives in
 `docs/release/play-release-notes-1.1.0.txt` (copy-paste ready). It covers the free &
 open-source status, the removal of Play Billing / Pro, MediaPipe `.task` model import,
 improved battery guidance, updated legal/support info, and preserved local data.
+
+### 1.1.1 (versionCode 8)
+
+Supersedes `versionCode 7` (already uploaded to a testing track). Targets Android 16
+(API level 36). "What's new" text: `docs/release/play-release-notes-1.1.1.txt`.

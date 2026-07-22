@@ -6,6 +6,30 @@ All notable changes to Automatist are documented here. The format is based on
 
 For detailed history of individual changes, see the Git commit log.
 
+## [1.1.1] — 2026-07-22
+
+`versionName = "1.1.1"`, `versionCode = 8`. Targets Android 16 (API level 36); supersedes
+`versionCode 7`, which was already uploaded to a Play testing track and cannot be reused.
+
+### Changed
+- `compileSdk`/`targetSdk` raised from 35 to 36 (Android 16). `minSdk` (26), `applicationId`
+  (`com.automatist.app`), and the Room database (`automatist.db`, v17) are unchanged.
+- `ArticleScreen`'s result view and `CloudSyncScreen` now scroll their content
+  (`verticalScroll`), matching the pattern already used elsewhere (e.g. `MeetingScreen`).
+  Android 16 removes orientation/aspect-ratio/resizability restrictions on large screens,
+  which would otherwise expose these two screens' non-scrolling layouts as content-clipping
+  bugs on tablets, foldables, or split-screen windows.
+- `SynthesizerWorker` (Morning Brief) now promotes itself to a `dataSync` foreground service
+  during RSS fetch + AI transform, matching the protection `WorkflowWorker` already had. This
+  worker can run on-device MediaPipe inference for up to ~120s and had no protection from
+  Android 15/16's stricter background-execution limits.
+
+### Notes
+- Edge-to-edge, predictive back, and manifest/permission surfaces were audited against
+  Android 16 behavior changes and found already compatible — no code changes required there.
+- No user data is affected: Room stays at v17, no DataStore keys changed, no migration
+  required.
+
 ## [1.1.0] — 2026-07-13
 
 `versionName = "1.1.0"`, `versionCode = 7`. The free, open-source release, prepared for

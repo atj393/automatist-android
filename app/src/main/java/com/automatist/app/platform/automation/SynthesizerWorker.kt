@@ -5,8 +5,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.automatist.app.MainActivity
@@ -36,6 +40,12 @@ class SynthesizerWorker(
         fun historyRepository(): HistoryRepository
     }
 
+    companion object {
+        private const val TAG = "SynthesizerWorker"
+        private const val CHANNEL_ID = "automatist_automation"
+        private const val PROGRESS_NOTIFICATION_ID = 50_002
+    }
+
     override suspend fun doWork(): WorkResult {
         try {
             val entryPoint = EntryPointAccessors.fromApplication(appContext, WorkerEntryPoint::class.java)
@@ -43,6 +53,23 @@ class SynthesizerWorker(
             val router = entryPoint.transformProviderRouter()
             val historyRepo = entryPoint.historyRepository()
             val rssParser = entryPoint.rssParser()
+
+            // Ensure the channel exists before posting to it (required for setForeground on API 26+).
+            ensureChannelExists()
+
+            // ── Promote to foreground service ──
+            // This worker does an RSS fetch followed by an AI transform (which may run
+            // on-device via MediaPipe for up to ~120s) — same class of long-running,
+            // network-bound work as WorkflowWorker, which already does this. Without
+            // foreground promotion this worker has no protection from Android 15/16's
+            // stricter background-execution limits.
+            try {
+                setForeground(createForegroundInfo("Fetching your Morning Brief..."))
+                Log.i(TAG, "Foreground promotion: SUCCESS")
+            } catch (e: Exception) {
+                Log.e(TAG, "Foreground promotion: FAILED — ${e.javaClass.simpleName}: ${e.message}", e)
+                // Continue as background worker. May be killed if execution is long.
+            }
 
             val config = settingsRepo.briefConfig.first()
 
@@ -115,23 +142,13 @@ class SynthesizerWorker(
 
     private fun fireNotification() {
         val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channelId = "automatist_automation"
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                "Automatist Automation",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
-            notificationManager.createNotificationChannel(channel)
-        }
 
         val intent = Intent(appContext, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         val pendingIntent = PendingIntent.getActivity(appContext, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
-        val notification = NotificationCompat.Builder(appContext, channelId)
+        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle("Automatist")
             .setContentText("Your Morning Brief is ready for review.")
@@ -141,5 +158,34 @@ class SynthesizerWorker(
             .build()
 
         notificationManager.notify(1001, notification)
+    }
+
+    private fun ensureChannelExists() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Automatist Automation",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createForegroundInfo(status: String): ForegroundInfo {
+        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_popup_sync)
+            .setContentTitle("Automatist")
+            .setContentText(status)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(PROGRESS_NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(PROGRESS_NOTIFICATION_ID, notification)
+        }
     }
 }
