@@ -7,6 +7,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.CommonStatusCodes
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -178,7 +180,8 @@ fun CloudSyncScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // ── Header ──
@@ -350,8 +353,6 @@ fun CloudSyncScreen(
                     Text("Connect Google Account")
                 }
             }
-
-            Spacer(Modifier.weight(1f))
 
             // Safety note
             Card(

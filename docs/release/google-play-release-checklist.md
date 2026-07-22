@@ -1,11 +1,26 @@
-# Google Play Release Checklist — Automatist v1.0.0
+# Google Play Release Checklist — Automatist v1.1.2
 
 Status key: [x] done in repo | [ ] manual action needed | [~] not applicable
 
-> **Version:** `versionName = "1.0.0"`, `versionCode = 6` (see `app/build.gradle.kts`).
+> **Version:** `versionName = "1.1.2"`, `versionCode = 9` (see `app/build.gradle.kts`).
 > Every Play upload must use a `versionCode` strictly **greater** than the last one
 > already uploaded to that track. Bump `versionCode` (and `versionName` for user-visible
 > releases) before each upload.
+>
+> **Release log:**
+> - `1.0.0` / `versionCode 6` — free & open-source build; active in Internal + Closed testing.
+> - `1.1.0` / `versionCode 7` — prepared 2026-07-13; already uploaded to a testing track and
+>   must not be reused (adds MediaPipe `.task` model import + battery guidance). Release
+>   notes: `docs/release/play-release-notes-1.1.0.txt`.
+> - `1.1.1` / `versionCode 8` — targets Android 16 (API level 36); built and verified locally,
+>   never uploaded; superseded by `9` below. Release notes:
+>   `docs/release/play-release-notes-1.1.1.txt`.
+> - `1.1.2` / `versionCode 9` — **this is the build to upload.** Same Android 16 targeting as
+>   `8`, plus fixes for two of the three Play Console pre-launch warnings raised against the
+>   `versionCode 7` upload (deprecated edge-to-edge status-bar API, optimized resource
+>   shrinking). Release notes: `docs/release/play-release-notes-1.1.2.txt`. See "Android 16
+>   (API 36) targeting" section below for the compatibility audit, and "Play Console
+>   pre-launch warnings (versionCode 7)" for the warning-by-warning disposition.
 
 ---
 
@@ -47,11 +62,66 @@ Verify all of the following before promoting to production:
 
 ---
 
+## Android 16 (API 36) targeting — compatibility audit (this release)
+
+`compileSdk`/`targetSdk` raised 35 → 36. Reviewed against the official Android 16 behavior
+changes; only items with a real, verified issue got a code change.
+
+- [x] **Edge-to-edge** — `MainActivity` already uses `enableEdgeToEdge()`; all `Scaffold`s
+  consume inset padding; dialogs/bottom sheets use default Material3 inset handling. No
+  `windowOptOutEdgeToEdgeEnforcement` opt-out existed to remove. No code change needed.
+- [x] **Predictive back** — no `BackHandler`/custom back-press interception exists anywhere in
+  the app, and no `enableOnBackInvokedCallback` opt-out is set. Android 16 turns predictive
+  back on by default at targetSdk 36; nothing in the app fights it. No code change needed.
+  (Full shrink/preview transition animation between screens needs a newer Navigation Compose
+  than this app currently pins — cosmetic only, not attempted this release.)
+- [x] **Large screens / adaptive layout** — no orientation/aspect-ratio/resizability
+  restrictions existed to remove. Found and fixed two real content-clipping risks that
+  Android 16's large-screen enforcement would expose in split-screen/small-height windows:
+  `ArticleScreen.kt`'s result view and all of `CloudSyncScreen.kt` had no scroll container
+  (sibling `MeetingScreen.kt` already used `verticalScroll` for the equivalent content).
+- [x] **Scheduling / WorkManager** — `WorkflowWorker` already promotes to a `dataSync`
+  foreground service. `SynthesizerWorker` (Morning Brief) did not, despite doing the same
+  class of long-running network + on-device-AI work; fixed to match `WorkflowWorker`'s
+  pattern. No `BOOT_COMPLETED` receiver exists; the single reconciliation path
+  (`AutomatistApp.onCreate`) has no duplicate-scheduling risk.
+- [x] **Manifest / permissions** — both activities already declare explicit `exported`
+  values; no `BILLING` permission; `FOREGROUND_SERVICE_DATA_SYNC` already documented and
+  justified. No code change needed.
+- [ ] **Native library 16 KB page-size alignment** (MediaPipe, AICore `.so` libraries) — NOT
+  VERIFIED from source alone. Confirm on the actual built AAB/APK once available (e.g.
+  `unzip -l` the native libs and check alignment, or `apkanalyzer`).
+- [ ] **Physical-device / emulator validation** (edge-to-edge, predictive back, rotation,
+  scheduling while locked, notification permission, on-device model inference) — NOT
+  VERIFIED. Requires an Android 16 (API 36) emulator or device; see the manual smoke-test
+  section below.
+
+---
+
+## Play Console pre-launch warnings (`versionCode 7`)
+
+Three automated suggestions came back against the `versionCode 7` (targetSdk 35) upload.
+Disposition for `versionCode 9`:
+
+- [x] **"Edge-to-edge may not display for all users"** — fixed. `Theme.kt` was setting
+  `window.statusBarColor` on every recomposition, fighting `enableEdgeToEdge()`'s transparent
+  system bars. Removed.
+- [x] **"App uses deprecated APIs for edge-to-edge" (`Window.setStatusBarColor`)** — fixed by
+  the same change above.
+- [x] **"Optimised resource shrinking isn't enabled"** — fixed. Added
+  `android.r8.optimizedResourceShrinking=true` to `gradle.properties` (official AGP 8.12+
+  opt-in; this project is on AGP 8.13.2).
+- [ ] **"Upgrade AGP to 9.0+"** — deliberately not done. Real major-version migration (built-in
+  Kotlin support, KMP plugin changes, `applicationVariants` API removal); AGP 8.13.2 already
+  compiles cleanly against compileSdk 36. Track as a separate follow-up, not a release blocker.
+
+---
+
 ## Codebase (handled in repo)
 
 - [x] App icons — launcher icons in all mipmap densities + adaptive icon (foreground/background/monochrome)
 - [x] `strings.xml` with `app_name`; manifest uses `@string/app_name`
-- [x] `versionCode = 6`, `versionName = "1.0.0"` in `build.gradle.kts`
+- [x] `versionCode = 9`, `versionName = "1.1.2"` in `build.gradle.kts`
 - [x] Release build: `isMinifyEnabled = true` + `isShrinkResources = true` (R8)
 - [x] ProGuard/R8 rules cover all deps (Retrofit, Gson, Room, Hilt, Drive, Auth, OkHttp, Coroutines, WorkManager, Compose, kotlinx.serialization, MediaPipe LLM Inference, Google AI Edge AICore) — billing keep rules removed with the billing dependency
 - [x] R8 strips `Log.v`/`Log.d` from release (`-assumenosideeffects`); surviving `Log.i/w/e` logs carry only metadata (no API keys, no workflow text, no raw provider responses); OkHttp BODY/HEADERS logging is `BuildConfig.DEBUG`-only
@@ -77,7 +147,7 @@ Verify all of the following before promoting to production:
 - [ ] First release: create the app in Play Console (default language, app/game, free/paid)
 - [ ] Update: open the target track → **Create new release**
 - [ ] Upload the **AAB** (not APK) — Play generates per-device APKs and serves 64-bit (arm64) automatically; the MediaPipe native libs include arm64-v8a
-- [ ] Confirm the uploaded artifact: correct `versionCode`/`versionName`, `applicationId = com.automatist.app` (NOT the `.debug` suffix), target API 35
+- [ ] Confirm the uploaded artifact: correct `versionCode`/`versionName`, `applicationId = com.automatist.app` (NOT the `.debug` suffix), target API 36
 - [ ] Add release notes
 - [ ] Upload the R8 mapping file (`app/build/outputs/mapping/release/mapping.txt`) for crash deobfuscation
 

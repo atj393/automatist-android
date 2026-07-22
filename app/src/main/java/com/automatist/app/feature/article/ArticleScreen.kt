@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
@@ -196,7 +198,7 @@ private fun ResultContent(
         ) {
             Text(
                 text = resultText,
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
                 style = MaterialTheme.typography.bodyLarge
             )
         }

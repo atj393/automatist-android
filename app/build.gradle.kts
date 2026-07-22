@@ -27,14 +27,14 @@ if (hasSigningConfig) {
 
 android {
     namespace = "com.automatist.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.automatist.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 6
-        versionName = "1.0.0"
+        targetSdk = 36
+        versionCode = 9
+        versionName = "1.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

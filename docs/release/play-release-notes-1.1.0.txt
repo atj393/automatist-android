@@ -1,0 +1,8 @@
+Automatist is now completely free and open source.
+
+• All workflows and features are available without subscriptions or in-app purchases.
+• Google Play Billing and the previous Pro upgrade have been removed.
+• Added support for importing compatible local MediaPipe .task models.
+• Improved scheduled-workflow battery guidance.
+• Updated privacy, legal, and support information.
+• Existing workflows, schedules, profiles, notes, and local data are preserved.
