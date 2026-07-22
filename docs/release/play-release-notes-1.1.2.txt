@@ -1,0 +1,8 @@
+Automatist 1.1.2
+
+• Updated for Android 16.
+• Improved edge-to-edge display and status bar handling.
+• All features are free with no subscriptions or in-app purchases.
+• Added support for compatible local MediaPipe .task models.
+• Improved workflow scheduling guidance and reliability.
+• Automatist is now open source.

@@ -1,8 +1,8 @@
-# Google Play Release Checklist — Automatist v1.1.1
+# Google Play Release Checklist — Automatist v1.1.2
 
 Status key: [x] done in repo | [ ] manual action needed | [~] not applicable
 
-> **Version:** `versionName = "1.1.1"`, `versionCode = 8` (see `app/build.gradle.kts`).
+> **Version:** `versionName = "1.1.2"`, `versionCode = 9` (see `app/build.gradle.kts`).
 > Every Play upload must use a `versionCode` strictly **greater** than the last one
 > already uploaded to that track. Bump `versionCode` (and `versionName` for user-visible
 > releases) before each upload.
@@ -12,9 +12,15 @@ Status key: [x] done in repo | [ ] manual action needed | [~] not applicable
 > - `1.1.0` / `versionCode 7` — prepared 2026-07-13; already uploaded to a testing track and
 >   must not be reused (adds MediaPipe `.task` model import + battery guidance). Release
 >   notes: `docs/release/play-release-notes-1.1.0.txt`.
-> - `1.1.1` / `versionCode 8` — targets Android 16 (API level 36); supersedes `7`. Release
->   notes: `docs/release/play-release-notes-1.1.1.txt`. See "Android 16 (API 36) targeting"
->   section below for the compatibility audit performed for this release.
+> - `1.1.1` / `versionCode 8` — targets Android 16 (API level 36); built and verified locally,
+>   never uploaded; superseded by `9` below. Release notes:
+>   `docs/release/play-release-notes-1.1.1.txt`.
+> - `1.1.2` / `versionCode 9` — **this is the build to upload.** Same Android 16 targeting as
+>   `8`, plus fixes for two of the three Play Console pre-launch warnings raised against the
+>   `versionCode 7` upload (deprecated edge-to-edge status-bar API, optimized resource
+>   shrinking). Release notes: `docs/release/play-release-notes-1.1.2.txt`. See "Android 16
+>   (API 36) targeting" section below for the compatibility audit, and "Play Console
+>   pre-launch warnings (versionCode 7)" for the warning-by-warning disposition.
 
 ---
 
@@ -92,11 +98,30 @@ changes; only items with a real, verified issue got a code change.
 
 ---
 
+## Play Console pre-launch warnings (`versionCode 7`)
+
+Three automated suggestions came back against the `versionCode 7` (targetSdk 35) upload.
+Disposition for `versionCode 9`:
+
+- [x] **"Edge-to-edge may not display for all users"** — fixed. `Theme.kt` was setting
+  `window.statusBarColor` on every recomposition, fighting `enableEdgeToEdge()`'s transparent
+  system bars. Removed.
+- [x] **"App uses deprecated APIs for edge-to-edge" (`Window.setStatusBarColor`)** — fixed by
+  the same change above.
+- [x] **"Optimised resource shrinking isn't enabled"** — fixed. Added
+  `android.r8.optimizedResourceShrinking=true` to `gradle.properties` (official AGP 8.12+
+  opt-in; this project is on AGP 8.13.2).
+- [ ] **"Upgrade AGP to 9.0+"** — deliberately not done. Real major-version migration (built-in
+  Kotlin support, KMP plugin changes, `applicationVariants` API removal); AGP 8.13.2 already
+  compiles cleanly against compileSdk 36. Track as a separate follow-up, not a release blocker.
+
+---
+
 ## Codebase (handled in repo)
 
 - [x] App icons — launcher icons in all mipmap densities + adaptive icon (foreground/background/monochrome)
 - [x] `strings.xml` with `app_name`; manifest uses `@string/app_name`
-- [x] `versionCode = 8`, `versionName = "1.1.1"` in `build.gradle.kts`
+- [x] `versionCode = 9`, `versionName = "1.1.2"` in `build.gradle.kts`
 - [x] Release build: `isMinifyEnabled = true` + `isShrinkResources = true` (R8)
 - [x] ProGuard/R8 rules cover all deps (Retrofit, Gson, Room, Hilt, Drive, Auth, OkHttp, Coroutines, WorkManager, Compose, kotlinx.serialization, MediaPipe LLM Inference, Google AI Edge AICore) — billing keep rules removed with the billing dependency
 - [x] R8 strips `Log.v`/`Log.d` from release (`-assumenosideeffects`); surviving `Log.i/w/e` logs carry only metadata (no API keys, no workflow text, no raw provider responses); OkHttp BODY/HEADERS logging is `BuildConfig.DEBUG`-only

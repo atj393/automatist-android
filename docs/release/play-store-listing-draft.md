@@ -83,4 +83,11 @@ improved battery guidance, updated legal/support info, and preserved local data.
 ### 1.1.1 (versionCode 8)
 
 Supersedes `versionCode 7` (already uploaded to a testing track). Targets Android 16
-(API level 36). "What's new" text: `docs/release/play-release-notes-1.1.1.txt`.
+(API level 36). "What's new" text: `docs/release/play-release-notes-1.1.1.txt`. Built and
+verified locally; never uploaded — superseded by 1.1.2 below.
+
+### 1.1.2 (versionCode 9) — upload this one
+
+Same Android 16 targeting as 1.1.1, plus fixes for two of the three Play Console pre-launch
+warnings raised against `versionCode 7` (deprecated edge-to-edge status-bar API, optimized
+resource shrinking). "What's new" text: `docs/release/play-release-notes-1.1.2.txt`.

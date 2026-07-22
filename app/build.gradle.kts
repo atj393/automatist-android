@@ -33,8 +33,8 @@ android {
         applicationId = "com.automatist.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.1.1"
+        versionCode = 9
+        versionName = "1.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -6,6 +6,28 @@ All notable changes to Automatist are documented here. The format is based on
 
 For detailed history of individual changes, see the Git commit log.
 
+## [1.1.2] — 2026-07-22
+
+`versionName = "1.1.2"`, `versionCode = 9`. Supersedes `versionCode 8`, which was built and
+verified locally but never uploaded. Same Android 16 targeting as 1.1.1, plus fixes for two
+of the three Play Console pre-launch warnings raised against the earlier `versionCode 7`
+(targetSdk 35) upload.
+
+### Fixed
+- `Theme.kt` set `window.statusBarColor` on every recomposition — deprecated on API 35+ and
+  in direct conflict with `enableEdgeToEdge()` (edge-to-edge expects transparent system bars,
+  not a manually painted status bar color). Removed; `isAppearanceLightStatusBars` (icon
+  color, not deprecated) is unchanged. Addresses both the "deprecated edge-to-edge API" and
+  "edge-to-edge may not display for all users" pre-launch warnings.
+- Enabled `android.r8.optimizedResourceShrinking=true` (`gradle.properties`), per the
+  official AGP 8.12+ opt-in (this project is on AGP 8.13.2); requires `isShrinkResources =
+  true`, already set. Addresses the "optimised resource shrinking isn't enabled" warning.
+
+### Not changed
+- Play Console also suggested upgrading the Android Gradle Plugin to 9.0+. Not done here —
+  it is a major-version migration (built-in Kotlin support, KMP plugin changes, API removals)
+  out of scope for this release; AGP 8.13.2 already compiles cleanly against compileSdk 36.
+
 ## [1.1.1] — 2026-07-22
 
 `versionName = "1.1.1"`, `versionCode = 8`. Targets Android 16 (API level 36); supersedes
