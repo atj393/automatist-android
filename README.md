@@ -14,6 +14,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/atj393/automatist-android/actions/workflows/ci.yml"><img src="https://github.com/atj393/automatist-android/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://play.google.com/store/apps/details?id=com.automatist.app"><img src="https://img.shields.io/badge/Google_Play-Available-3DDC84?logo=googleplay&logoColor=white" alt="Available on Google Play"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/platform-Android%208.0%2B-3DDC84" alt="Android 8.0+">
   <img src="https://img.shields.io/badge/language-Kotlin-7F52FF" alt="Kotlin">
@@ -28,6 +30,8 @@
 - **Source:** open source under **Apache-2.0**, in **active development**.
 - **Google Play:** [Available on Google Play Store](https://play.google.com/store/apps/details?id=com.automatist.app) — or build from source (see [Build from source](#build-from-source)).
 - **On-device AI:** availability depends on your device — see [Cloud, on-device & offline AI](#cloud-on-device--offline-ai).
+- **Current release:** `1.1.2` (versionCode 9) — see the [changelog](CHANGELOG.md) and [releases](https://github.com/atj393/automatist-android/releases).
+- **CI:** every push and pull request runs unit tests, Android Lint, and a debug build — see [Testing](#testing).
 
 ## Why Automatist
 
@@ -150,15 +154,154 @@ Schedules run through **WorkManager**. Android **Doze** and aggressive **OEM bat
 
 ## Architecture
 
-- **Single-activity** Jetpack Compose app; **MVVM** with Hilt.
+Single-activity Jetpack Compose app, MVVM with Hilt, and **no backend of any kind**. The
+defining boundary is the provider router: everything above it is provider-agnostic, so a
+workflow does not know or care whether its text is transformed in a datacentre or on the
+phone's own NPU.
+
+```mermaid
+flowchart TD
+    UI["UI · Jetpack Compose<br/>screens, action catalog, editor"]
+    VM["ViewModels · StateFlow<br/>@HiltViewModel, one per screen"]
+    ENG["WorkflowExecutionEngine<br/>emits Flow&lt;ExecutionState&gt;"]
+
+    ACT["Actions<br/>RSS · URL · API · notes<br/>weather · route · chaining"]
+    ROUTER["TransformProviderRouter<br/>profile resolution order"]
+    SCHED["ScheduleManager<br/>WorkManager"]
+
+    CLOUD["Cloud providers<br/>OpenAI · Anthropic · Gemini<br/>+ OpenAI-compatible"]
+    NANO["On-device<br/>Gemini Nano via AICore"]
+    OFF["Offline<br/>MediaPipe · Gemma 3 1B int4"]
+
+    ROOM["Room v17<br/>workflows · runs · history<br/>notes · provider profiles"]
+    DS["DataStore<br/>settings · API keys"]
+    DRIVE["Google Drive appDataFolder<br/>optional, secret-free export"]
+
+    UI --> VM --> ENG
+    ENG --> ACT
+    ENG --> ROUTER
+    ENG --> SCHED
+    SCHED -.->|"scheduled run"| ENG
+    ROUTER --> CLOUD
+    ROUTER --> NANO
+    ROUTER --> OFF
+    ENG --> ROOM
+    ENG --> DS
+    ROOM -.->|"user-initiated"| DRIVE
+
+    classDef boundary stroke-dasharray: 5 5
+    class CLOUD,DRIVE boundary
+```
+
+Dashed nodes are the only two places data can leave the device, and both are opt-in: a cloud
+provider you configured with your own key, and a backup you trigger yourself.
+
 - **Room** (database v17) for history, workflows, notes, and provider profiles; **DataStore** for settings and keys.
 - **WorkManager** for scheduled/background execution; **Retrofit + OkHttp** for network calls (HTTPS enforced).
-- A pluggable **provider router** dispatches to the active cloud or on-device provider.
+- The router resolves provider + model in a fixed order: explicit `profileId` on the input →
+  default profile row → legacy `activeProvider` setting.
+
+## Engineering challenges
+
+The interesting problems in this codebase were not the UI. They were the consequences of
+running a multi-gigabyte language model inside an app that also has to survive Doze.
+
+**1. Oversized prompts crashed the process, not the coroutine.**
+MediaPipe's LLM inference runs through JNI. Handing it a prompt longer than the model's
+context does not throw a catchable Kotlin exception — it aborts the native runtime with
+SIGABRT and takes the whole process with it. A `try/catch` is useless. The fix is a preflight
+budget enforced *before* the native call: `MAX_TOTAL_TOKENS = 1536`, split into a
+`MAX_INPUT_TOKENS = 1280` ceiling and a `MIN_OUTPUT_RESERVE_TOKENS = 256` reserve, with
+`LocalPromptBuilder` truncating at the character level against the catalogue's
+`contextWindowChars` before the estimator ever runs. Two independent guards, because the
+failure mode is unrecoverable.
+
+**2. Concurrent inference tried to allocate the model twice.**
+The offline model is ~529 MB on disk and several gigabytes resident. Two workflow runs
+overlapping — easy to trigger with two schedules on the same hour — meant two simultaneous
+loads and an OOM kill. Inference is pinned to a single dedicated `MediaPipe-Worker` thread
+rather than the shared IO dispatcher, which serialises calls by construction instead of by
+lock discipline. The model is also *not* cached between calls: holding 2–3 GB resident so the
+next run starts faster is exactly the thing that gets a background app killed.
+
+**3. R8 obfuscation broke JNI at runtime, not at build time.**
+MediaPipe and AICore resolve classes by name across the native boundary. Minified release
+builds compiled and installed perfectly, then crashed on first inference. The keep rules in
+`proguard-rules.pro` are load-bearing, and the failure they prevent is invisible to CI that
+only builds debug.
+
+**4. Scheduling on Android is a negotiation, not a guarantee.**
+WorkManager plus Doze plus OEM battery management means a "07:00 daily" workflow may run at
+07:00, or at 07:40, or when the user next unlocks. The app states this plainly rather than
+implying precision it cannot deliver, and surfaces computed "next run" and actual "last run"
+so the gap is visible instead of mysterious.
+
+**5. Model IDs became a migration surface.**
+`gemma-3n-e2b` is stored in user `ProviderProfile` rows and DataStore keys. Once shipped, it
+is frozen: the display name was later corrected to "Gemma 3 1B (int4)" but renaming the ID
+would silently break every existing install's provider selection. Same for the
+`offline-models-v1` release tag and its SHA-256 — they are download trust anchors baked into
+shipped clients, not implementation details.
+
+## Design decisions
+
+| Decision | Alternatives considered | Why this one |
+|---|---|---|
+| **No backend at all** | Thin proxy for key management and shared history | A proxy is the single most valuable thing to attack and the one thing that turns "your data" into "my liability". No server means no breach surface, no hosting cost, and no reason for the project to ever need a subscription. |
+| **Bring-your-own API key** | Bundled/pooled provider key | A bundled key forces metering, accounts, and a paywall — and puts my credentials behind someone else's workload. User keys keep the app free and the trust boundary honest. |
+| **Router behind one interface** | Per-provider branches at each call site | `ArticleTransformProvider` has one method. Adding a provider touches the catalogue and one routing case, not every screen. It is also what makes cloud and on-device genuinely interchangeable. |
+| **Room + DataStore, not one store** | Everything in Room; everything in DataStore | Relational data with foreign keys and cascade deletes (workflows → runs) belongs in Room. Scalar settings and keys do not need migrations to change. |
+| **Preflight token guard** | Catch the failure and retry smaller | Not available — the failure is a native abort, so there is nothing to catch. The guard has to be ahead of the call. |
+| **Load the model per call** | Keep it warm between runs | Warm is faster and gets the process killed. Cold start is the price of surviving in the background. |
+| **Manual final action** | Auto-post to the selected platforms | Every workflow ends at a reviewable artifact. Auto-posting is the feature that turns a useful tool into a spam engine, and it is deliberately absent. |
+
+### Why these technologies
+
+- **Kotlin + Compose** — a single-developer codebase benefits disproportionately from one
+  language across UI, domain, and workers, and from UI that is a function of state when that
+  state arrives from a long-running background job.
+- **Hilt** — the router needs to inject a different provider implementation per profile at
+  runtime; hand-rolled factories for that get unpleasant fast.
+- **WorkManager** — the only scheduling API on Android that survives reboots and Doze
+  transitions without a foreground service the app does not need.
+- **MediaPipe + AICore** — the two runtimes that actually run an LLM on a phone today, with
+  different device floors (API 26 + 3 GB RAM vs. API 34 on recent flagships), which is why the
+  catalogue drives dispatch rather than a hardcoded branch.
+
+## Testing
+
+**39 JVM test classes, 407 test methods**, run on every push and pull request. There is no
+instrumented (`androidTest`) suite — the logic worth protecting was deliberately kept out of
+Android framework classes so it could be tested on the JVM.
+
+What is covered, and why it was worth covering:
+
+| Area | What the tests pin down |
+|---|---|
+| Token budgeting | Oversized prompts are rejected *before* the native call — the SIGABRT guard |
+| Prompt construction | Truncation against the context window, per-provider system prompts |
+| Provider routing | Profile resolution order; model overrides reach the concrete provider |
+| Workflow engine | Stage transitions, per-stage reset, elapsed-time accounting, auto-retry |
+| Offline model catalogue | Manifest parsing, custom-model validation, SHA-256 expectations |
+| First-run seeding | Idempotency across relaunches; never overwriting a user's default profile |
+| Readiness | Which actions are blocked, and the exact missing requirement reported |
+| Removed paid tier | Regression tests asserting billing/Pro UI stays gone |
+
+Not covered, deliberately: real network calls to AI providers (fakes instead), real MediaPipe
+inference (needs a device and multiple gigabytes), and Compose UI rendering.
+
+```bash
+./gradlew testDebugUnitTest    # what CI runs
+./gradlew lintDebug
+./gradlew assembleDebug
+```
 
 ## Documentation
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [SUPPORT.md](SUPPORT.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) · [CHANGELOG.md](CHANGELOG.md)
 - [LICENSE](LICENSE) · [NOTICE](NOTICE) · [TRADEMARKS.md](TRADEMARKS.md) · [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- [Architecture decision records](docs/architecture/) — why there is no backend, how provider routing works,
+  why scheduling is approximate, and how the offline token budget prevents a native crash.
 - [Local model import](docs/local-model-import.md) · [Privacy policy (draft)](docs/legal/privacy-policy-draft.md)
 
 ## Contributing
