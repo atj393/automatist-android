@@ -21,8 +21,8 @@ ArticleTransformProvider.transform(input: ArticleInput, type: TransformType): Re
 ```
 
 `TransformProviderRouter` implements that same interface and delegates. Resolution order is
-fixed and total: explicit `profileId` on the input → the default profile row → the legacy
-`activeProvider` setting.
+fixed and total: explicit `profileId` on the input → the default profile row → an enabled
+fallback profile (`isFallback = true`) → the legacy `activeProvider` setting.
 
 ## Alternatives considered
 
@@ -42,5 +42,7 @@ fixed and total: explicit `profileId` on the input → the default profile row �
 - The interface is the lowest common denominator. Provider-specific features that do not fit
   `transform()` — streaming, tool use, multi-turn — are not exposed, and adding them means
   widening the contract for everyone.
-- On-device runtimes hide behind the same call, which is why a workflow can fall back from
-  cloud to offline without the engine changing.
+- On-device runtimes hide behind the same call, which is why a workflow can *select* an
+  offline provider without the engine changing. Note this is selection, not failover: the
+  resolution order picks a provider before the call, and `WorkflowExecutionEngine` does not
+  retry against a different provider when one fails.

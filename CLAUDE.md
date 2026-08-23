@@ -653,7 +653,8 @@ Do not remove the MediaPipe or AICore keep rules — R8 obfuscating these JNI cl
 - **Release:** `applicationId = "com.automatist.app"`, minification + resource shrinking enabled
 
 ### Worker Scheduling
-- Periodic: `PeriodicWorkRequestBuilder` with `ExistingPeriodicWorkPolicy.UPDATE` and `setInitialDelay()` computed from target time-of-day
+- Custom workflows: a chain of **self-rescheduling one-shots** — `OneTimeWorkRequestBuilder` with `setInitialDelay()` to the next occurrence, `ExistingWorkPolicy.REPLACE` on a unique name; `WorkflowWorker` calls `ScheduleManager.rescheduleNext()` after each scheduled run. `reconcile()` re-arms the chain on app start / reboot if a link was lost. Scheduled runs carry a `NetworkType.CONNECTED` constraint; manual runs deliberately do not.
+- Morning Brief: `PeriodicWorkRequestBuilder` with `ExistingPeriodicWorkPolicy.UPDATE` (`SynthesizerWorker_Periodic`) — interval is relative to registration, **not** anchored to a target time-of-day
 - One-time: `OneTimeWorkRequestBuilder` for manual "Run Now"
 - Unique work names: `SynthesizerWorker_Periodic`, `SynthesizerWorker_OneTime`, `WorkflowWorker_{templateId}`
 - Time-of-day scheduling: `computeDelayToNextTime()` calculates milliseconds from now until the next occurrence of the target hour:minute

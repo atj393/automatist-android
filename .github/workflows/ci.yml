@@ -38,7 +38,11 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
 
-      - name: Android Lint
+      # Reports only: app/build.gradle.kts deliberately sets lint.abortOnError = false
+      # so lint never blocks a release build, which means this step cannot fail on a
+      # lint error either. The uploaded HTML report is the actual output. Flipping
+      # abortOnError is a project decision, not a CI one.
+      - name: Android Lint (report only, non-gating)
         run: ./gradlew lintDebug --stacktrace
 
       - name: Assemble debug APK

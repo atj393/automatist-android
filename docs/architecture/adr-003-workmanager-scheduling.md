@@ -11,10 +11,33 @@ more aggressive than stock AOSP.
 
 ## Decision
 
-Schedule through WorkManager: `PeriodicWorkRequestBuilder` with
-`ExistingPeriodicWorkPolicy.UPDATE` and an initial delay computed to the next target
-time-of-day, plus `OneTimeWorkRequestBuilder` for "Run now". Unique work names per workflow
-keep re-scheduling idempotent.
+Schedule through WorkManager. There are two mechanisms, because the two features want
+different things:
+
+**Custom workflows — a chain of self-rescheduling one-shots.** `ScheduleManager` enqueues a
+`OneTimeWorkRequestBuilder` with `setInitialDelay()` computed to the next occurrence, under a
+unique work name with `ExistingWorkPolicy.REPLACE`. After a scheduled run completes,
+`WorkflowWorker` calls `rescheduleNext()` to enqueue the following one.
+
+A periodic request cannot express "every day at 07:00" — it expresses "every 24 hours from
+whenever this was registered", which drifts and cannot follow a changed target time without
+being torn down. Recomputing the delay per run is what makes an actual time-of-day schedule
+possible.
+
+The cost is that the chain can break: if the process is killed between "run finished" and
+"next one enqueued", nothing re-arms it. `reconcile()` covers that by checking on app start
+and after reboot whether each non-manual template still has pending work, and re-enqueueing
+if not.
+
+Scheduled runs also carry a `NetworkType.CONNECTED` constraint. An overnight run that fires
+with no connectivity collapses an RSS action into an empty fetch and reports "feed returned
+no content", which is a misleading way to say "no internet at 3 a.m.". Manual runs
+deliberately carry no such constraint, so a user tap never silently queues.
+
+**Morning Brief — a genuine periodic request.** `BriefViewModel` uses
+`PeriodicWorkRequestBuilder` with `ExistingPeriodicWorkPolicy.UPDATE` under the unique name
+`SynthesizerWorker_Periodic`. It does not set a target-time initial delay, so its interval is
+relative to registration. `SynthesizerWorker_OneTime` handles "Run now".
 
 Then say plainly, in the app and the README, that runs can be delayed.
 
@@ -33,6 +56,7 @@ Then say plainly, in the app and the README, that runs can be delayed.
   device next leaves Doze. This is a product property, not a bug, and is documented as one.
 - The UI shows computed "next run" and actual "last run" so drift is visible rather than
   mysterious.
-- Survives reboots and process death without special handling.
+- Survives reboots and process death — but for custom workflows that is `reconcile()` doing
+  the work, not WorkManager alone, because a broken one-shot chain has nothing to resume.
 - Users on heavily customised OEM builds may need to exempt the app from battery
   optimisation; no amount of correct code substitutes for that.

@@ -31,7 +31,7 @@
 - **Google Play:** [Available on Google Play Store](https://play.google.com/store/apps/details?id=com.automatist.app) — or build from source (see [Build from source](#build-from-source)).
 - **On-device AI:** availability depends on your device — see [Cloud, on-device & offline AI](#cloud-on-device--offline-ai).
 - **Current release:** `1.1.2` (versionCode 9) — see the [changelog](CHANGELOG.md) and [releases](https://github.com/atj393/automatist-android/releases).
-- **CI:** every push and pull request runs unit tests, Android Lint, and a debug build — see [Testing](#testing).
+- **CI:** every push and pull request runs unit tests and a debug build, and produces an Android Lint report (non-gating by project choice) — see [Testing](#testing).
 
 ## Why Automatist
 
@@ -193,13 +193,17 @@ flowchart TD
     class CLOUD,DRIVE boundary
 ```
 
-Dashed nodes are the only two places data can leave the device, and both are opt-in: a cloud
-provider you configured with your own key, and a backup you trigger yourself.
+Dashed nodes are where data leaves the device, and every one of them is something you
+configured: a cloud provider called with your own key, and a Drive backup you trigger
+yourself. Workflow actions also reach the network by design — fetching a URL or RSS feed,
+calling a REST endpoint, or sending a location to OpenWeatherMap / OpenRouteService with your
+own service key. What there is *no* path to is an Automatist server, because none exists.
 
 - **Room** (database v17) for history, workflows, notes, and provider profiles; **DataStore** for settings and keys.
 - **WorkManager** for scheduled/background execution; **Retrofit + OkHttp** for network calls (HTTPS enforced).
 - The router resolves provider + model in a fixed order: explicit `profileId` on the input →
-  default profile row → legacy `activeProvider` setting.
+  default profile row → enabled fallback profile (`isFallback = true`) → legacy
+  `activeProvider` setting.
 
 ## Engineering challenges
 
@@ -270,7 +274,9 @@ shipped clients, not implementation details.
 
 ## Testing
 
-**39 JVM test classes, 407 test methods**, run on every push and pull request. There is no
+**39 JVM test classes, 407 test methods**, run on every push and pull request. Lint runs
+alongside them but cannot fail the build: `lint.abortOnError = false` is a deliberate project
+setting, so the HTML report is the output, not a gate. There is no
 instrumented (`androidTest`) suite — the logic worth protecting was deliberately kept out of
 Android framework classes so it could be tested on the JVM.
 

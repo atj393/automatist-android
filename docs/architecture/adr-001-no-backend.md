@@ -16,8 +16,13 @@ and the reason a subscription would eventually be necessary.
 ## Decision
 
 There is no Automatist server. The app talks directly to whichever provider the user
-configured, with the user's own key, from the user's own device. All state lives in Room and
-DataStore on the device.
+configured, with the user's own key, from the user's own device. The canonical copy of all
+state lives in Room and DataStore on the device.
+
+This is not a claim that nothing leaves the device. A cloud provider processes the text you
+send it, workflow actions fetch from the sources you point them at, and a Drive backup puts a
+copy in your own Drive. The claim is narrower and more durable: none of it passes through
+infrastructure I run.
 
 ## Alternatives considered
 
@@ -35,7 +40,9 @@ DataStore on the device.
   soften it.
 - No cross-device sync without Drive, and no server-side migration path — schema changes ship
   as Room migrations to clients (currently at v17).
-- No hosting bill, no breach surface, and no structural pressure toward a paywall. The app
-  can credibly stay free because it does not cost anything to run.
+- No hosting bill, no server-side breach surface, and no structural pressure toward a paywall.
+  The app can credibly stay free because it does not cost anything to run. (Provider accounts
+  and Drive remain the user's own surfaces to secure — removing my server does not remove
+  theirs.)
 - Backups are secret-free by construction: `WorkflowPortabilityManager` strips keys before
   anything is serialised.
