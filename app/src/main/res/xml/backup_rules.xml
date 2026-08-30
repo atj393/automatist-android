@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Android 11 and below (API < 31) Auto Backup rules.
-    Excludes the same sensitive DataStore files.
+    Excludes the same sensitive files as data_extraction_rules.xml.
+
+    Domain matters: EncryptedSharedPreferences (secure_prefs) is a real SharedPreferences
+    file, so it lives under the "sharedpref" domain. Jetpack DataStore Preferences files
+    (product_access, cloud_sync) are plain files under filesDir/datastore/, NOT
+    shared_prefs/ — they must be excluded under the "file" domain with that path, or the
+    exclusion silently does nothing.
 -->
 <full-backup-content>
-    <exclude domain="sharedpref" path="secure_prefs_stub.preferences_pb" />
-    <exclude domain="sharedpref" path="product_access.preferences_pb" />
-    <exclude domain="sharedpref" path="cloud_sync.preferences_pb" />
+    <exclude domain="sharedpref" path="secure_prefs.xml" />
+    <exclude domain="file" path="datastore/product_access.preferences_pb" />
+    <exclude domain="file" path="datastore/cloud_sync.preferences_pb" />
 </full-backup-content>

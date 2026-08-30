@@ -128,6 +128,9 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
+    // Security — Keystore-backed encryption for API keys (EncryptedSharedPreferences)
+    implementation(libs.androidx.security.crypto)
+
     // WorkManager
     implementation(libs.work.runtime.ktx)
 

@@ -10,6 +10,7 @@ hilt = "2.51"
 hiltNavigationCompose = "1.2.0"
 room = "2.6.1"
 datastore = "1.0.0"
+securityCrypto = "1.1.0-alpha06"
 workManager = "2.9.0"
 retrofit = "2.10.0"
 okhttp = "4.12.0"
@@ -38,6 +39,7 @@ room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "securityCrypto" }
 
 work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workManager" }
 

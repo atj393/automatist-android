@@ -4,23 +4,29 @@
     Controls both cloud backup AND device-to-device transfer.
 
     Strategy:
-    - EXCLUDE secure_prefs_stub (API keys, service keys)
+    - EXCLUDE secure_prefs (API keys, service keys — EncryptedSharedPreferences,
+      domain "sharedpref", file secure_prefs.xml)
     - EXCLUDE product_access (inert legacy entitlement file — billing removed; no longer
       written or read. Exclusion kept so stale files don't start entering backups; may be
       dropped in a later cleanup release once upgrade behavior is established.)
     - EXCLUDE cloud_sync (Drive session metadata — re-created on sign-in)
     - INCLUDE settings (non-sensitive app preferences)
     - INCLUDE Room database (workflow definitions — no secrets stored in DB)
+
+    Domain matters: product_access and cloud_sync are Jetpack DataStore Preferences files,
+    which live under filesDir/datastore/ (domain "file"), NOT shared_prefs/ (domain
+    "sharedpref") — the wrong domain excludes nothing. secure_prefs is a real
+    SharedPreferences file (EncryptedSharedPreferences), so "sharedpref" is correct there.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <exclude domain="sharedpref" path="secure_prefs_stub.preferences_pb" />
-        <exclude domain="sharedpref" path="product_access.preferences_pb" />
-        <exclude domain="sharedpref" path="cloud_sync.preferences_pb" />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <exclude domain="file" path="datastore/product_access.preferences_pb" />
+        <exclude domain="file" path="datastore/cloud_sync.preferences_pb" />
     </cloud-backup>
     <device-transfer>
-        <exclude domain="sharedpref" path="secure_prefs_stub.preferences_pb" />
-        <exclude domain="sharedpref" path="product_access.preferences_pb" />
-        <exclude domain="sharedpref" path="cloud_sync.preferences_pb" />
+        <exclude domain="sharedpref" path="secure_prefs.xml" />
+        <exclude domain="file" path="datastore/product_access.preferences_pb" />
+        <exclude domain="file" path="datastore/cloud_sync.preferences_pb" />
     </device-transfer>
 </data-extraction-rules>

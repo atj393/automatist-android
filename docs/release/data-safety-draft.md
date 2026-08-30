@@ -160,9 +160,10 @@ such as IP). SHA-256 verified for integrity; users review third-party model lice
 - **Google Drive + email:** `data/sync/CloudSyncManager.kt` (`DRIVE_APPDATA`, `appDataFolder`),
   `feature/sync/CloudSyncScreen.kt` (`requestEmail`), `data/sync/LocalCloudSyncRepository.kt`
   (local `cloud_sync` store; disconnect clears local only).
-- **Keys / storage:** `KeystoreSecureStorage.kt` (`secure_prefs_stub`, plaintext),
-  `res/xml/backup_rules.xml` + `data_extraction_rules.xml` (exclude `secure_prefs_stub`,
-  `cloud_sync`, legacy `product_access`).
+- **Keys / storage:** `KeystoreSecureStorage.kt` (`secure_prefs`, `EncryptedSharedPreferences`
+  backed by an Android Keystore AES256-GCM key), `res/xml/backup_rules.xml` +
+  `data_extraction_rules.xml` (exclude `secure_prefs`, `cloud_sync`, legacy `product_access`;
+  domains corrected — DataStore files excluded under `file` + `datastore/...`, not `sharedpref`).
 - **Logging redaction:** `di/NetworkModule.kt` (body logging `BuildConfig.DEBUG`-only),
   `domain/engine/DiagnosticException.kt` (`ErrorRedactor`), `proguard-rules.pro` (strips
   `Log.v/Log.d` in release).
