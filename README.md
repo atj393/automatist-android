@@ -93,7 +93,7 @@ Pick a template or start from an empty canvas, chain reusable actions, add AI in
 - On-device and offline AI: prompts stay on the device.
 - External workflow requests (URLs, RSS, REST APIs, weather, routes) go only to the services **you** configure.
 - Google Drive sync is **optional** and uses your private `appDataFolder`. The developer cannot access it.
-- API keys are stored **locally** on the device.
+- API keys are stored **encrypted at rest** on the device, in `EncryptedSharedPreferences` behind an Android Keystore AES256-GCM master key. Backup and data-extraction rules exclude them, so keys are never carried into cloud backup or device-to-device transfer.
 
 See the [privacy policy draft](docs/legal/privacy-policy-draft.md), pending publication at `automatist.cloud/privacy`.
 
@@ -309,6 +309,8 @@ inference (needs a device and multiple gigabytes), and Compose UI rendering.
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, build and test commands, and PR expectations (no secrets or model binaries in PRs), and the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Security
+
+Secrets are held in `EncryptedSharedPreferences` with a master key generated in the Android Keystore, and the backup and data-extraction rules exclude both the encrypted preferences file and the DataStore directory.
 
 Please report vulnerabilities privately. See [SECURITY.md](SECURITY.md). Do not open a public issue for security problems.
 
