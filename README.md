@@ -23,6 +23,10 @@
   <img src="https://img.shields.io/badge/tests-407-blue" alt="407 unit tests">
 </p>
 
+<p align="center">
+https://github.com/user-attachments/assets/8ab75fc6-6c31-4c78-a346-386a945723ed
+</p>
+
 ---
 
 ## Project status
