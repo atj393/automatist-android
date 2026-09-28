@@ -6,6 +6,20 @@ All notable changes to Automatist are documented here. The format is based on
 
 For detailed history of individual changes, see the Git commit log.
 
+## [1.1.3] — 2026-09-29
+
+`versionName = "1.1.3"`, `versionCode = 10`. Ships a security fix that landed after the
+1.1.2 version bump and was not previously released or logged here.
+
+### Fixed
+- `KeystoreSecureStorage` was backed by a plain (unencrypted) DataStore Preferences file
+  despite its name. It now uses `EncryptedSharedPreferences` with an Android Keystore
+  AES256-GCM master key, so API/service keys are actually encrypted at rest.
+- `backup_rules.xml` and `data_extraction_rules.xml` excluded sensitive files under the
+  "sharedpref" domain, but DataStore Preferences files live under `filesDir/datastore/`
+  (the "file" domain), so the exclusions never matched anything. Domains corrected so the
+  exclusions take effect.
+
 ## [1.1.2] — 2026-07-22
 
 `versionName = "1.1.2"`, `versionCode = 9`. Supersedes `versionCode 8`, which was built and
