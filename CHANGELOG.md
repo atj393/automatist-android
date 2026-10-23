@@ -6,10 +6,12 @@ All notable changes to Automatist are documented here. The format is based on
 
 For detailed history of individual changes, see the Git commit log.
 
-## [1.1.3] — 2026-09-29
+## [1.1.4] — 2026-10-23
 
-`versionName = "1.1.3"`, `versionCode = 10`. Ships a security fix that landed after the
-1.1.2 version bump and was not previously released or logged here.
+`versionName = "1.1.4"`, `versionCode = 11`. Supersedes `versionCode 10` (`versionName
+1.1.3`), which Play Console rejected as already used and was never uploaded. Ships a
+security fix that landed after the 1.1.2 version bump and was not previously released or
+logged here.
 
 ### Fixed
 - `KeystoreSecureStorage` was backed by a plain (unencrypted) DataStore Preferences file
